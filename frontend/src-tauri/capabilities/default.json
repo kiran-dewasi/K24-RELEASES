@@ -1,0 +1,27 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:default",
+    "shell:allow-open",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/k24-backend",
+          "args": true
+        },
+        {
+          "name": "binaries/k24-listener",
+          "args": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+*.pyc
+__pycache__/
+.venv/
+
+*.log
+*.db
+node_modules/
+*.ipynb_checkpoints/
+*.csv
+*.xlsx
+.DS_Store
+venv/
+.venv/
+
+# Build artifacts and binaries (MUST be excluded - too large for GitHub)
+build_temp/
+dist/
+target/
+*.exe
+*.msi
+*.zip
+*.bin
+*.pkg
+*.whl
+*.tar.gz
+
+# Environment
+.env
+
+# Frontend build outputs
+frontend/out/
+frontend/.next/
+frontend/.next_old*/
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
+
+# Installers and downloads (over 100MB)
+**/downloads/*.exe
+**/downloads/*.msi
+K24_Installer*/
+K24_Setup*.exe
+*_Setup_*.exe
+
+# Python cache
+**/__pycache__/

@@ -1,0 +1,141 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { apiClient } from '@/lib/api-config';
+import { InventoryTable } from '@/components/inventory/InventoryTable';
+import { InventoryStats } from '@/components/inventory/InventoryStats';
+import { InventoryFilters } from '@/components/inventory/InventoryFilters';
+import { InventoryItem, InventorySummary } from '@/types/inventory';
+import { Button } from '@/components/ui/button';
+import { Plus, RefreshCw, FileDown, FileUp, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useToast } from "@/components/ui/use-toast";
+
+export default function InventoryPage() {
+    const router = useRouter();
+    const { toast } = useToast();
+
+    const [items, setItems] = useState<InventoryItem[]>([]);
+    const [summary, setSummary] = useState<InventorySummary>({
+        totalItems: 0,
+        totalValue: 0,
+        lowStockCount: 0,
+        outOfStockCount: 0,
+        timestamp: new Date().toISOString()
+    });
+
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
+    // Filters
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [categories, setCategories] = useState<string[]>([]);
+
+    const fetchInventory = async () => {
+        try {
+            setLoading(true);
+            // Construct query params
+            const params = new URLSearchParams();
+            if (searchQuery) params.append("search", searchQuery);
+            if (statusFilter !== 'all') params.append("status", statusFilter);
+            if (categoryFilter !== 'all') params.append("category", categoryFilter);
+
+            // Parallel fetch: Items + Summary
+            const [itemsRes, summaryRes] = await Promise.all([
+                apiClient(`/api/inventory?${params.toString()}`),
+                apiClient('/api/inventory/summary') // Summary is usually global, or filtered? Let's keep global for cards
+            ]);
+
+            if (itemsRes.ok) {
+                const data = await itemsRes.json();
+                setItems(data.items || []);
+
+                // Extract unique categories for filter
+                const uniqueCats = Array.from(new Set((data.items || []).map((i: any) => i.category || 'General')));
+                setCategories(uniqueCats as string[]);
+            }
+
+            if (summaryRes.ok) {
+                const data = await summaryRes.json();
+                setSummary(data);
+            }
+
+        } catch (error) {
+            console.error("Failed to fetch inventory:", error);
+            toast({
+                title: "Error",
+                description: "Failed to load inventory data. Please try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
+
+    // Debounced Search Effect
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchInventory();
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery, statusFilter, categoryFilter]);
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        fetchInventory();
+    };
+
+    const handleClearFilters = () => {
+        setSearchQuery('');
+        setStatusFilter('all');
+        setCategoryFilter('all');
+    };
+
+    return (
+        <div className="flex flex-col space-y-6 md:p-8 p-4 pt-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Inventory Management</h1>
+                    <p className="text-muted-foreground">Track stock levels, valuations, and movements across all items.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+                        <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                        Sync
+                    </Button>
+                    <Button variant="outline" size="sm">
+                        <FileUp className="mr-2 h-4 w-4" />
+                        Import
+                    </Button>
+                    <Button variant="outline" size="sm">
+                        <FileDown className="mr-2 h-4 w-4" />
+                        Export
+                    </Button>
+                    <Button size="sm" onClick={() => router.push('/inventory/new')} className="bg-primary text-primary-foreground shadow hover:bg-primary/90">
+                        <Plus className="mr-2 h-4 w-4" /> Add Item
+                    </Button>
+                </div>
+            </div>
+
+            <InventoryStats summary={summary} loading={loading && !items.length} />
+
+            <div className="space-y-4">
+                <InventoryFilters
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    statusFilter={statusFilter}
+                    onStatusFilterChange={setStatusFilter}
+                    categoryFilter={categoryFilter}
+                    onCategoryChange={setCategoryFilter}
+                    onClearFilters={handleClearFilters}
+                    categories={categories}
+                />
+
+                <InventoryTable items={items} isLoading={loading} />
+            </div>
+        </div>
+    );
+}

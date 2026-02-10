@@ -1,0 +1,42 @@
+# K24 Cloud Backend Dependencies
+# Cloud-only dependencies (no Tally XML, no desktop-specific libraries)
+
+# Core Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+
+# Database & ORM
+sqlalchemy>=2.0.0
+supabase>=2.0.2
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt==4.0.1
+email-validator>=2.1.0
+
+# AI & LLM
+google-generativeai>=0.3.0
+langchain>=0.1.0
+langchain-google-genai>=0.0.5
+langchain-core>=0.1.0
+
+# Request Handling
+httpx>=0.26.0
+httpcore>=1.0.2
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# Data Processing
+pydantic>=2.5.0
+pandas>=2.1.0
+openpyxl>=3.1.0
+
+# Monitoring & Logging
+sentry-sdk[fastapi]>=1.40.0
+
+# Utilities
+tenacity>=8.2.0
+nest_asyncio>=1.6.0

@@ -1,0 +1,23 @@
+{
+    "name": "k24-baileys-listener",
+    "version": "1.0.0",
+    "description": "Baileys WhatsApp listener for k24.ai",
+    "main": "listener.js",
+    "scripts": {
+        "start": "node listener.js",
+        "dev": "nodemon listener.js --ignore auth/",
+        "diagnose": "node listener-diagnostic.js",
+        "clean": "rm -rf auth/ && npm install"
+    },
+    "dependencies": {
+        "@whiskeysockets/baileys": "^7.0.0-rc.9",
+        "axios": "^1.6.0",
+        "link-preview-js": "^3.2.0",
+        "pino": "^8.0.0",
+        "pino-pretty": "^10.0.0",
+        "qrcode": "^1.5.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.0"
+    }
+}
