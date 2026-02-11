@@ -1,0 +1,1 @@
+from sqlalchemy import create_engine, text; from backend.database import DATABASE_URL; engine = create_engine(DATABASE_URL); conn = engine.connect(); print('Connected'); conn.execute(text('ALTER TABLE chat_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT NOW() NOT NULL;')); conn.commit(); print('Column Created'); conn.close()

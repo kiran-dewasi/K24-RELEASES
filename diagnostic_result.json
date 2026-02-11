@@ -1,0 +1,33 @@
+﻿{
+    "tests":  [
+                  {
+                      "name":  "Connection to Tally",
+                      "status":  "PASS",
+                      "details":  "Fetched 0 ledgers"
+                  },
+                  {
+                      "name":  "Cash Ledger Lookup",
+                      "status":  "WARN",
+                      "details":  "Cash ledger not found"
+                  },
+                  {
+                      "name":  "Create Test Ledger",
+                      "status":  "PASS",
+                      "details":  {
+                                      "success":  true,
+                                      "message":  "Created ledger \u0027K24_TEST_CUSTOMER\u0027"
+                                  }
+                  },
+                  {
+                      "name":  "Create Test Receipt Voucher",
+                      "status":  "FAIL",
+                      "details":  {
+                                      "status":  "OK",
+                                      "raw":  "\u003cRESPONSE\u003e\r\n \u003cCREATED\u003e0\u003c/CREATED\u003e\r\n \u003cALTERED\u003e0\u003c/ALTERED\u003e\r\n \u003cDELETED\u003e0\u003c/DELETED\u003e\r\n \u003cLASTVCHID\u003e0\u003c/LASTVCHID\u003e\r\n \u003cLASTMID\u003e0\u003c/LASTMID\u003e\r\n \u003cCOMBINED\u003e0\u003c/COMBINED\u003e\r\n \u003cIGNORED\u003e0\u003c/IGNORED\u003e\r\n \u003cERRORS\u003e0\u003c/ERRORS\u003e\r\n \u003cCANCELLED\u003e0\u003c/CANCELLED\u003e\r\n \u003cEXCEPTIONS\u003e1\u003c/EXCEPTIONS\u003e\r\n\u003c/RESPONSE\u003e\r\n"
+                                  },
+                      "raw_xml_response":  "\u003cRESPONSE\u003e\r\n \u003cCREATED\u003e0\u003c/CREATED\u003e\r\n \u003cALTERED\u003e0\u003c/ALTERED\u003e\r\n \u003cDELETED\u003e0\u003c/DELETED\u003e\r\n \u003cLASTVCHID\u003e0\u003c/LASTVCHID\u003e\r\n \u003cLASTMID\u003e0\u003c/LASTMID\u003e\r\n \u003cCOMBINED\u003e0\u003c/COMBINED\u003e\r\n \u003cIGNORED\u003e0\u003c/IGNORED\u003e\r\n \u003cERRORS\u003e0\u003c/ERRORS\u003e\r\n \u003cCANCELLED\u003e0\u003c/CANCELLED\u003e\r\n \u003cEXCEPTIONS\u003e1\u003c/EXCEPTIONS\u003e\r\n\u003c/RESPONSE\u003e\r\n"
+                  }
+              ],
+    "overall_status":  "FAIL - Voucher Creation Failed",
+    "root_cause":  "\u003cRESPONSE\u003e\r\n \u003cCREATED\u003e0\u003c/CREATED\u003e\r\n \u003cALTERED\u003e0\u003c/ALTERED\u003e\r\n \u003cDELETED\u003e0\u003c/DELETED\u003e\r\n \u003cLASTVCHID\u003e0\u003c/LASTVCHID\u003e\r\n \u003cLASTMID\u003e0\u003c/LASTMID\u003e\r\n \u003cCOMBINED\u003e0\u003c/COMBINED\u003e\r\n \u003cIGNORED\u003e0\u003c/IGNORED\u003e\r\n \u003cERRORS\u003e0\u003c/ERRORS\u003e\r\n \u003cCANCELLED\u003e0\u003c/CANCELLED\u003e\r\n \u003cEXCEPTIONS\u003e1\u003c/EXCEPTIONS\u003e\r\n\u003c/RESPONSE\u003e\r\n"
+}

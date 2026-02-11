@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: k24-backend
+    ports:
+      - "8001:8001"
+    environment:
+      - TALLY_URL=${TALLY_URL:-http://host.docker.internal:9000}
+      - TALLY_COMPANY=${TALLY_COMPANY:-SHREE JI SALES}
+      - TALLY_EDU_MODE=${TALLY_EDU_MODE:-false}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - TALLY_LIVE_UPDATE_ENABLED=${TALLY_LIVE_UPDATE_ENABLED:-true}
+    volumes:
+      - ./k24_shadow.db:/app/k24_shadow.db
+      - ./data:/app/data
+    networks:
+      - k24-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: k24-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+    networks:
+      - k24-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  k24-network:
+    driver: bridge
+
+volumes:
+  k24-data:
+    driver: local

@@ -1,0 +1,20 @@
+<ENVELOPE>
+    <LEDGER>
+        <ID>123</ID>
+        <NAME>Acme Corp</NAME>
+        <AMOUNT>10000</AMOUNT>
+        <STATUS>overdue</STATUS>
+    </LEDGER>
+    <LEDGER>
+        <ID>124</ID>
+        <NAME>Acme Corp</NAME>
+        <AMOUNT>5000</AMOUNT>
+        <STATUS>paid</STATUS>
+    </LEDGER>
+    <LEDGER>
+        <ID>125</ID>
+        <NAME>Globex LLC</NAME>
+        <AMOUNT>7000</AMOUNT>
+        <STATUS>overdue</STATUS>
+    </LEDGER>
+</ENVELOPE>

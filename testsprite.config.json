@@ -1,0 +1,6 @@
+{
+    "projectId": "local_k24_project",
+    "testDir": "./tests/e2e",
+    "framework": "playwright",
+    "language": "typescript"
+}

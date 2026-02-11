@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KITTU Chat Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            line-height: 1.4;
+        }
+
+        .user {
+            align-self: flex-end;
+            background: #007bff;
+            color: white;
+            border-bottom-right-radius: 2px;
+        }
+
+        .kittu {
+            align-self: flex-start;
+            background: #e9ecef;
+            color: #333;
+            border-bottom-left-radius: 2px;
+        }
+
+        .input-area {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+            background: white;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            outline: none;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 25px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .status {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin-top: 5px;
+        }
+
+        .intent-info {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <h2 style="text-align: center; color: #333;">🤖 KITTU</h2>
+    <div class="chat-container">
+        <div class="messages" id="messages">
+            <div class="message kittu">
+                Hello! I'm KITTU. I can help you reconcile invoices, create entries, or answer questions about your
+                Tally data.<br>
+                <br>Try saying:<br>
+                • "Reconcile invoices for Vasudev Enterprises"<br>
+                • "I bought 500 cumin bags"<br>
+                • "What is my total revenue?"
+            </div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+    <div class="status" id="status">Connected to http://localhost:8001</div>
+    <!DOCTYPE html>
+    <html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>KITTU Chat Demo</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #f0f2f5;
+            }
+
+            .chat-container {
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+                height: 600px;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .messages {
+                flex: 1;
+                padding: 20px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .message {
+                max-width: 80%;
+                padding: 10px 15px;
+                border-radius: 15px;
+                line-height: 1.4;
+            }
+
+            .user {
+                align-self: flex-end;
+                background: #007bff;
+                color: white;
+                border-bottom-right-radius: 2px;
+            }
+
+            .kittu {
+                align-self: flex-start;
+                background: #e9ecef;
+                color: #333;
+                border-bottom-left-radius: 2px;
+            }
+
+            .input-area {
+                padding: 20px;
+                border-top: 1px solid #eee;
+                display: flex;
+                gap: 10px;
+                background: white;
+            }
+
+            input {
+                flex: 1;
+                padding: 12px;
+                border: 1px solid #ddd;
+                border-radius: 25px;
+                outline: none;
+                font-size: 16px;
+            }
+
+            button {
+                padding: 10px 25px;
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 25px;
+                cursor: pointer;
+                font-weight: bold;
+            }
+
+            button:hover {
+                background: #0056b3;
+            }
+
+            .status {
+                font-size: 12px;
+                color: #666;
+                text-align: center;
+                margin-top: 5px;
+            }
+
+            .intent-info {
+                font-size: 11px;
+                color: #666;
+                margin-top: 5px;
+                font-style: italic;
+            }
+        </style>
+    </head>
+
+    <body>
+        <h2 style="text-align: center; color: #333;">🤖 KITTU</h2>
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message kittu">
+                    Hello! I'm KITTU. I can help you reconcile invoices, create entries, or answer questions about your
+                    Tally data.<br>
+                    <br>Try saying:<br>
+                    • "Reconcile invoices for Vasudev Enterprises"<br>
+                    • "I bought 500 cumin bags"<br>
+                    • "What is my total revenue?"
+                </div>
+            </div>
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+        <div class="status" id="status">Connected to http://localhost:8001</div>
+
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+        <script>
+            const API_URL = 'http://localhost:8001';
+            const USER_ID = 'demo_user_' + Math.floor(Math.random() * 1000);
+
+            async function sendMessage() {
+                const input = document.getElementById('userInput');
+                const text = input.value.trim();
+                if (!text) return;
+
+                // Add user message
+                addMessage(text, 'user');
+                input.value = '';
+                input.disabled = true;
+
+                try {
+                    const response = await fetch(`${API_URL}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: USER_ID,
+                            message: text
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    // Handle new DraftResponse format
+                    let htmlContent = marked.parse(data.message || "");
+
+                    // Render Draft Card if present
+                    if (data.type === 'draft_voucher' && data.data) {
+                        const draft = data.data;
+                        htmlContent += `
+                        <div style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-top: 10px;">
+                            <div style="font-weight: bold; color: #2c3e50; margin-bottom: 5px;">
+                                📄 ${draft.voucher_type} Draft
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                                <div><strong>Party:</strong><br>${draft.party_name}</div>
+                                <div><strong>Amount:</strong><br>₹${draft.total_amount}</div>
+                                <div style="grid-column: span 2;"><strong>Item:</strong><br>${draft.items[0].name} (${draft.items[0].quantity} @ ₹${draft.items[0].rate})</div>
+                            </div>
+                            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                                <button style="background: #28a745; flex: 1; padding: 8px;">Confirm ✅</button>
+                                <button style="background: #dc3545; flex: 1; padding: 8px;">Edit ✏️</button>
+                            </div>
+                        </div>
+                    `;
+                    }
+
+                    addMessage(htmlContent, 'kittu');
+
+                } catch (error) {
+                    addMessage(`Error: ${error.message}. Make sure the backend is running on port 8001.`, 'kittu');
+                } finally {
+                    input.disabled = false;
+                    input.focus();
+                }
+            }
+
+            function addMessage(html, type) {
+                const div = document.createElement('div');
+                div.className = `message ${type}`;
+                div.innerHTML = html;
+                document.getElementById('messages').appendChild(div);
+                div.scrollIntoView({ behavior: 'smooth' });
+            }
+
+            function handleKeyPress(e) {
+                if (e.key === 'Enter') sendMessage();
+            }
+        </script>
+    </body>
+
+    </html>
