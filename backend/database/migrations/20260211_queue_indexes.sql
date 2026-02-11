@@ -1,0 +1,36 @@
+-- WhatsApp Message Queue Indexes
+-- Documentation for Supabase table: whatsapp_message_queue
+-- 
+-- NOTE: This file is for documentation and infrastructure reference.
+-- The whatsapp_message_queue table already exists in Supabase.
+-- Do NOT run this migration blindly against the database.
+-- 
+-- Purpose: Document the indexes that should exist on the queue table
+-- to support efficient polling by tenant and status.
+
+-- Existing index to support queue lookups by tenant and status
+-- This index enables fast queries like:
+--   SELECT * FROM whatsapp_message_queue 
+--   WHERE tenant_id = 'TENANT001' AND status = 'pending'
+--   LIMIT 10;
+--
+-- CREATE INDEX IF NOT EXISTS idx_queue_tenant_status
+-- ON whatsapp_message_queue(tenant_id, status);
+
+-- Optional: Index on created_at for cleanup/archival queries
+-- CREATE INDEX IF NOT EXISTS idx_queue_created_at
+-- ON whatsapp_message_queue(created_at);
+
+-- Table structure reference (from contracts.md):
+-- - id: UUID PRIMARY KEY
+-- - tenant_id: TEXT NOT NULL
+-- - user_id: UUID (nullable)
+-- - customer_phone: TEXT NOT NULL
+-- - message_type: TEXT DEFAULT 'text'
+-- - message_text: TEXT
+-- - media_url: TEXT
+-- - raw_payload: JSONB
+-- - status: TEXT DEFAULT 'pending' ('pending', 'processing', 'delivered', 'failed')
+-- - processed_at: TIMESTAMP
+-- - error_message: TEXT
+-- - created_at: TIMESTAMP DEFAULT now()

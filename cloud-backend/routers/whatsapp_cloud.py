@@ -33,7 +33,7 @@ class IncomingWhatsAppMessage(BaseModel):
     media_url: Optional[str] = None  # Media URL or path
     raw_payload: Optional[Dict[str, Any]] = None
 
-@router.post("/incoming")
+@router.post("/incoming", status_code=202)
 async def receive_whatsapp_message(
     message: IncomingWhatsAppMessage,
     authenticated: bool = Depends(verify_baileys_secret)
@@ -96,10 +96,9 @@ async def receive_whatsapp_message(
             "id": message_id,
             "tenant_id": tenant_id,
             "user_id": str(user_id) if user_id else None,
-            "sender_phone": message.from_number,
-            "sender_name": customer_name,
+            "customer_phone": message.from_number,
             "message_type": message.message_type,
-            "message_content": message.text,
+            "message_text": message.text,
             "media_url": message.media_url,
             "status": "pending",
             "raw_payload": message.raw_payload or {},
@@ -121,9 +120,7 @@ async def receive_whatsapp_message(
 
         # Step 3: Return 202 Accepted with message_id
         return {
-            "message_id": message_id,
-            "status": "queued",
-            "tenant_id": tenant_id
+            "message_id": message_id
         }
 
     except HTTPException:
