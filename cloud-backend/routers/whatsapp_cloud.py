@@ -137,17 +137,30 @@ async def receive_whatsapp_message(
             }
         )
 
+def verify_desktop_api_key(x_api_key: str = Header(None)):
+    """Verify that the request comes from authenticated desktop app"""
+    expected_key = os.getenv("DESKTOP_API_KEY")
+    if not expected_key:
+        logger.error("DESKTOP_API_KEY not configured in environment")
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    if x_api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return True
+
 @router.get("/jobs/{tenant_id}")
 async def poll_whatsapp_jobs(
     tenant_id: str,
-    limit: int = 10
+    limit: int = 10,
+    authenticated: bool = Depends(verify_desktop_api_key)
 ):
     """
     Poll pending WhatsApp messages for a specific tenant.
     Desktop app uses this to fetch messages from the queue.
     
+    **Security**: Requires X-API-Key header matching DESKTOP_API_KEY env var.
+    
     Flow:
-    1. Desktop app calls GET /api/whatsapp/jobs/{tenant_id}
+    1. Desktop app calls GET /api/whatsapp/jobs/{tenant_id} with X-API-Key header
     2. This endpoint fetches pending messages for that tenant
     3. Atomically updates status to 'processing'
     4. Returns messages to desktop for processing
@@ -156,6 +169,7 @@ async def poll_whatsapp_jobs(
     Args:
         tenant_id: Tenant ID (from JWT or desktop auth)
         limit: Max messages to fetch (default: 10)
+        authenticated: API key validation (dependency)
     
     Returns:
         List of pending messages with details

@@ -144,7 +144,7 @@
 ---
 
 ### M2 – Desktop Poller & Job Completion
-**Status**: 5% complete | **Priority**: CRITICAL | **Estimated**: 4-5 days
+**Status**: 15% complete | **Priority**: CRITICAL | **Estimated**: 4-5 days
 
 **Owner**: Builder
 
@@ -156,10 +156,14 @@
 - ❌ Job completion endpoint missing: `POST /api/whatsapp/jobs/{job_id}/complete`
 
 **Tasks**:
-1. **Create cloud polling endpoint** (3 hours)
+1. ✅ **Create cloud polling endpoint** (COMPLETED - 2026-02-12)
    - **Endpoint**: `GET /api/whatsapp/jobs/{tenant_id}`
-   - **File**: `cloud-backend/routers/whatsapp_cloud.py` (add new route)
-   - Auth: Verify JWT, ensure `tenant_id` in token matches path parameter
+   - **File**: `cloud-backend/routers/whatsapp_cloud.py`
+   - **Security**: API key authentication via `X-API-Key` header
+     - Validates against `DESKTOP_API_KEY` env var (set in Railway)
+     - Returns 401 if missing/invalid
+     - Prevents unauthorized polling of message queues
+   - Implementation: Uses FastAPI Depends + Header validation
    - Query with atomic update:
      ```python
      # Fetch and mark as processing in one transaction
@@ -236,12 +240,149 @@
 - Manual: Send WhatsApp message → verify desktop picks up → verify Tally updated
 
 **Definition of Done**:
-- [ ] Cloud polling endpoint implemented and tested
+- [x] Cloud polling endpoint implemented and tested (✅ API key auth added)
 - [ ] Cloud completion endpoint implemented and tested
 - [ ] Desktop poller service created
 - [ ] Poller integrated into desktop startup
 - [ ] Network error handling works (tested with cloud offline)
 - [ ] Full integration test passes (message → desktop → Tally)
+
+---
+
+### Infrastructure: Domain & URL Management Strategy
+
+**Status**: ✅ Custom Domain Active (api.k24.ai)  
+**Migration Date**: Feb 12, 2026
+
+#### Current URL Architecture
+| Service | Env Var | Production Value | Status |
+|---------|---------|------------------|--------|
+| cloud-backend | API_BASE_URL | https://api.k24.ai | ✅ Set |
+| baileys-listener | BACKEND_URL | https://api.k24.ai | ✅ Updated |
+| Desktop app (M4) | CLOUD_API_URL | TBD | ⏳ Not implemented |
+
+#### DNS Configuration
+- **Domain**: k24.ai (owned)
+- **Subdomain**: api.k24.ai
+- **CNAME**: api → 8dbzflwh.up.railway.app
+- **TTL**: 5 minutes (fast propagation)
+
+#### Known Issues & Resolutions
+
+**Issue 1: Bidirectional Communication (cloud ↔ baileys)**
+- **Problem**: BAILEYS_SERVICE_URL not set in Railway cloud-backend
+- **Impact**: Cloud cannot call baileys for health checks or QR status
+- **Priority**: Low (not needed for M1/M2)
+- **Resolution**: Add to M3 or when bidirectional needed:
+  - Set Railway env: `BAILEYS_SERVICE_URL=https://artistic-healing-production.up.railway.app` (or custom domain)
+  - Update `cloud-backend/routers/whatsapp_cloud.py` to use this URL
+
+**Issue 2: Desktop Cloud Config (M4 blocker)**
+- **Problem**: Desktop app has no way to know production cloud URL
+- **Impact**: Cannot ship installers without hardcoding URL
+- **Priority**: High (blocks M4)
+- **Resolution**: 
+   - Create `backend/config/cloud.json`:
+     ```json
+     {
+       "cloud_api_url": "https://api.k24.ai",
+       "desktop_api_key": "<from_secure_storage>",
+       "environment": "production"
+     }
+     ```
+   - Add `backend/services/config_service.py` to read this
+   - Package config.json with Tauri installer
+   - Add to M4 Task 1 checklist
+   - **CRITICAL**: Desktop must include `X-API-Key` header in all cloud requests
+
+**Issue 3: Auth URLs Not Configured**
+- **Problem**: Supabase Auth doesn't allow api.k24.ai redirects yet
+- **Impact**: OAuth flows will fail from cloud domain
+- **Priority**: Medium (needed before auth flows)
+- **Resolution**: ✅ IN PROGRESS
+  - Add to Supabase → Authentication → URL Configuration:
+    - Site URL: https://api.k24.ai
+    - Redirect URLs: https://api.k24.ai/**, k24://**
+
+#### CORS Verification Checklist
+Ensure `cloud-backend/main.py` allows:
+- `https://tauri.localhost` (desktop app dev)
+- `k24://*` (desktop deep links)
+- `https://api.k24.ai` (production frontend if needed)
+
+#### API Key Authentication Pattern
+
+**Added**: 2026-02-12 (M2 Task 1)
+
+##### Overview
+Desktop-to-cloud communication uses simple API key authentication to prevent unauthorized access to the WhatsApp job polling endpoint. This is a lightweight alternative to full JWT auth for machine-to-machine communication.
+
+##### Security Model
+- **Endpoint**: `GET /api/whatsapp/jobs/{tenant_id}`
+- **Header**: `X-API-Key: <value>`
+- **Validation**: Server compares against `DESKTOP_API_KEY` env var
+- **Failure**: Returns `401 Unauthorized` if missing/invalid
+
+##### Implementation Details
+
+**Cloud Backend** (`cloud-backend/routers/whatsapp_cloud.py`):
+```python
+def verify_desktop_api_key(x_api_key: str = Header(None)):
+    """Verify that the request comes from authenticated desktop app"""
+    expected_key = os.getenv("DESKTOP_API_KEY")
+    if not expected_key:
+        logger.error("DESKTOP_API_KEY not configured in environment")
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    if x_api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return True
+
+@router.get("/jobs/{tenant_id}")
+async def poll_whatsapp_jobs(
+    tenant_id: str,
+    authenticated: bool = Depends(verify_desktop_api_key)
+):
+    # ... polling logic
+```
+
+**Desktop Client** (to be implemented in `backend/services/whatsapp_poller.py`):
+```python
+import requests
+from backend.services.config_service import get_cloud_url, get_api_key
+
+headers = {
+    "X-API-Key": get_api_key(),
+    "Content-Type": "application/json"
+}
+
+response = requests.get(
+    f"{get_cloud_url()}/api/whatsapp/jobs/{tenant_id}",
+    headers=headers
+)
+```
+
+##### Environment Variables
+
+**Railway (cloud-backend)**:
+- **Variable**: `DESKTOP_API_KEY`
+- **Value**: Generate secure random string (e.g., `openssl rand -hex 32`)
+- **Status**: ✅ Set in Railway dashboard (2026-02-12)
+
+**Desktop App** (to be implemented):
+- **Storage**: Windows DPAPI encrypted config or secure keyring
+- **Config**: `backend/config/cloud.json` (template, not actual key)
+- **Runtime**: Read from secure storage via `config_service.get_api_key()`
+
+##### Why Not JWT?
+For desktop polling, API key is simpler because:
+1. **No user context needed**: Desktop polls for its tenant, not specific user
+2. **No expiry**: Avoids refresh token complexity
+3. **Easy distribution**: One key per deployment, packaged with installer
+4. **Adequate security**: Endpoint only returns data for explicitly requested tenant_id
+
+##### Migration Path
+- **Phase 1**: Use single shared API key for all desktop clients
+- **Phase 2** (optional): Per-tenant API keys if needed for rotation/revocation
 
 ---
 
@@ -373,7 +514,27 @@
 - ❌ Environment config handling undefined
 
 **Tasks**:
-1. **Create PyInstaller spec for backend sidecar**
+1. **Task 0: Desktop Cloud URL Configuration + API Key Auth** (NEW - BLOCKER)
+   - Create `backend/config/cloud.json` with production URL
+   - Implement `backend/services/config_service.py`:
+     - Read `cloud_api_url` from config.json
+     - Read `desktop_api_key` from secure storage (e.g., Windows DPAPI, keyring)
+     - Fallback to localhost for dev
+     - Expose via `get_cloud_url()` and `get_api_key()` methods
+   - **CRITICAL**: Update `whatsapp_poller.py` to:
+     - Use `config_service.get_cloud_url()`
+     - Include `X-API-Key` header in ALL cloud requests:
+       ```python
+       headers = {
+         "X-API-Key": config_service.get_api_key(),
+         "Content-Type": "application/json"
+       }
+       ```
+   - Update Tauri build config to package config.json
+   - Test installer with production URL + API key
+   - ✅ Ensures every tenant's desktop knows where to poll AND can authenticate
+
+2. **Create PyInstaller spec for backend sidecar**
    - File: `backend/k24_backend.spec` (new)
    - Bundle: FastAPI app, all dependencies, Tally connectors
    - Output: `k24-backend.exe` (standalone, no Python required)
