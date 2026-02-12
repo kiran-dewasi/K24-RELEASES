@@ -246,6 +246,102 @@ async def poll_whatsapp_jobs(
         )
 
 
+class JobCompletion(BaseModel):
+    """Job completion request from desktop app"""
+    status: str  # "delivered" or "failed"
+    error_message: Optional[str] = None
+    result_summary: Optional[str] = None
+
+@router.post("/jobs/{message_id}/complete")
+async def complete_whatsapp_job(
+    message_id: str,
+    completion: JobCompletion,
+    authenticated: bool = Depends(verify_desktop_api_key)
+):
+    """
+    Mark a WhatsApp message job as completed (delivered or failed).
+    Desktop app calls this after processing a message from the queue.
+    
+    **Security**: Requires X-API-Key header matching DESKTOP_API_KEY env var.
+    
+    Flow:
+    1. Desktop processes message from queue
+    2. Calls this endpoint with message_id and completion status
+    3. Updates queue status to 'delivered' or 'failed'
+    4. Records error message if failed
+    
+    Args:
+        message_id: Message ID from the queue
+        completion: Completion status and optional error/summary
+        authenticated: API key validation (dependency)
+    
+    Returns:
+        Success confirmation with message_id
+    """
+    try:
+        # Validate status
+        if completion.status not in ["delivered", "failed"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Status must be 'delivered' or 'failed'"
+            )
+        
+        # Validate error_message for failed status
+        if completion.status == "failed" and not completion.error_message:
+            raise HTTPException(
+                status_code=400,
+                detail="error_message is required when status is 'failed'"
+            )
+        
+        logger.info(f"📝 Completing job {message_id} with status: {completion.status}")
+        
+        supabase = get_supabase_client()
+        
+        # Update message status atomically
+        update_data = {
+            "status": completion.status,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "error_message": completion.error_message
+        }
+        
+        result = supabase.table("whatsapp_message_queue").update(
+            update_data
+        ).eq(
+            "id", message_id
+        ).execute()
+        
+        # Check if message was found
+        if not result.data or len(result.data) == 0:
+            logger.warning(f"❌ Message not found: {message_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Message {message_id} not found"
+            )
+        
+        logger.info(f"✅ Job {message_id} marked as {completion.status}")
+        
+        return {
+            "success": True,
+            "message_id": message_id,
+            "status": completion.status,
+            "processed_at": update_data["processed_at"]
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Error completing job {message_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "COMPLETION_ERROR",
+                "detail": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+
 @router.get("/status")
 async def whatsapp_service_status():
     """Health check for WhatsApp cloud service"""
