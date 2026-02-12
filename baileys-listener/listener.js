@@ -26,8 +26,10 @@ const logger = pino(
     }
 );
 
+
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
-const AUTH_DIR = path.join(__dirname, 'auth');
+const AUTH_DIR = process.env.SESSION_DIR || path.join(__dirname, 'auth');
+
 
 // ============================================
 // PHONE ROUTING CACHE (24-hour sessions)
@@ -341,6 +343,33 @@ async function startBaileys() {
             }
 
             logger.info(`📝 Message Text: "${messageText}"`);
+
+            // --- SEND TO CLOUD WEBHOOK FOR QUEUEING ---
+            try {
+                const timestamp = msg.messageTimestamp ? parseInt(msg.messageTimestamp) : Math.floor(Date.now() / 1000);
+                const cloudPayload = {
+                    from_number: senderNumber,
+                    message_type: "text",
+                    text: messageText || null,
+                    timestamp: timestamp
+                };
+
+                await axios.post(
+                    `${BACKEND_URL}/api/whatsapp/cloud/incoming`,
+                    cloudPayload,
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Baileys-Secret': process.env.BAILEYS_SECRET || 'k24_baileys_secret'
+                        }
+                    }
+                );
+                logger.info(`☁️ Cloud webhook: queued (status 202)`);
+            } catch (cloudErr) {
+                logger.error(`☁️ Cloud webhook failed: ${cloudErr.response?.status || cloudErr.message}`);
+                // Don't stop processing - continue with existing flow
+            }
+            // --------------------------------------
 
             // --- INTERCEPT VERIFICATION COMMAND ---
             if (messageText && messageText.trim().toUpperCase().startsWith("VERIFY")) {
