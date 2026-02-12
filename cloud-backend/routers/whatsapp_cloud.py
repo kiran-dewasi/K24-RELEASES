@@ -137,6 +137,101 @@ async def receive_whatsapp_message(
             }
         )
 
+@router.get("/jobs/{tenant_id}")
+async def poll_whatsapp_jobs(
+    tenant_id: str,
+    limit: int = 10
+):
+    """
+    Poll pending WhatsApp messages for a specific tenant.
+    Desktop app uses this to fetch messages from the queue.
+    
+    Flow:
+    1. Desktop app calls GET /api/whatsapp/jobs/{tenant_id}
+    2. This endpoint fetches pending messages for that tenant
+    3. Atomically updates status to 'processing'
+    4. Returns messages to desktop for processing
+    5. Desktop processes and calls completion endpoint
+    
+    Args:
+        tenant_id: Tenant ID (from JWT or desktop auth)
+        limit: Max messages to fetch (default: 10)
+    
+    Returns:
+        List of pending messages with details
+    """
+    try:
+        logger.info(f"📥 Polling jobs for tenant: {tenant_id}")
+        
+        supabase = get_supabase_client()
+        
+        # Step 1: Fetch pending messages for this tenant
+        # Note: In production, use a database RPC function with SELECT ... FOR UPDATE SKIP LOCKED
+        # For now, we use a simple SELECT + UPDATE pattern
+        
+        pending_result = supabase.table("whatsapp_message_queue").select(
+            "id, tenant_id, user_id, customer_phone, message_type, message_text, media_url, raw_payload, created_at"
+        ).eq(
+            "tenant_id", tenant_id
+        ).eq(
+            "status", "pending"
+        ).order(
+            "created_at", desc=False
+        ).limit(
+            limit
+        ).execute()
+        
+        if not pending_result.data or len(pending_result.data) == 0:
+            logger.info(f"✅ No pending jobs for tenant {tenant_id}")
+            return {
+                "jobs": [],
+                "count": 0,
+                "tenant_id": tenant_id
+            }
+        
+        # Step 2: Atomically update fetched messages to 'processing'
+        message_ids = [msg["id"] for msg in pending_result.data]
+        
+        update_result = supabase.table("whatsapp_message_queue").update({
+            "status": "processing",
+            "processing_started_at": datetime.now(timezone.utc).isoformat()
+        }).in_(
+            "id", message_ids
+        ).execute()
+        
+        # Step 3: Format response for desktop app
+        jobs = []
+        for msg in pending_result.data:
+            jobs.append({
+                "message_id": msg["id"],
+                "customer_phone": msg["customer_phone"],
+                "message_type": msg["message_type"],
+                "text": msg.get("message_text"),
+                "media_url": msg.get("media_url"),
+                "raw_payload": msg.get("raw_payload", {}),
+                "timestamp": msg["created_at"]
+            })
+        
+        logger.info(f"✅ Returned {len(jobs)} jobs for tenant {tenant_id}")
+        
+        return {
+            "jobs": jobs,
+            "count": len(jobs),
+            "tenant_id": tenant_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Error polling jobs for tenant {tenant_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "POLLING_ERROR",
+                "detail": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+
 @router.get("/status")
 async def whatsapp_service_status():
     """Health check for WhatsApp cloud service"""
