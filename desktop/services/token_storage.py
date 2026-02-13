@@ -101,13 +101,16 @@ class TokenStorage:
             logger.error(f"Failed to initialize encryption: {e}")
             raise
     
-    def save_tokens(self, access_token: str, refresh_token: str) -> None:
+    def save_tokens(self, access_token: str, refresh_token: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None) -> None:
         """
         Save access and refresh tokens with encryption.
+        Optionally saves tenant_id and user_id for context.
         
         Args:
             access_token: JWT access token
             refresh_token: JWT refresh token
+            tenant_id: Optional tenant ID associated with the tokens
+            user_id: Optional user ID associated with the tokens
         """
         try:
             # Prepare data as JSON
@@ -115,6 +118,11 @@ class TokenStorage:
                 "access_token": access_token,
                 "refresh_token": refresh_token
             }
+            
+            if tenant_id:
+                data["tenant_id"] = tenant_id
+            if user_id:
+                data["user_id"] = user_id
             
             # Serialize to JSON bytes
             json_bytes = json.dumps(data).encode('utf-8')
@@ -128,6 +136,8 @@ class TokenStorage:
             
             logger.info(f"✅ Tokens saved securely to {self.tokens_file}")
             logger.debug(f"Access token: {access_token[:20]}...")
+            if tenant_id:
+                logger.debug(f"Tenant ID: {tenant_id}")
             
         except Exception as e:
             logger.error(f"Failed to save tokens: {e}")
@@ -141,10 +151,28 @@ class TokenStorage:
             Tuple of (access_token, refresh_token)
             Returns (None, None) if tokens don't exist or decryption fails
         """
+        context = self.load_context()
+        return (context.get("access_token"), context.get("refresh_token"))
+
+    def load_context(self) -> Dict[str, Optional[str]]:
+        """
+        Load all stored authentication data (tokens, tenant_id, user_id).
+        
+        Returns:
+            Dict containing access_token, refresh_token, tenant_id, user_id.
+            Values may be None if not found or error occurs.
+        """
+        empty_context = {
+            "access_token": None, 
+            "refresh_token": None, 
+            "tenant_id": None, 
+            "user_id": None
+        }
+
         # Check if file exists
         if not self.tokens_file.exists():
             logger.info("No stored tokens found")
-            return (None, None)
+            return empty_context
         
         try:
             # Read encrypted data
@@ -157,27 +185,30 @@ class TokenStorage:
             # Parse JSON
             data = json.loads(decrypted.decode('utf-8'))
             
-            access_token = data.get('access_token')
-            refresh_token = data.get('refresh_token')
+            context = empty_context.copy()
+            context.update(data)
             
-            if access_token and refresh_token:
-                logger.info("✅ Tokens loaded successfully")
-                logger.debug(f"Access token: {access_token[:20]}...")
-                return (access_token, refresh_token)
+            if context["access_token"] and context["refresh_token"]:
+                logger.debug("✅ Tokens loaded successfully from context")
+                return context
             else:
                 logger.warning("Stored tokens are missing fields")
-                return (None, None)
+                return empty_context
                 
         except InvalidToken:
             logger.warning("Failed to decrypt tokens - invalid key or corrupted data")
-            return (None, None)
+            return empty_context
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse decrypted tokens: {e}")
-            return (None, None)
+            return empty_context
         except Exception as e:
             logger.warning(f"Failed to load tokens: {e}")
-            return (None, None)
-    
+            return empty_context
+
+    def get_tenant_id(self) -> Optional[str]:
+        """Get the stored tenant_id."""
+        return self.load_context().get("tenant_id")
+
     def clear_tokens(self) -> None:
         """
         Delete stored tokens.
@@ -216,16 +247,18 @@ def get_token_storage() -> TokenStorage:
 
 
 # Convenience functions
-def save_tokens(access_token: str, refresh_token: str) -> None:
+def save_tokens(access_token: str, refresh_token: str, tenant_id: Optional[str] = None, user_id: Optional[str] = None) -> None:
     """
     Save tokens using the global storage instance.
     
     Args:
         access_token: JWT access token
         refresh_token: JWT refresh token
+        tenant_id: Optional tenant ID
+        user_id: Optional user ID
     """
     storage = get_token_storage()
-    storage.save_tokens(access_token, refresh_token)
+    storage.save_tokens(access_token, refresh_token, tenant_id, user_id)
 
 
 def load_tokens() -> Tuple[Optional[str], Optional[str]]:
@@ -237,6 +270,12 @@ def load_tokens() -> Tuple[Optional[str], Optional[str]]:
     """
     storage = get_token_storage()
     return storage.load_tokens()
+
+
+def get_stored_tenant_id() -> Optional[str]:
+    """Get stored tenant_id from global storage."""
+    storage = get_token_storage()
+    return storage.get_tenant_id()
 
 
 def clear_tokens() -> None:

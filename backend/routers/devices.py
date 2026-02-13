@@ -194,8 +194,8 @@ async def activate_device(
             )
         
         # Store tokens securely
-        logger.info("Storing activation tokens")
-        save_tokens(access_token, refresh_token)
+        logger.info(f"Storing activation tokens for tenant: {activated_tenant_id}")
+        save_tokens(access_token, refresh_token, tenant_id=activated_tenant_id)
         
         # Return concise success payload to frontend
         return {

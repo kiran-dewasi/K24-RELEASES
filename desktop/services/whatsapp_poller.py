@@ -23,18 +23,20 @@ class WhatsAppPoller:
     Processes jobs and reports completion back to cloud
     """
     
-    def __init__(self, tenant_id: str, api_key: str):
+    def __init__(self, tenant_id: str, api_key: str, base_url: str = None):
         """
         Initialize WhatsApp poller
         
         Args:
             tenant_id: Tenant ID for this desktop instance
             api_key: API key for cloud authentication
+            base_url: Optional base URL for cloud API
         """
         self.tenant_id = tenant_id
         self.api_key = api_key
         self.is_running = False
-        self.base_url = "https://api.k24.ai/api/whatsapp/cloud"
+        default_url = "https://api.k24.ai"
+        self.base_url = (base_url or default_url).rstrip("/")
         
         # Create session with retry logic
         self.session = self._create_session()
@@ -80,7 +82,14 @@ class WhatsAppPoller:
             List of job dictionaries
         """
         try:
-            url = f"{self.base_url}/jobs/{self.tenant_id}"
+            # Check tenant_id again just in case
+            if not self.tenant_id:
+                logger.warning("Tenant ID not set - cannot poll")
+                return []
+
+            # Endpoint: /api/whatsapp/cloud/jobs/{tenant_id}
+            # base_url is explicitly configured (e.g. https://api.k24.ai)
+            url = f"{self.base_url}/api/whatsapp/cloud/jobs/{self.tenant_id}"
             
             # Run blocking request in thread pool
             loop = asyncio.get_event_loop()
@@ -94,7 +103,8 @@ class WhatsAppPoller:
             jobs = data.get("jobs", [])
             
             self.stats["total_polls"] += 1
-            logger.debug(f"Polled cloud API: {len(jobs)} jobs found")
+            if jobs:
+                logger.debug(f"Polled cloud API: {len(jobs)} jobs found")
             
             return jobs
             
@@ -106,12 +116,12 @@ class WhatsAppPoller:
                 logger.warning("Rate limited - backing off")
                 self.stats["last_error"] = "Rate limited"
             else:
-                logger.error(f"HTTP error: {e}")
+                logger.error(f"HTTP error polling {url}: {e}")
                 self.stats["last_error"] = str(e)
             return []
             
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection error: {e}")
+            logger.error(f"Connection error polling {url}: {e}")
             self.stats["last_error"] = "Connection error"
             return []
             
@@ -171,7 +181,7 @@ class WhatsAppPoller:
             error_message: Error message if status is 'failed'
         """
         try:
-            url = f"{self.base_url}/jobs/{job_id}/complete"
+            url = f"{self.base_url}/api/whatsapp/cloud/jobs/{job_id}/complete"
             payload = {"status": status}
             
             if error_message:
@@ -239,29 +249,49 @@ class WhatsAppPoller:
 _poller_instance: Optional[WhatsAppPoller] = None
 
 
-def init_poller() -> WhatsAppPoller:
+def init_poller() -> Optional[WhatsAppPoller]:
     """
-    Initialize global poller from environment variables
+    Initialize global poller using ConfigService.
     
     Returns:
-        WhatsAppPoller instance
+        WhatsAppPoller instance or None if config missing
     """
     global _poller_instance
     
-    tenant_id = os.getenv("TENANT_ID")
-    api_key = os.getenv("DESKTOP_API_KEY")
-    
-    if not tenant_id:
-        raise ValueError("TENANT_ID environment variable not set")
-    if not api_key:
-        raise ValueError("DESKTOP_API_KEY environment variable not set")
-    
-    _poller_instance = WhatsAppPoller(tenant_id, api_key)
-    return _poller_instance
+    try:
+        from backend.services.config_service import get_cloud_url, get_desktop_api_key, get_tenant_id
+        
+        tenant_id = get_tenant_id()
+        api_key = get_desktop_api_key()
+        cloud_url = get_cloud_url()
+        
+        if not tenant_id:
+            logger.warning("WhatsApp Poller: Tenant ID not found. Device might not be activated.")
+            return None
+            
+        if not api_key:
+            logger.warning("WhatsApp Poller: Desktop API Key not found.")
+            # We might allow starting without key if using different auth, but for now strict
+            return None
+            
+        logger.info(f"Initializing WhatsApp Poller for Tenant: {tenant_id}")
+        logger.debug(f"Cloud URL: {cloud_url}")
+        
+        _poller_instance = WhatsAppPoller(tenant_id, api_key, cloud_url)
+        return _poller_instance
+        
+    except ImportError:
+        logger.error("Failed to import config_service")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to init poller: {e}")
+        return None
 
 
 def get_poller() -> Optional[WhatsAppPoller]:
     """Get global poller instance"""
+    if _poller_instance is None:
+        return init_poller()
     return _poller_instance
 
 
@@ -277,7 +307,10 @@ if __name__ == "__main__":
     
     try:
         poller = init_poller()
-        asyncio.run(poller.start_polling())
+        if poller:
+            asyncio.run(poller.start_polling())
+        else:
+            print("❌ Failed to initialize poller (check config)")
     except KeyboardInterrupt:
         print("\n🛑 Stopping poller...")
         if _poller_instance:

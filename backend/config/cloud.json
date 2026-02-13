@@ -1,0 +1,7 @@
+{
+    "cloud_api_url": "https://api.k24.ai",
+    "environment": "production",
+    "desktop_api_key_source": "environment",
+    "desktop_api_key_env_var": "DESKTOP_API_KEY",
+    "desktop_token_env_var": "DESKTOP_TOKEN"
+}

@@ -540,6 +540,9 @@ Created CloudAPIClient middleware that automatically handles token expiry on clo
    - Test installer with production URL + API key
    - ✅ Ensures every tenant's desktop knows where to poll AND can authenticate
 
+**Task 0: Desktop Cloud URL Configuration + API Key Auth - COMPLETE** (2026-02-13)
+Created `backend/services/config_service.py` and `backend/config/cloud.json`. Updated `whatsapp_poller.py` to use centralized config. Updated `token_storage.py` and `devices.py` to persist tenant_id for polling.
+
 2. **Create PyInstaller spec for backend sidecar**
    - File: `backend/k24_backend.spec` (new)
    - Bundle: FastAPI app, all dependencies, Tally connectors
@@ -586,7 +589,7 @@ Created CloudAPIClient middleware that automatically handles token expiry on clo
 - [ ] Backend sidecar built and < 100MB
 - [ ] Sidecar copied to Tauri binaries folder
 - [ ] Backend auto-start implemented in Tauri
-- [ ] Config file handling implemented
+- [x] Config file handling implemented
 - [ ] Installer creates config.json
 - [ ] Manual test on fresh Windows machine passes
 
