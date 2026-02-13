@@ -126,8 +126,8 @@ class WhatsAppPoller:
         Args:
             job: Job dictionary from cloud API
         """
-        job_id = job.get('id')
-        message_text = job.get('message_text', '')
+        job_id = job.get('id') if isinstance(job, dict) else job
+        message_text = job.get('message_text', '') if isinstance(job, dict) else ''
         
         try:
             logger.info(f"Processing job {job_id}: {message_text}")
