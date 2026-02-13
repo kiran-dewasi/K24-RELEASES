@@ -112,27 +112,106 @@ async def activate_device(
     payload: dict,
     db: Session = Depends(get_db)
 ):
-    """Activate device with license key (Desktop calls this)"""
+    """
+    Activate device with license key (Desktop calls this).
+    
+    Process:
+    1. Get local device_id from device service
+    2. Call cloud /api/devices/activate endpoint
+    3. Store returned tokens via token storage service
+    4. Return success payload to frontend
+    """
+    import requests
+    import os
+    import logging
+    from desktop.services.device_service import get_device_id
+    from desktop.services.token_storage import save_tokens
+    
+    logger = logging.getLogger(__name__)
+    
     license_key = payload.get("license_key")
-    device_id = payload.get("device_id")
-
-    device = db.query(DeviceLicense).filter(
-        DeviceLicense.license_key == license_key,
-        DeviceLicense.device_fingerprint == device_id
-    ).first()
+    tenant_id = payload.get("tenant_id")
+    user_id = payload.get("user_id")  # May be passed from deep link
     
-    if not device:
-        raise HTTPException(status_code=401, detail="Invalid license")
+    if not license_key:
+        raise HTTPException(status_code=400, detail="Missing license_key")
     
-    # Update heartbeat
-    device.last_heartbeat = datetime.now()
-    device.status = "active"
-    db.commit()
-    
-    return {
-        "status": "valid",
-        "user_id": device.user_id
-    }
+    try:
+        # Get local device ID
+        device_id = get_device_id()
+        
+        # Determine cloud URL (from env or config)
+        cloud_url = os.getenv("CLOUD_API_URL", "https://api.k24.ai")
+        activation_url = f"{cloud_url}/api/devices/activate"
+        
+        # Prepare activation payload
+        activation_payload = {
+            "license_key": license_key,
+            "device_id": device_id
+        }
+        
+        # Add optional fields if provided
+        if tenant_id:
+            activation_payload["tenant_id"] = tenant_id
+        if not activation_payload.get("device_name"):
+            import socket
+            activation_payload["device_name"] = socket.gethostname()
+        
+        # Call cloud activation endpoint
+        logger.info(f"Activating device with cloud at {activation_url}")
+        response = requests.post(
+            activation_url,
+            json=activation_payload,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            error_detail = response.json().get("detail", "Activation failed") if response.headers.get("content-type", "").startswith("application/json") else response.text
+            logger.error(f"Cloud activation failed: {response.status_code} - {error_detail}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=error_detail
+            )
+        
+        # Parse successful response
+        activation_data = response.json()
+        access_token = activation_data.get("access_token")
+        refresh_token = activation_data.get("refresh_token")
+        activated_tenant_id = activation_data.get("tenant_id")
+        subscription = activation_data.get("subscription", {})
+        
+        if not access_token or not refresh_token:
+            raise HTTPException(
+                status_code=500,
+                detail="Cloud activation did not return tokens"
+            )
+        
+        # Store tokens securely
+        logger.info("Storing activation tokens")
+        save_tokens(access_token, refresh_token)
+        
+        # Return concise success payload to frontend
+        return {
+            "success": True,
+            "tenant_id": activated_tenant_id,
+            "device_id": device_id,
+            "subscription": subscription,
+            "user_id": activation_data.get("user_id"),
+            "message": "Device activated successfully"
+        }
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error during activation: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not reach cloud activation service: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during activation: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Activation error: {str(e)}"
+        )
 
 @router.get("/validate")
 async def validate_device(

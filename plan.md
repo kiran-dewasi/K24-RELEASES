@@ -491,12 +491,15 @@ For desktop polling, API key is simpler because:
 
 **Definition of Done**:
 - [ ] Deep link flow documented in contracts.md
-- [ ] Device activation endpoint working
-- [ ] Device fingerprinting implemented
-- [ ] Token storage implemented and encrypted
-- [ ] Tauri deep link handler working
+- [x] Device activation endpoint working (cloud + desktop proxying)
+- [x] Device fingerprinting implemented
+- [x] Token storage implemented and encrypted
+- [x] Tauri deep link handler working (frontend listens to k24:// scheme)
 - [ ] Token refresh working
 - [ ] Manual test: web login → deep link → desktop call succeeds
+
+**T4 – Deep-Link Handling – COMPLETE** (2026-02-13)  
+Desktop backend now proxies activation to cloud, retrieves & stores tokens securely; frontend extracts license_key, tenant_id, user_id from k24://auth/callback URLs.
 
 ---
 

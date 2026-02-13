@@ -67,12 +67,13 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
             const urlObj = new URL(url);
             const licenseKey = urlObj.searchParams.get("license_key");
             const userId = urlObj.searchParams.get("user_id");
+            const tenantId = urlObj.searchParams.get("tenant_id");
 
-            if (!licenseKey || !userId) {
-                throw new Error("Invalid callback parameters");
+            if (!licenseKey) {
+                throw new Error("Invalid callback: missing license_key");
             }
 
-            await activateLicense(licenseKey, userId);
+            await activateLicense(licenseKey, userId || "", tenantId || "");
 
         } catch (e: any) {
             setStatus("error");
@@ -80,10 +81,9 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
         }
     };
 
-    const activateLicense = async (licenseKey: string, userId: string = "manual-user") => {
+    const activateLicense = async (licenseKey: string, userId: string = "", tenantId: string = "") => {
         try {
             setStatus("validating");
-            const deviceId = localStorage.getItem("k24_device_id") || "manual-device";
 
             // Get dynamic port
             const backendPort = sessionStorage.getItem("k24_backend_port") || "8001";
@@ -94,20 +94,41 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     license_key: licenseKey,
-                    device_id: deviceId
+                    tenant_id: tenantId || undefined,
+                    user_id: userId || undefined
                 })
             });
 
             if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.detail || "Activation failed locally");
+                const data = await response.json().catch(() => ({ detail: "Activation failed" }));
+                const errorMessage = data.detail || "Activation failed";
+
+                // Show user-friendly error messages
+                if (response.status === 401) {
+                    throw new Error("Invalid or expired license key");
+                } else if (response.status === 402) {
+                    throw new Error("Subscription expired. Please renew your subscription.");
+                } else if (response.status === 503) {
+                    throw new Error("Unable to connect to activation server. Please check your internet connection.");
+                } else {
+                    throw new Error(errorMessage);
+                }
             }
 
             const data = await response.json();
-            const finalUserId = data.user_id || userId;
 
+            // Extract data from response
+            const activatedTenantId = data.tenant_id;
+            const activatedUserId = data.user_id;
+
+            // Store activation details
+            if (activatedTenantId) {
+                localStorage.setItem("k24_tenant_id", activatedTenantId);
+            }
+            if (activatedUserId) {
+                localStorage.setItem("k24_user_id", activatedUserId);
+            }
             localStorage.setItem("k24_license_key", licenseKey);
-            localStorage.setItem("k24_user_id", finalUserId);
 
             setStatus("success");
             setTimeout(() => {
@@ -116,7 +137,7 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
 
         } catch (e: any) {
             setStatus("error");
-            setErrorMsg(e.message);
+            setErrorMsg(e.message || "An unexpected error occurred");
         }
     };
 
