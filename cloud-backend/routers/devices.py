@@ -1,12 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import uuid
 import hashlib
 import random
+from typing import Optional
+from pydantic import BaseModel
 
 from backend.database import get_db, DeviceLicense
 from backend.dependencies import get_api_key
+from backend.auth import create_access_token
+from database import get_supabase_client
 
 router = APIRouter()
 
@@ -107,32 +111,136 @@ async def register_device(
         "tenant_id": tenant_id
     }
 
-@router.post("/activate")
-async def activate_device(
-    payload: dict,
-    db: Session = Depends(get_db)
-):
-    """Activate device with license key (Desktop calls this)"""
-    license_key = payload.get("license_key")
-    device_id = payload.get("device_id")
+class DeviceActivation(BaseModel):
+    license_key: str
+    tenant_id: str
+    device_id: str
+    device_name: Optional[str] = None
 
-    device = db.query(DeviceLicense).filter(
-        DeviceLicense.license_key == license_key,
-        DeviceLicense.device_fingerprint == device_id
-    ).first()
-    
-    if not device:
-        raise HTTPException(status_code=401, detail="Invalid license")
-    
-    # Update heartbeat
-    device.last_heartbeat = datetime.now()
-    device.status = "active"
-    db.commit()
-    
-    return {
-        "status": "valid",
-        "user_id": device.user_id
-    }
+@router.post("/activate")
+async def activate_device(payload: DeviceActivation):
+    """
+    Activate device with license key (Desktop calls this).
+    Validates license, tenant, and subscription via Supabase.
+    Generates JWT tokens for desktop session.
+    """
+    try:
+        supabase = get_supabase_client()
+
+        # 1. Validate license_key and tenant_id
+        # Query tenants table to verify license ownership
+        license_res = supabase.table("tenants").select("id, license_key").eq("license_key", payload.license_key).execute()
+        
+        if not license_res.data:
+            raise HTTPException(status_code=401, detail="Invalid license key or not found")
+            
+        tenant_record = license_res.data[0]
+        
+        # Authenticate tenant ownership
+        if tenant_record.get("id") != payload.tenant_id:
+            raise HTTPException(status_code=403, detail="License key does not belong to this tenant")
+            
+        # 2. Check subscription status
+        sub_res = supabase.table("subscriptions").select("*").eq("tenant_id", payload.tenant_id).order("created_at", desc=True).limit(1).execute()
+        
+        subscription_data = {
+            "plan": "free",
+            "expires_at": None
+        }
+        
+        user_id = None
+        
+        if sub_res.data:
+            sub = sub_res.data[0]
+            # Status validation
+            if sub.get("status") not in ["active", "trial"]:
+                raise HTTPException(status_code=402, detail="Subscription expired or inactive")
+                
+            subscription_data = {
+                "plan": sub.get("plan"),
+                "expires_at": sub.get("expires_at")
+            }
+            user_id = sub.get("user_id")
+        else:
+            # Strict checking: if no subscription found, assume inactive/unauthorized
+            raise HTTPException(status_code=402, detail="No active subscription found")
+
+        # 3. Insert/Update device_licenses
+        # Handle duplicate device_id gracefully (return existing)
+        
+        # Check if device already registered
+        existing_dev = supabase.table("device_licenses").select("*")\
+            .eq("device_fingerprint", payload.device_id)\
+            .eq("tenant_id", payload.tenant_id)\
+            .execute()
+            
+        if existing_dev.data:
+            # Already exists, ensure it's active
+            # We can update 'last_validated_at' here if needed
+            # For now, just proceed to return existing
+            pass
+        else:
+            # Insert new device license
+            current_time = datetime.now(timezone.utc).isoformat()
+            
+            # Determine user_id to fallback on if missing from subscription
+            final_user_id = user_id if user_id else f"system-{payload.tenant_id}"
+            
+            insert_payload = {
+                "device_fingerprint": payload.device_id,
+                "tenant_id": payload.tenant_id,
+                "license_key": payload.license_key, # Storing the Tenant License Key used for activation
+                "status": "active",
+                "activated_at": current_time,
+                "last_validated_at": current_time,
+                "user_id": final_user_id,
+                "device_name": payload.device_name
+            }
+            
+            try:
+                supabase.table("device_licenses").insert(insert_payload).execute()
+            except Exception as e:
+                # Handle potential race conditions or constraints
+                # If insert fails, log but maybe proceeds if it was a race
+                print(f"Device insert warning: {e}")
+                pass
+                
+        # 4. Generate JWT Tokens
+        # Use user_id from subscription or fallback
+        token_user_id = user_id if user_id else f"device-{payload.device_id}"
+        
+        access_claims = {
+            "sub": str(token_user_id),
+            "user_id": str(token_user_id),
+            "tenant_id": payload.tenant_id,
+            "device_id": payload.device_id
+        }
+        
+        refresh_claims = access_claims.copy()
+        refresh_claims["type"] = "refresh"
+        
+        access_token = create_access_token(
+            data=access_claims,
+            expires_delta=timedelta(days=1) # 24 hours
+        )
+        
+        refresh_token = create_access_token(
+            data=refresh_claims,
+            expires_delta=timedelta(days=30) # 30 days
+        )
+        
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "device_id": payload.device_id,
+            "tenant_id": payload.tenant_id,
+            "subscription": subscription_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Activation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/validate")
 async def validate_device(

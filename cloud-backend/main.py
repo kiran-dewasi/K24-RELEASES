@@ -79,7 +79,7 @@ from routers import whatsapp_cloud
 # Include routers
 # TODO: Uncomment these after extracting shared modules from backend/
 # app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-# app.include_router(devices.router, prefix="/api/devices", tags=["Devices"]) 
+app.include_router(devices.router, prefix="/api/devices", tags=["Devices"]) 
 # app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
 app.include_router(whatsapp_cloud.router, prefix="/api/whatsapp/cloud", tags=["WhatsApp Cloud"])
 # app.include_router(baileys.router, prefix="/api/baileys", tags=["Baileys"])
