@@ -90,7 +90,8 @@ class WhatsAppPoller:
             )
             
             response.raise_for_status()
-            jobs = response.json()
+            data = response.json()
+            jobs = data.get("jobs", [])
             
             self.stats["total_polls"] += 1
             logger.debug(f"Polled cloud API: {len(jobs)} jobs found")
