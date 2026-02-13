@@ -75,6 +75,7 @@ app.add_middleware(
 # Import and include cloud routers
 # NOTE: Some routers temporarily commented out until backend.* dependencies are refactored
 from routers import whatsapp_cloud
+from routers import devices
 
 # Include routers
 # TODO: Uncomment these after extracting shared modules from backend/
