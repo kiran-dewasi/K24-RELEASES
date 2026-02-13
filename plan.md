@@ -495,11 +495,14 @@ For desktop polling, API key is simpler because:
 - [x] Device fingerprinting implemented
 - [x] Token storage implemented and encrypted
 - [x] Tauri deep link handler working (frontend listens to k24:// scheme)
-- [ ] Token refresh working
+- [x] Token refresh working
 - [ ] Manual test: web login → deep link → desktop call succeeds
 
 **T4 – Deep-Link Handling – COMPLETE** (2026-02-13)  
 Desktop backend now proxies activation to cloud, retrieves & stores tokens securely; frontend extracts license_key, tenant_id, user_id from k24://auth/callback URLs.
+
+**T5 – Token Refresh Middleware – COMPLETE** (2026-02-13)  
+Created CloudAPIClient middleware that automatically handles token expiry on cloud backend calls. Loads tokens from storage, detects 401 errors, calls refresh endpoint, updates storage, and retries requests transparently. Includes retry logic, graceful error handling, and comprehensive tests.
 
 ---
 

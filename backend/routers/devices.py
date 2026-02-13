@@ -117,15 +117,22 @@ async def activate_device(
     
     Process:
     1. Get local device_id from device service
-    2. Call cloud /api/devices/activate endpoint
+    2. Call cloud /api/devices/activate endpoint (using auth_client)
     3. Store returned tokens via token storage service
     4. Return success payload to frontend
+    
+    Note: This endpoint is for INITIAL activation and does NOT use
+    the token refresh middleware (since there are no tokens yet).
+    Subsequent cloud calls should use get_cloud_client() for auto-refresh.
     """
-    import requests
     import os
     import logging
+    import socket
     from desktop.services.device_service import get_device_id
     from desktop.services.token_storage import save_tokens
+    
+    # Use standard requests for activation (no tokens yet)
+    import requests
     
     logger = logging.getLogger(__name__)
     
@@ -154,10 +161,10 @@ async def activate_device(
         if tenant_id:
             activation_payload["tenant_id"] = tenant_id
         if not activation_payload.get("device_name"):
-            import socket
             activation_payload["device_name"] = socket.gethostname()
         
         # Call cloud activation endpoint
+        # Note: We use requests directly here since we don't have tokens yet
         logger.info(f"Activating device with cloud at {activation_url}")
         response = requests.post(
             activation_url,
@@ -239,3 +246,52 @@ async def validate_device(
     #     return {"valid": False, "reason": "subscription_expired"}
     
     return {"valid": True}
+
+
+@router.get("/status")
+async def get_device_status():
+    """
+    Example endpoint demonstrating CloudAPIClient with auto token refresh.
+    
+    Makes an authenticated call to the cloud backend to get device/subscription status.
+    If the access token is expired, the client will automatically:
+    1. Call the refresh endpoint
+    2. Update stored tokens
+    3. Retry the original request
+    
+    Returns:
+        Device and subscription status from cloud
+    """
+    import logging
+    from backend.middleware.auth_client import get_cloud_client
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get authenticated cloud client
+        client = get_cloud_client()
+        
+        # Make authenticated call - token refresh happens automatically
+        logger.info("Fetching device status from cloud")
+        response = client.get("/api/devices/me")
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 401:
+            # This means token refresh also failed
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication failed - please re-activate device"
+            )
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Cloud API error: {response.text}"
+            )
+            
+    except Exception as e:
+        logger.error(f"Failed to get device status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Status check failed: {str(e)}"
+        )
