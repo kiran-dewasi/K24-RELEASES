@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
 
 /// Backend Authentication State
 #[derive(Debug, Clone)]
@@ -13,6 +14,7 @@ pub struct BackendAuth {
 }
 
 static BACKEND_STATE: Lazy<Mutex<Option<BackendAuth>>> = Lazy::new(|| Mutex::new(None));
+static BACKEND_PROCESS: Lazy<Mutex<Option<CommandChild>>> = Lazy::new(|| Mutex::new(None));
 
 fn get_backend_url() -> Option<String> {
     let state = BACKEND_STATE.lock().ok()?;
@@ -79,7 +81,10 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
             .spawn();
         
         match result {
-            Ok((_rx, _child)) => {
+            Ok((_rx, child)) => {
+                // Store the child process handle for cleanup on exit
+                *BACKEND_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
+                
                 let auth = BackendAuth {
                     port,
                     session_token: session_token.clone(),
@@ -218,4 +223,22 @@ pub async fn install_update(app: AppHandle) -> Result<String, String> {
 pub async fn restart_app(app: AppHandle) -> Result<(), String> {
     app.restart();
     Ok(())
+}
+
+/// Stops the backend sidecar process (used on app shutdown)
+pub fn stop_backend() {
+    log::info!("Stopping backend sidecar...");
+    if let Ok(mut process) = BACKEND_PROCESS.lock() {
+        if let Some(mut child) = process.take() {
+            match child.kill() {
+                Ok(_) => log::info!("Backend process terminated successfully"),
+                Err(e) => log::error!("Failed to kill backend process: {}", e),
+            }
+        }
+    }
+    
+    // Clear backend state
+    if let Ok(mut state) = BACKEND_STATE.lock() {
+        *state = None;
+    }
 }

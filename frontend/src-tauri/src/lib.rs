@@ -50,6 +50,12 @@ pub fn run() {
             
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                log::info!("Window close requested, stopping backend...");
+                commands::stop_backend();
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

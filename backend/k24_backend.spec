@@ -8,6 +8,19 @@ block_cipher = None
 
 # Collect hidden imports
 hidden_imports = []
+# Critical uvicorn imports that PyInstaller often misses
+hidden_imports += [
+    'uvicorn',
+    'uvicorn.loops',
+    'uvicorn.loops.auto',
+    'uvicorn.protocols',
+    'uvicorn.protocols.http',
+    'uvicorn.protocols.http.auto',
+    'uvicorn.protocols.websockets',
+    'uvicorn.protocols.websockets.auto',
+    'uvicorn.lifespan',
+    'uvicorn.lifespan.on',
+]
 hidden_imports += collect_submodules('uvicorn')
 hidden_imports += collect_submodules('fastapi')
 hidden_imports += collect_submodules('sqlalchemy')
@@ -23,12 +36,22 @@ hidden_imports += collect_submodules('backend.database')
 hidden_imports += collect_submodules('backend.compliance')
 hidden_imports += collect_submodules('backend.tools')
 hidden_imports += collect_submodules('backend.orchestration')
+hidden_imports += collect_submodules('backend.middleware')
+hidden_imports += collect_submodules('backend.ai_engine')
+hidden_imports += collect_submodules('backend.extraction')
+hidden_imports += collect_submodules('backend.classification')
+hidden_imports += collect_submodules('backend.gemini')
+
+# Data files to bundle
+datas = [
+    ('config/cloud.json', 'config'),  # Bundle config file
+]
 
 a = Analysis(
-    ['api.py'],
+    ['desktop_main.py'],  # Correct entry point for desktop backend
     pathex=[],
     binaries=[],
-    datas=[], 
+    datas=datas, 
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},

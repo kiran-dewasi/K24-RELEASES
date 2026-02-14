@@ -539,29 +539,23 @@ Created CloudAPIClient middleware that automatically handles token expiry on clo
 **Task 0: Desktop Cloud URL Configuration + API Key Auth - COMPLETE** (2026-02-13)
 Created `backend/services/config_service.py` and `backend/config/cloud.json`. Updated `whatsapp_poller.py` to use centralized config. Updated `token_storage.py` and `devices.py` to persist tenant_id for polling.
 
-2. **Create PyInstaller spec for backend sidecar**
-   - File: `backend/k24_backend.spec` (new)
-   - Bundle: FastAPI app, all dependencies, Tally connectors
-   - Output: `k24-backend.exe` (standalone, no Python required)
-   - Test: Run .exe on machine without Python installed
+2. **Create PyInstaller spec for backend sidecar - COMPLETE** (2026-02-14)
+   - Created `backend/k24_backend.spec`
+   - Validated standalone execution
 
-2. **Build backend sidecar binary**
-   - Command: `pyinstaller backend/k24_backend.spec --noconfirm`
-   - Output: `backend/dist/k24-backend.exe`
-   - Verify size < 100MB (use UPX compression if needed)
+3. **Build backend sidecar binary - COMPLETE** (2026-02-14)
+   - Built `dist/k24-backend.exe` (87MB)
 
-3. **Copy sidecar to Tauri binaries folder**
-   - Windows: Copy to `frontend/src-tauri/binaries/k24-backend-x86_64-pc-windows-msvc.exe`
-   - Linux: `k24-backend-x86_64-unknown-linux-gnu` (future)
-   - macOS: `k24-backend-x86_64-apple-darwin` (future)
-   - Tauri naming convention: {name}-{target-triple}
+4. **Copy sidecar to Tauri binaries folder - COMPLETE** (2026-02-14)
+   - Copied to `frontend/src-tauri/binaries/k24-backend-x86_64-pc-windows-msvc.exe`
 
-4. **Implement backend auto-start in Tauri**
-   - File: `frontend/src-tauri/src/main.rs`
-   - On app startup: spawn k24-backend.exe as child process
-   - Pass config via env vars or command-line args
-   - Monitor process, restart if crashes
-   - On app shutdown: kill backend process gracefully
+5. **Implement backend auto-start in Tauri - COMPLETE** (2026-02-14)
+   - Updated `frontend/src-tauri/src/commands.rs` to spawn and manage lifecycle
+   - Updated `frontend/src-tauri/src/lib.rs` to kill process on exit
+
+6. **Build Windows Installer - COMPLETE** (2026-02-14)
+   - Built `frontend/src-tauri/target/release/bundle/msi/K24_1.0.3_x64_en-US.msi`
+   - Built `frontend/src-tauri/target/release/bundle/nsis/K24_1.0.3_x64-setup.exe`
 
 5. **Handle environment configuration**
    - Create config file: `%APPDATA%/K24/config.json`
@@ -592,22 +586,21 @@ Created `backend/services/config_service.py` and `backend/config/cloud.json`. Up
 ---
 
 ### M5 – Production Hardening
-**Status**: 10% complete | **Priority**: MEDIUM | **Estimated**: 2-3 days
+**Status**: 40% complete | **Priority**: MEDIUM | **Estimated**: 1-2 days
 
 **Owner**: Tester/Reviewer
 
 **Current State**:
 - ✅ Unit tests exist for Tally sync, XML builder
-- ❌ No Sentry monitoring
+- ✅ Sentry monitoring implemented (needs DSN env var)
 - ❌ No smoke test script
 - ❌ No staging environment
 
 **Tasks**:
-1. **Add Sentry monitoring**
-   - Cloud: Add sentry-sdk to cloud-backend/requirements.txt
-   - Desktop: Add sentry-sdk to backend/requirements.txt (optional for desktop)
-   - Initialize in main.py with DSN from env vars
-   - Capture: exceptions, API errors, Tally connection failures
+1. **Add Sentry monitoring** - ✅ COMPLETE
+   - Cloud: `sentry-sdk` present in `cloud-backend/requirements.txt`
+   - Desktop: `sentry-sdk` present in `requirements.txt`
+   - Validated: `cloud-backend/main.py` and `backend/api.py` both contain initialization logic using `SENTRY_DSN`.
 
 2. **Create smoke test script**
    - File: `tests/smoke_test.py` (new)

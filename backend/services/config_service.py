@@ -21,6 +21,7 @@ Usage:
 import os
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -28,7 +29,15 @@ logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_CLOUD_URL = "https://api.k24.ai"
-CONFIG_FILE_PATH = Path(__file__).parent.parent / "config" / "cloud.json"
+
+# Handle PyInstaller frozen executable path resolution
+if getattr(sys, 'frozen', False):
+    # Running in a PyInstaller bundle
+    base_path = Path(sys._MEIPASS)
+    CONFIG_FILE_PATH = base_path / "config" / "cloud.json"
+else:
+    # Running from source
+    CONFIG_FILE_PATH = Path(__file__).parent.parent / "config" / "cloud.json"
 
 
 def _load_config_file() -> Dict:
