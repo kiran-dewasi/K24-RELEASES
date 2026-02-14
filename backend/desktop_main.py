@@ -96,6 +96,11 @@ if __name__ == "__main__":
         os.environ['DESKTOP_MODE'] = args.desktop_mode
         os.environ['DESKTOP_TOKEN'] = args.token
         
+        # DEBUG mode MUST be set explicitly via environment variables or .env file
+        # We do NOT auto-enable DEBUG for non-frozen builds to prevent accidental
+        # dev mode bypass in production scenarios
+        # For local development: add DEBUG=true to backend/.env file
+        
         # Setup logging
         logger = setup_logging()
         

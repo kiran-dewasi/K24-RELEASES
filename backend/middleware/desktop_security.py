@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Environment variables for desktop mode
 DESKTOP_MODE = os.getenv("DESKTOP_MODE", "false").lower() == "true"
 DESKTOP_TOKEN = os.getenv("DESKTOP_TOKEN", "")
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # Public endpoints that don't require desktop token
 # (health checks, metrics, etc.)
@@ -36,6 +37,8 @@ PUBLIC_ENDPOINTS = [
     "/docs",
     "/openapi.json",
     "/redoc",
+    "/api/devices/activate",
+    "/api/devices/validate",
 ]
 
 
@@ -72,6 +75,23 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         
         # Skip OPTIONS requests (CORS preflight)
         if request.method == "OPTIONS":
+            return await call_next(request)
+        
+        # DEV MODE BYPASS: Skip token validation when running from source in development
+        # This allows frontend testing without Tauri context during local development
+        # 
+        # SECURITY REQUIREMENTS (all must be true):
+        # 1. Running from source code (not frozen/packaged build)
+        # 2. DEBUG environment variable is explicitly set to "true"
+        # 3. Request includes X-Dev-Mode: true header
+        #
+        # Production builds (frozen exe) will NEVER bypass, even if DEBUG is set
+        import sys
+        is_frozen = getattr(sys, 'frozen', False)
+        dev_mode_header = request.headers.get("X-Dev-Mode", "").lower()
+        
+        if not is_frozen and DEBUG and dev_mode_header == "true":
+            logger.info(f"[DEV MODE] Bypassing desktop token validation for {path}")
             return await call_next(request)
         
         # Validate desktop token

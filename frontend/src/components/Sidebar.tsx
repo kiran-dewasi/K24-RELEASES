@@ -120,7 +120,19 @@ export default function Sidebar() {
                         <span>Settings</span>
                     </Link>
 
-                    <button className="w-full group flex items-center gap-3 rounded-md px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive text-left">
+                    <button
+                        onClick={() => {
+                            if (window.confirm("Are you sure you want to sign out? This will disconnect this device.")) {
+                                localStorage.removeItem("k24_license_key");
+                                localStorage.removeItem("k24_device_id");
+                                localStorage.removeItem("k24_tenant_id");
+                                localStorage.removeItem("k24_user_id");
+                                localStorage.removeItem("k24_token");
+                                window.location.reload();
+                            }
+                        }}
+                        className="w-full group flex items-center gap-3 rounded-md px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-destructive/10 hover:text-destructive text-left"
+                    >
                         <LogOut className="h-4 w-4" />
                         <span>Sign Out</span>
                     </button>

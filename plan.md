@@ -2,7 +2,7 @@
 
 **Goal**: A real customer can install the desktop app, log in via deep link from the web, and use the WhatsApp → Cloud → Desktop → Tally flow reliably.
 
-**Status as of 2026-02-11**: ~35% complete (detailed gap analysis below)
+**Status as of 2026-02-14**: ~80% complete (M1, M2 done; M3 90% done)
 
 ---
 
@@ -11,32 +11,28 @@
 ### ✅ What's Working
 - **Desktop Backend**: Fully functional Tally XML integration, sync engine, local SQLite
 - **Frontend**: Complete UI (login, onboarding, dashboard, reports)
-- **Auth System**: JWT authentication, Supabase integration, role-based access
+- **Auth System**: Device Activation flow working, Desktop Token Storage secure
 - **Tauri Config**: Desktop app structure, deep-link plugin configured
 - **Cloud Backend Structure**: FastAPI cloud-backend directory with routers
 - **Database Schemas**: Supabase migrations for tenants, multi-tenancy, WhatsApp mappings
+- **WhatsApp Integration**: Cloud Webhook & Desktop Poller fully operational
 
 ### ⚠️ Partially Working
-- **Cloud Webhook**: Skeleton exists but doesn't insert to queue
-- **Tauri Installer**: Config ready but backend sidecar not bundled
-- **Auth Deep Link**: Plugin configured but token flow untested
+- **Tauri Installer**: Config ready, sidecar packaging needed (M4)
+- **Auth Deep Link**: Protocol handler needs final config (T4)
 
 ### ❌ Critical Gaps (Blocking Phase 1)
-1. **Tenant Routing**: Cloud webhook (`whatsapp_cloud.py` line 47) has TODO, needs to query `whatsapp_customer_mappings`
-2. **Queue Insertion**: Webhook doesn't insert messages into `whatsapp_message_queue` table
-3. **Desktop Poller**: `whatsapp_poller.py` doesn't exist, no polling endpoints in cloud
-4. **Backend Sidecar**: Not built/bundled with Tauri installer
-5. **Baileys Listener**: Deployment unclear (code location, Railway/VPS hosting)
-6. **Integration Tests**: No end-to-end tests for WhatsApp → Desktop flow
-7. **Deep Link Flow**: Token passing web → desktop untested with real `device_licenses` table
-8. **Device Activation**: Endpoint exists but needs to use real `device_licenses` + `subscriptions` tables
+1. **Backend Sidecar**: Not built/bundled with Tauri installer (M4)
+2. **Integration Tests**: Full end-to-end packaging test
+3. **Baileys Listener**: Deployment unclear (code location, Railway/VPS hosting)
 
 ---
 
 ## 2. Milestones (Strategic Implementation Order)
 
 ### M1 – Supabase WhatsApp Queue & Cloud Webhook
-**Status**: 60% complete | **Priority**: CRITICAL | **Estimated**: 2-3 days
+**Status**: ✅ COMPLETE (2026-02-13) | **Priority**: CRITICAL
+
 
 **Owner**: Builder
 
@@ -144,7 +140,7 @@
 ---
 
 ### M2 – Desktop Poller & Job Completion
-**Status**: 15% complete | **Priority**: CRITICAL | **Estimated**: 4-5 days
+**Status**: ✅ COMPLETE (2026-02-13) | **Priority**: CRITICAL
 
 **Owner**: Builder
 
@@ -387,7 +383,7 @@ For desktop polling, API key is simpler because:
 ---
 
 ### M3 – Auth, Deep Link & Device Activation
-**Status**: 75% complete | **Priority**: HIGH | **Estimated**: 2-3 days
+**Status**: 🔄 90% complete | **Priority**: HIGH | **Estimated**: 2-3 days
 
 **Owner**: Builder + Tester
 

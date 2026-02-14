@@ -76,19 +76,26 @@ export default function Navbar() {
     // Poll sync status
     useEffect(() => {
         const checkHealth = async () => {
-            // ... existing sync logic ...
             try {
-                const res = await fetch(`${API_CONFIG.BASE_URL}/api/sync/status`, {
-                    headers: API_CONFIG.getHeaders()
-                });
-                const data = await res.json();
-                const newStatus = {
-                    connected: data.tally_connected,
-                    lastSync: data.last_sync_time
-                };
-                setSyncHealth(newStatus);
-                localStorage.setItem('k24_sync_status', JSON.stringify(newStatus));
+                // Check desktop backend health
+                const res = await fetch(`${API_CONFIG.BASE_URL}/health`);
+
+                if (res.ok) {
+                    // Backend is online
+                    const newStatus = {
+                        connected: true,
+                        lastSync: new Date().toISOString()
+                    };
+                    setSyncHealth(newStatus);
+                    localStorage.setItem('k24_sync_status', JSON.stringify(newStatus));
+                } else {
+                    setSyncHealth({ connected: false, lastSync: null });
+                }
             } catch (e) {
+                // Only log in development to avoid console noise in production
+                if (process.env.NODE_ENV === 'development') {
+                    console.error("Health check failed:", e);
+                }
                 setSyncHealth({ connected: false, lastSync: null });
             }
         };

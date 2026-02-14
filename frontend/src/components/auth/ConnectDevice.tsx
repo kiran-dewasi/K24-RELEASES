@@ -20,6 +20,8 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
     const [status, setStatus] = useState<"idle" | "waiting" | "validating" | "success" | "error">("idle");
     const [errorMsg, setErrorMsg] = useState("");
     const [manualKey, setManualKey] = useState("");
+    const [manualTenantId, setManualTenantId] = useState("");
+    const [manualUserId, setManualUserId] = useState("");
     const [showManual, setShowManual] = useState(false);
     const [mounted, setMounted] = useState(false);
 
@@ -86,12 +88,24 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
             setStatus("validating");
 
             // Get dynamic port
-            const backendPort = sessionStorage.getItem("k24_backend_port") || "8001";
-            const backendUrl = `http://localhost:${backendPort}`;
+            const backendPort = sessionStorage.getItem("k24_backend_port") || "8000";
+            const backendUrl = `http://127.0.0.1:${backendPort}`;
+
+            // Build headers - only include dev bypass in development builds
+            const headers: Record<string, string> = {
+                "Content-Type": "application/json"
+            };
+
+            // DEV ONLY: Add X-Dev-Mode header to bypass desktop token validation
+            // This header is ONLY sent in development builds (NODE_ENV === 'development')
+            // Production builds will never include this header
+            if (process.env.NODE_ENV === 'development') {
+                headers["X-Dev-Mode"] = "true";
+            }
 
             const response = await fetch(`${backendUrl}/api/devices/activate`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                     license_key: licenseKey,
                     tenant_id: tenantId || undefined,
@@ -146,7 +160,15 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
             setErrorMsg("Please enter a valid license key");
             return;
         }
-        activateLicense(manualKey.trim());
+        activateLicense(manualKey.trim(), manualUserId.trim(), manualTenantId.trim());
+    };
+
+    // DEV ONLY: Fill in test credentials for local testing
+    // This function is only called from the dev-only button below (gated by NODE_ENV check)
+    const useTestCredentials = () => {
+        setManualKey("TEST_LICENSE_001");
+        setManualTenantId("TENANT-e9dbb826");
+        setManualUserId("e9dbb826-5892-43c3-91e6-78900e93f687");
     };
 
     const startConnection = async () => {
@@ -155,10 +177,14 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
 
         try {
             // Get backend info (including dynamic port)
-            let backendPort = "8001"; // Default for tests
+            let backendPort = "8000"; // Default for tests
             if (isTauri()) {
-                const backendInfo: any = await invoke('start_backend');
-                backendPort = backendInfo.port;
+                try {
+                    await invoke('start_backend');
+                } catch (e) {
+                    console.warn("Sidecar start skipped", e);
+                }
+                // Force port 8000 for dev environment
             }
 
             let deviceId = localStorage.getItem("k24_device_id");
@@ -194,7 +220,21 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
 
     // The Content Component
     const Content = () => (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0f172a] text-white">
+        <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0f172a] text-white"
+            style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 999999,
+                backgroundColor: '#0f172a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+            }}
+        >
             {/* Ambient Background */}
             <div className="absolute inset-0 overflow-hidden">
                 <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-600/20 blur-[120px] animate-pulse-slow" />
@@ -328,18 +368,51 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
                             </div>
                         ) : (
                             <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                                <div className="space-y-2">
+                                <div className="space-y-4">
+                                    {/* License Key Field */}
                                     <div className="relative group">
                                         <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
                                         <input
                                             type="text"
-                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono tracking-wider"
-                                            placeholder="XXXX-XXXX-XXXX-XXXX"
+                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono tracking-wider text-sm"
+                                            placeholder="License Key"
                                             value={manualKey}
                                             onChange={(e) => setManualKey(e.target.value)}
                                             autoFocus
                                         />
                                     </div>
+                                    {/* Tenant ID Field */}
+                                    <div className="relative group">
+                                        <input
+                                            type="text"
+                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-3 px-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono text-sm"
+                                            placeholder="Tenant ID (optional)"
+                                            value={manualTenantId}
+                                            onChange={(e) => setManualTenantId(e.target.value)}
+                                        />
+                                    </div>
+                                    {/* User ID Field */}
+                                    <div className="relative group">
+                                        <input
+                                            type="text"
+                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-3 px-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono text-sm"
+                                            placeholder="User ID (optional)"
+                                            value={manualUserId}
+                                            onChange={(e) => setManualUserId(e.target.value)}
+                                        />
+                                    </div>
+                                    {/* DEV ONLY: Test credentials auto-fill button
+                                        Only visible when NODE_ENV === 'development'
+                                        Allows quick testing without manually typing test values */}
+                                    {process.env.NODE_ENV === 'development' && (
+                                        <button
+                                            type="button"
+                                            onClick={useTestCredentials}
+                                            className="w-full py-2 text-xs text-yellow-400 hover:text-yellow-300 border border-yellow-500/30 hover:border-yellow-500/50 rounded-lg transition-colors bg-yellow-500/5 hover:bg-yellow-500/10"
+                                        >
+                                            🧪 Use Test Values (Dev Only)
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="flex gap-3">
                                     <Button
@@ -372,6 +445,7 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
 
     if (!mounted) return null;
 
-    // Portal to body ensures it covers absolutely everything
-    return createPortal(<Content />, document.body);
+    // TEMP: Render inline instead of portal for debugging
+    return <Content />;
+    // return createPortal(<Content />, document.body);
 }

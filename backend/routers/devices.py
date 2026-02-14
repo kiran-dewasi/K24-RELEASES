@@ -125,11 +125,11 @@ async def activate_device(
     the token refresh middleware (since there are no tokens yet).
     Subsequent cloud calls should use get_cloud_client() for auto-refresh.
     """
-    import os
     import logging
     import socket
     from desktop.services.device_service import get_device_id
     from desktop.services.token_storage import save_tokens
+    from backend.services.config_service import get_cloud_url
     
     # Use standard requests for activation (no tokens yet)
     import requests
@@ -147,8 +147,8 @@ async def activate_device(
         # Get local device ID
         device_id = get_device_id()
         
-        # Determine cloud URL (from env or config)
-        cloud_url = os.getenv("CLOUD_API_URL", "https://api.k24.ai")
+        # Determine cloud URL (from config service)
+        cloud_url = get_cloud_url()
         activation_url = f"{cloud_url}/api/devices/activate"
         
         # Prepare activation payload
