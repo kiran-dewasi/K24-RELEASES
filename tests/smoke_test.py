@@ -63,17 +63,18 @@ class SmokeTestRunner:
             str: The job ID (UUID)
         """
         test_payload = {
+            "id": str(uuid.uuid4()),
             "tenant_id": self.tenant_id,
-            "sender_phone": "+919999999999",  # Test phone number
-            "sender_name": "SMOKE_TEST",
+            "user_id": "00000000-0000-0000-0000-000000000001",
+            "customer_phone": "917333906200",
             "message_type": "text",
-            "message_content": f"[SMOKE TEST] Automated test job created at {datetime.now().isoformat()}",
+            "message_text": "[SMOKE TEST] hello from smoke_test.py",
+            "media_url": None,
+            "raw_payload": {},
             "status": "pending",
-            "raw_payload": {
-                "test": True,
-                "test_id": str(uuid.uuid4()),
-                "created_by": "smoke_test.py"
-            }
+            "processed_at": None,
+            "error_message": None,
+            "processing_started_at": None
         }
         
         try:
