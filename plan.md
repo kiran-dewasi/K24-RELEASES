@@ -586,14 +586,14 @@ Created `backend/services/config_service.py` and `backend/config/cloud.json`. Up
 ---
 
 ### M5 – Production Hardening
-**Status**: 40% complete | **Priority**: MEDIUM | **Estimated**: 1-2 days
+**Status**: 70% complete | **Priority**: MEDIUM | **Estimated**: 0.5-1 day
 
 **Owner**: Tester/Reviewer
 
 **Current State**:
 - ✅ Unit tests exist for Tally sync, XML builder
 - ✅ Sentry monitoring implemented (needs DSN env var)
-- ❌ No smoke test script
+- ✅ Smoke test script created
 - ❌ No staging environment
 
 **Tasks**:
@@ -602,12 +602,21 @@ Created `backend/services/config_service.py` and `backend/config/cloud.json`. Up
    - Desktop: `sentry-sdk` present in `requirements.txt`
    - Validated: `cloud-backend/main.py` and `backend/api.py` both contain initialization logic using `SENTRY_DSN`.
 
-2. **Create smoke test script**
-   - File: `tests/smoke_test.py` (new)
-   - Test 1: Insert message directly into Supabase queue
-   - Test 2: Poll for desktop to pick it up (check status='processing')
-   - Test 3: Wait for completion (status='delivered')
-   - Test 4: Verify Tally updated (query ledgers/vouchers)
+2. **Create smoke test script** - ✅ COMPLETE (2026-02-14)
+   - **File**: `tests/smoke_test.py` (300 lines)
+   - **Documentation**: `tests/README.md`
+   - **Summary**: `M5_SMOKE_TEST_SUMMARY.md`
+   - **Features**:
+     - Inserts test message into `whatsapp_message_queue`
+     - Polls for status transitions (`pending` → `processing` → `processed/failed`)
+     - Tracks timing and transitions
+     - Clear PASS/FAIL output with exit codes
+   - **Usage**: `python tests/smoke_test.py --tenant-id K24-abc123 --timeout-seconds 120`
+   - **Requirements**: `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` env vars
+   - **TODOs**: 
+     - Add Tally verification (query Tally XML API to confirm voucher created)
+     - Make test phone configurable (currently hardcoded `+919999999999`)
+     - Multi-environment support (staging vs prod env vars)
 
 3. **Set up staging environment**
    - Deploy cloud-backend to Railway (staging)
