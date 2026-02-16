@@ -28,6 +28,11 @@ const logger = pino(
 
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+
+// Authentication directory for Baileys multi-file auth state
+// SESSION_DIR can be set in production (e.g. on Railway) to point to a persistent 
+// volume or mounted directory to preserve WhatsApp session across deployments.
+// If SESSION_DIR is not set, defaults to ./auth next to listener.js
 const AUTH_DIR = process.env.SESSION_DIR || path.join(__dirname, 'auth');
 
 
@@ -117,7 +122,9 @@ function resolveConflictByCode(phone, code) {
     return { resolved: false, reason: 'No matching code found' };
 }
 
-// Ensure auth directory exists
+// Ensure auth directory exists before initializing Baileys auth state
+// This is critical for first-time setup and production deployments where the 
+// directory may not exist yet (e.g. fresh Railway container)
 if (!fs.existsSync(AUTH_DIR)) {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
 }

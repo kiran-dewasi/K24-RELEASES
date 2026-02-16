@@ -86,7 +86,7 @@ class SmokeTestRunner:
             job_id = result.data[0]["id"]
             print(f"✓ Inserted test job: {job_id}")
             print(f"  Tenant ID: {self.tenant_id}")
-            print(f"  Message: {test_payload['message_content'][:60]}...")
+            print(f"  Message: {test_payload['message_text'][:60]}...")
             return job_id
             
         except Exception as e:
