@@ -306,6 +306,113 @@ async def receive_whatsapp_message(
             }
         )
 
+def validate_tenant_subscription(tenant_id: str, supabase) -> Dict[str, Any]:
+    """
+    Validate tenant exists and has an active subscription.
+    
+    Args:
+        tenant_id: The tenant ID to validate
+        supabase: Supabase client instance
+    
+    Returns:
+        Dict containing tenant_id and subscription_status
+        
+    Raises:
+        HTTPException: If tenant not found or subscription is not valid
+    """
+    # Query tenant_config by tenant_id
+    tenant_result = supabase.table("tenant_config").select(
+        "tenant_id, subscription_status, trial_ends_at"
+    ).eq(
+        "tenant_id", tenant_id
+    ).execute()
+    
+    if not tenant_result.data or len(tenant_result.data) == 0:
+        masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+        logger.error(f"❌ Tenant not found: {masked_tenant_id}")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "TENANT_NOT_FOUND",
+                "detail": "Tenant does not exist",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+    
+    tenant_config = tenant_result.data[0]
+    subscription_status = tenant_config.get("subscription_status")
+    trial_ends_at = tenant_config.get("trial_ends_at")
+    
+    # Enforce subscription rules (same logic as incoming webhook)
+    now = datetime.now(timezone.utc)
+    
+    # Block if subscription is explicitly expired or cancelled
+    if subscription_status in ["expired", "cancelled"]:
+        masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+        logger.warning(
+            f"🚫 Polling blocked: tenant_id={masked_tenant_id}, "
+            f"subscription_status={subscription_status}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "TENANT_SUBSCRIPTION_EXPIRED",
+                "detail": f"Tenant subscription is {subscription_status}. Please renew to continue.",
+                "timestamp": now.isoformat()
+            }
+        )
+    
+    # Block if trial and trial_ends_at is in the past
+    if subscription_status == "trial" and trial_ends_at:
+        try:
+            trial_end_dt = datetime.fromisoformat(trial_ends_at.replace('Z', '+00:00'))
+            if trial_end_dt < now:
+                masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+                logger.warning(
+                    f"🚫 Polling blocked: tenant_id={masked_tenant_id}, "
+                    f"trial expired on {trial_ends_at}"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "TENANT_SUBSCRIPTION_EXPIRED",
+                        "detail": "Trial period has expired. Please upgrade to continue.",
+                        "timestamp": now.isoformat()
+                    }
+                )
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"⚠️  Could not parse trial_ends_at: {trial_ends_at}, error: {e}")
+            # If we can't parse the date, allow to prevent false negatives
+    
+    # Allow for 'active' or 'trial' (with future/null trial_ends_at)
+    if subscription_status not in ["active", "trial"]:
+        masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+        logger.warning(
+            f"🚫 Polling blocked: tenant_id={masked_tenant_id}, "
+            f"unexpected subscription_status={subscription_status}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "TENANT_SUBSCRIPTION_EXPIRED",
+                "detail": f"Tenant subscription status is not valid: {subscription_status}",
+                "timestamp": now.isoformat()
+            }
+        )
+    
+    masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+    logger.info(
+        f"✅ Tenant polling access granted: tenant_id={masked_tenant_id}, "
+        f"subscription_status={subscription_status}"
+    )
+    
+    return {
+        "tenant_id": tenant_id,
+        "subscription_status": subscription_status,
+        "trial_ends_at": trial_ends_at
+    }
+
+
 def verify_desktop_api_key(x_api_key: str = Header(None)):
     """Verify that the request comes from authenticated desktop app"""
     expected_key = os.getenv("DESKTOP_API_KEY")
@@ -327,28 +434,40 @@ async def poll_whatsapp_jobs(
     Desktop app uses this to fetch messages from the queue.
     
     **Security**: Requires X-API-Key header matching DESKTOP_API_KEY env var.
+    **Tenant Isolation**: Validates tenant exists and has active subscription.
     
     Flow:
-    1. Desktop app calls GET /api/whatsapp/jobs/{tenant_id} with X-API-Key header
-    2. This endpoint fetches pending messages for that tenant
-    3. Atomically updates status to 'processing'
-    4. Returns messages to desktop for processing
-    5. Desktop processes and calls completion endpoint
+    1. Desktop app calls GET /api/whatsapp/cloud/jobs/{tenant_id} with X-API-Key header
+    2. Validates tenant exists and subscription is active/trial
+    3. Fetches pending messages filtered by tenant_id
+    4. Atomically updates status to 'processing'
+    5. Returns messages to desktop for processing
+    6. Desktop processes and calls completion endpoint
     
     Args:
-        tenant_id: Tenant ID (from JWT or desktop auth)
+        tenant_id: Tenant ID (from desktop token storage)
         limit: Max messages to fetch (default: 10)
         authenticated: API key validation (dependency)
     
     Returns:
         List of pending messages with details
+        
+    Raises:
+        404: TENANT_NOT_FOUND - Tenant does not exist
+        403: TENANT_SUBSCRIPTION_EXPIRED - Subscription expired or cancelled
+        500: POLLING_ERROR - Internal server error
     """
     try:
-        logger.info(f"📥 Polling jobs for tenant: {tenant_id}")
+        masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+        logger.info(f"📥 Polling jobs for tenant: {masked_tenant_id}")
         
         supabase = get_supabase_client()
         
-        # Step 1: Fetch pending messages for this tenant
+        # Step 1: Validate tenant exists and has active subscription
+        tenant_info = validate_tenant_subscription(tenant_id, supabase)
+        subscription_status = tenant_info["subscription_status"]
+        
+        # Step 2: Fetch pending messages for this tenant
         # Note: In production, use a database RPC function with SELECT ... FOR UPDATE SKIP LOCKED
         # For now, we use a simple SELECT + UPDATE pattern
         
@@ -365,14 +484,16 @@ async def poll_whatsapp_jobs(
         ).execute()
         
         if not pending_result.data or len(pending_result.data) == 0:
-            logger.info(f"✅ No pending jobs for tenant {tenant_id}")
+            logger.info(
+                f"✅ No pending jobs for tenant {masked_tenant_id} "
+                f"(subscription_status={subscription_status})"
+            )
             return {
-                "jobs": [],
-                "count": 0,
-                "tenant_id": tenant_id
+                "messages": [],
+                "count": 0
             }
         
-        # Step 2: Atomically update fetched messages to 'processing'
+        # Step 3: Atomically update fetched messages to 'processing'
         message_ids = [msg["id"] for msg in pending_result.data]
         
         update_result = supabase.table("whatsapp_message_queue").update({
@@ -382,27 +503,33 @@ async def poll_whatsapp_jobs(
             "id", message_ids
         ).execute()
         
-        # Step 3: Format response for desktop app
-        jobs = []
+        # Step 4: Format response for desktop app
+        messages = []
         for msg in pending_result.data:
-            jobs.append({
-                "message_id": msg["id"],
+            messages.append({
+                "id": msg["id"],
+                "tenant_id": msg["tenant_id"],
                 "customer_phone": msg["customer_phone"],
                 "message_type": msg["message_type"],
-                "text": msg.get("message_text"),
+                "message_text": msg.get("message_text"),
                 "media_url": msg.get("media_url"),
                 "raw_payload": msg.get("raw_payload", {}),
-                "timestamp": msg["created_at"]
+                "created_at": msg["created_at"]
             })
         
-        logger.info(f"✅ Returned {len(jobs)} jobs for tenant {tenant_id}")
+        logger.info(
+            f"✅ Returned {len(messages)} messages for tenant {masked_tenant_id} "
+            f"(subscription_status={subscription_status})"
+        )
         
         return {
-            "jobs": jobs,
-            "count": len(jobs),
-            "tenant_id": tenant_id
+            "messages": messages,
+            "count": len(messages)
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
         logger.error(f"Error polling jobs for tenant {tenant_id}: {e}", exc_info=True)
         raise HTTPException(

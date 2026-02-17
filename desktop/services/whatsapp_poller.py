@@ -100,18 +100,76 @@ class WhatsAppPoller:
             
             response.raise_for_status()
             data = response.json()
-            jobs = data.get("jobs", [])
+            
+            # Updated to use "messages" key instead of "jobs"
+            messages = data.get("messages", [])
             
             self.stats["total_polls"] += 1
-            if jobs:
-                logger.debug(f"Polled cloud API: {len(jobs)} jobs found")
+            if messages:
+                logger.debug(f"Polled cloud API: {len(messages)} messages found")
             
-            return jobs
+            return messages
             
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
                 logger.error("Authentication failed - invalid API key")
                 self.stats["last_error"] = "Invalid API key"
+            elif e.response.status_code == 403:
+                # Subscription expired or cancelled
+                try:
+                    error_detail = e.response.json()
+                    error_code = error_detail.get("detail", {}).get("error", "UNKNOWN")
+                    error_msg = error_detail.get("detail", {}).get("detail", "Subscription error")
+                    
+                    if error_code == "TENANT_SUBSCRIPTION_EXPIRED":
+                        logger.error(f"🚫 Subscription expired: {error_msg}")
+                        self.stats["last_error"] = f"Subscription expired: {error_msg}"
+                        
+                        # Show user notification
+                        print("\n" + "="*60)
+                        print("⚠️  SUBSCRIPTION EXPIRED")
+                        print("="*60)
+                        print(f"{error_msg}")
+                        print("Please renew your subscription to continue receiving WhatsApp messages.")
+                        print("="*60 + "\n")
+                        
+                        # Pause polling for 5 minutes to avoid spamming
+                        self.stats["subscription_paused"] = True
+                    else:
+                        logger.error(f"Access forbidden (403): {error_msg}")
+                        self.stats["last_error"] = f"Access forbidden: {error_msg}"
+                except Exception:
+                    logger.error(f"Access forbidden (403): {e}")
+                    self.stats["last_error"] = "Access forbidden"
+                    
+            elif e.response.status_code == 404:
+                # Tenant not found
+                try:
+                    error_detail = e.response.json()
+                    error_code = error_detail.get("detail", {}).get("error", "UNKNOWN")
+                    error_msg = error_detail.get("detail", {}).get("detail", "Tenant not found")
+                    
+                    if error_code == "TENANT_NOT_FOUND":
+                        logger.error(f"❌ Tenant not found: {error_msg}")
+                        self.stats["last_error"] = f"Tenant not found: {error_msg}"
+                        
+                        # Show user notification
+                        print("\n" + "="*60)
+                        print("❌ TENANT NOT FOUND")
+                        print("="*60)
+                        print("This device is not registered with a valid tenant.")
+                        print("Please contact support or re-activate this device.")
+                        print("="*60 + "\n")
+                        
+                        # Stop polling - no point continuing
+                        self.stats["tenant_not_found"] = True
+                    else:
+                        logger.error(f"Resource not found (404): {error_msg}")
+                        self.stats["last_error"] = f"Not found: {error_msg}"
+                except Exception:
+                    logger.error(f"Resource not found (404): {e}")
+                    self.stats["last_error"] = "Resource not found"
+                    
             elif e.response.status_code == 429:
                 logger.warning("Rate limited - backing off")
                 self.stats["last_error"] = "Rate limited"
@@ -209,12 +267,26 @@ class WhatsAppPoller:
         
         while self.is_running:
             try:
+                # Check if tenant was not found - stop polling permanently
+                if self.stats.get("tenant_not_found"):
+                    logger.error("🛑 Tenant not found - stopping poller permanently")
+                    self.is_running = False
+                    break
+                
+                # Check if subscription is paused - wait longer before retrying
+                if self.stats.get("subscription_paused"):
+                    logger.warning("⏸️  Subscription paused - waiting 5 minutes before retry")
+                    await asyncio.sleep(300)  # 5 minutes
+                    # Reset the pause flag to try again
+                    self.stats["subscription_paused"] = False
+                    continue
+                
                 # Poll for jobs
                 jobs = await self.poll_once()
                 
                 # Process each job
                 if jobs:
-                    logger.info(f"📨 Processing {len(jobs)} WhatsApp jobs")
+                    logger.info(f"📨 Processing {len(jobs)} WhatsApp messages")
                     for job in jobs:
                         await self.process_job(job)
                 
@@ -226,6 +298,7 @@ class WhatsAppPoller:
                 self.stats["last_error"] = str(e)
                 # Wait 30s on error before retrying
                 await asyncio.sleep(30)
+
     
     async def stop_polling(self) -> None:
         """Stop the polling loop"""
@@ -266,19 +339,32 @@ def init_poller() -> Optional[WhatsAppPoller]:
         cloud_url = get_cloud_url()
         
         if not tenant_id:
-            logger.warning("WhatsApp Poller: Tenant ID not found. Device might not be activated.")
+            logger.error("❌ WhatsApp Poller: Tenant ID not found. Device might not be activated.")
+            print("\n" + "="*60)
+            print("❌ DEVICE NOT ACTIVATED")
+            print("="*60)
+            print("This device has not been activated with a tenant.")
+            print("Please activate the device before starting the WhatsApp poller.")
+            print("="*60 + "\n")
             return None
             
         if not api_key:
-            logger.warning("WhatsApp Poller: Desktop API Key not found.")
-            # We might allow starting without key if using different auth, but for now strict
+            logger.error("❌ WhatsApp Poller: Desktop API Key not found.")
+            print("\n" + "="*60)
+            print("❌ CONFIGURATION ERROR")
+            print("="*60)
+            print("Desktop API Key is not configured.")
+            print("Please check your environment configuration.")
+            print("="*60 + "\n")
             return None
-            
-        logger.info(f"Initializing WhatsApp Poller for Tenant: {tenant_id}")
+        
+        masked_tenant_id = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+        logger.info(f"Initializing WhatsApp Poller for Tenant: {masked_tenant_id}")
         logger.debug(f"Cloud URL: {cloud_url}")
         
         _poller_instance = WhatsAppPoller(tenant_id, api_key, cloud_url)
         return _poller_instance
+
         
     except ImportError:
         logger.error("Failed to import config_service")
