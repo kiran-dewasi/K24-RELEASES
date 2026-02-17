@@ -100,17 +100,21 @@ async def sync_tenant_from_prelaunch(
         
         record = payload.record
         
-        # Extract tenant_id
-        tenant_id = record.get("id")
-        if not tenant_id:
+        # Extract tenant_id and normalize to string (may be int from Supabase bigint)
+        raw_tenant_id = record.get("id")
+        if not raw_tenant_id:
             logger.error("❌ Missing id (tenant_id) in record")
             raise HTTPException(status_code=400, detail="Missing tenant_id in record")
+        tenant_id = str(raw_tenant_id)
         
         # Extract whatsapp_number
         whatsapp_number = record.get("whatsapp_number")
         if not whatsapp_number or whatsapp_number.strip() == "":
             # Log with masked tenant_id for privacy
-            logger.info(f"✅ Ignoring record with missing whatsapp_number: tenant_id={tenant_id[:8]}...")
+            logger.info(
+                "✅ Ignoring record with missing whatsapp_number: tenant_id=%s...",
+                tenant_id[:8]
+            )
             return {
                 "status": "ignored",
                 "reason": "missing_whatsapp_number",
@@ -122,7 +126,11 @@ async def sync_tenant_from_prelaunch(
         
         # Mask WhatsApp number for logging (show only last 4 digits)
         masked_whatsapp = f"****{whatsapp_number[-4:]}" if len(whatsapp_number) >= 4 else "****"
-        logger.info(f"📝 Processing tenant sync: tenant_id={tenant_id[:8]}..., whatsapp={masked_whatsapp}")
+        logger.info(
+            "📝 Processing tenant sync: tenant_id=%s..., whatsapp=%s",
+            tenant_id[:8],
+            masked_whatsapp
+        )
         
         # Connect to k24-main Supabase
         k24_main_url = os.getenv("K24_MAIN_SUPABASE_URL")
@@ -181,7 +189,11 @@ async def sync_tenant_from_prelaunch(
             logger.error("❌ Failed to upsert tenant_config")
             raise HTTPException(status_code=500, detail="Failed to sync tenant")
         
-        logger.info(f"✅ Tenant synced successfully: tenant_id={tenant_id[:8]}..., whatsapp={masked_whatsapp}")
+        logger.info(
+            "✅ Tenant synced successfully: tenant_id=%s..., whatsapp=%s",
+            tenant_id[:8],
+            masked_whatsapp
+        )
         
         return {
             "status": "synced",

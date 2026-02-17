@@ -97,6 +97,63 @@ class TestTenantSyncWebhook:
         assert "****" in data["whatsapp_number"]  # Should be masked
         assert "timestamp" in data
     
+    def test_sync_integer_tenant_id(self, mock_env_webhook_secret, mock_supabase):
+        """Test that integer tenant_id (from Supabase bigint) is handled correctly"""
+        # Mock k24-main Supabase client
+        mock_client = Mock()
+        mock_supabase.return_value = mock_client
+        
+        # Mock select (no existing record)
+        mock_select_table = Mock()
+        mock_client.table.return_value = mock_select_table
+        
+        mock_select = Mock()
+        mock_select_table.select.return_value = mock_select
+        
+        mock_eq = Mock()
+        mock_select.eq.return_value = mock_eq
+        
+        mock_eq.execute.return_value = Mock(data=[])  # No existing record
+        
+        # Mock upsert
+        mock_upsert = Mock()
+        mock_select_table.upsert.return_value = mock_upsert
+        
+        mock_upsert.execute.return_value = Mock(data=[{
+            "tenant_id": "13",  # Should be string
+            "whatsapp_number": TEST_WHATSAPP,
+            "user_email": TEST_EMAIL,
+            "subscription_status": "trial"
+        }])
+        
+        # Make request with INTEGER tenant_id (like Supabase bigint)
+        response = client.post(
+            "/api/webhooks/tenant-sync",
+            json={
+                "type": "INSERT",
+                "table": "presale_orders",
+                "schema": "public",
+                "record": {
+                    "id": 13,  # INTEGER not string
+                    "whatsapp_number": TEST_WHATSAPP,
+                    "email": TEST_EMAIL
+                }
+            },
+            headers={"X-Webhook-Secret": VALID_WEBHOOK_SECRET}
+        )
+        
+        # Assertions
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "synced"
+        assert data["tenant_id"] == "13"  # Should be normalized to string
+        
+        # Verify that upsert was called with STRING tenant_id
+        call_args = mock_select_table.upsert.call_args
+        upsert_payload = call_args[0][0]
+        assert upsert_payload["tenant_id"] == "13"  # Must be string, not int
+        assert isinstance(upsert_payload["tenant_id"], str)
+    
     def test_sync_missing_whatsapp_number(self, mock_env_webhook_secret, mock_supabase):
         """Test that missing whatsapp_number is ignored with 200 status"""
         response = client.post(
