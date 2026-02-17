@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, Literal
 import logging
 from datetime import datetime, timezone, timedelta
 import os
+from supabase import create_client
 
 from database import get_supabase_client
 
@@ -133,18 +134,17 @@ async def sync_tenant_from_prelaunch(
         )
         
         # Connect to k24-main Supabase
-        k24_main_url = os.getenv("K24_MAIN_SUPABASE_URL")
-        k24_main_key = os.getenv("K24_MAIN_SUPABASE_SERVICE_ROLE_KEY")
+        k24_main_url = os.getenv("SUPABASE_URL")
+        k24_main_key = os.getenv("SUPABASE_SERVICE_KEY")
         
         if not k24_main_url or not k24_main_key:
-            logger.error("❌ K24_MAIN_SUPABASE_URL or K24_MAIN_SUPABASE_SERVICE_ROLE_KEY not configured")
+            logger.error("❌ SUPABASE_URL or SUPABASE_SERVICE_KEY not configured")
             raise HTTPException(
                 status_code=500,
                 detail="K24 main database configuration missing"
             )
         
         # Create separate Supabase client for k24-main
-        from supabase import create_client
         k24_main_supabase = create_client(k24_main_url, k24_main_key)
         
         # Step 1: Check if tenant_config row exists

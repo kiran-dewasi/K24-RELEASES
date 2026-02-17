@@ -30,8 +30,8 @@ TEST_EMAIL = "test@example.com"
 def mock_env_webhook_secret(monkeypatch):
     """Mock TENANT_SYNC_WEBHOOK_SECRET environment variable"""
     monkeypatch.setenv("TENANT_SYNC_WEBHOOK_SECRET", VALID_WEBHOOK_SECRET)
-    monkeypatch.setenv("K24_MAIN_SUPABASE_URL", "https://test-main.supabase.co")
-    monkeypatch.setenv("K24_MAIN_SUPABASE_SERVICE_ROLE_KEY", "test_service_key")
+    monkeypatch.setenv("SUPABASE_URL", "https://test-main.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test_service_key")
 
 
 @pytest.fixture
