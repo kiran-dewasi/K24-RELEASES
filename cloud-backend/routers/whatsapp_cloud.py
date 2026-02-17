@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 import os
 import uuid
+import re
 
 from database import get_supabase_client
 
@@ -22,6 +23,133 @@ def verify_baileys_secret(x_baileys_secret: str = Header(None)):
     if x_baileys_secret != expected_secret:
         raise HTTPException(status_code=403, detail="Invalid Baileys secret")
     return True
+
+# Helper Functions
+def normalize_whatsapp_number(phone: str) -> str:
+    """
+    Normalize WhatsApp phone number for consistent lookups.
+    
+    Removes all non-digit characters and ensures consistent format.
+    Example: "+1 (555) 123-4567" -> "15551234567"
+    """
+    # Remove all non-digit characters
+    normalized = re.sub(r'\D', '', phone)
+    return normalized
+
+def resolve_tenant_from_business_number(business_number: str, supabase) -> Dict[str, Any]:
+    """
+    Resolve tenant_id and subscription details from business WhatsApp number.
+    
+    Args:
+        business_number: The business WhatsApp number (to_number from message)
+        supabase: Supabase client instance
+    
+    Returns:
+        Dict containing tenant_id, subscription_status, and trial_ends_at
+        
+    Raises:
+        HTTPException: If tenant not found or subscription is not valid
+    """
+    # Normalize the business number for lookup
+    normalized_business_number = normalize_whatsapp_number(business_number)
+    
+    # Query tenant_config by whatsapp_number
+    tenant_result = supabase.table("tenant_config").select(
+        "tenant_id, subscription_status, trial_ends_at, whatsapp_number"
+    ).eq(
+        "whatsapp_number", normalized_business_number
+    ).execute()
+    
+    # If not found with normalized number, try with original
+    if not tenant_result.data or len(tenant_result.data) == 0:
+        tenant_result = supabase.table("tenant_config").select(
+            "tenant_id, subscription_status, trial_ends_at, whatsapp_number"
+        ).eq(
+            "whatsapp_number", business_number
+        ).execute()
+    
+    if not tenant_result.data or len(tenant_result.data) == 0:
+        masked_number = f"****{business_number[-4:]}" if len(business_number) >= 4 else "****"
+        logger.error(f"❌ No tenant found for business WhatsApp: {masked_number}")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "TENANT_NOT_FOUND",
+                "detail": f"No tenant configured for business WhatsApp number",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+    
+    tenant_config = tenant_result.data[0]
+    tenant_id = tenant_config["tenant_id"]
+    subscription_status = tenant_config.get("subscription_status")
+    trial_ends_at = tenant_config.get("trial_ends_at")
+    
+    # Enforce subscription rules
+    now = datetime.now(timezone.utc)
+    
+    # Block if subscription is explicitly expired or cancelled
+    if subscription_status in ["expired", "cancelled"]:
+        logger.warning(
+            f"🚫 Blocked incoming message: tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+            f"subscription_status={subscription_status}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "TENANT_SUBSCRIPTION_EXPIRED",
+                "detail": f"Tenant subscription is {subscription_status}. Please renew to continue receiving messages.",
+                "timestamp": now.isoformat()
+            }
+        )
+    
+    # Block if trial and trial_ends_at is in the past
+    if subscription_status == "trial" and trial_ends_at:
+        try:
+            trial_end_dt = datetime.fromisoformat(trial_ends_at.replace('Z', '+00:00'))
+            if trial_end_dt < now:
+                logger.warning(
+                    f"🚫 Blocked incoming message: tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+                    f"trial expired on {trial_ends_at}"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "TENANT_SUBSCRIPTION_EXPIRED",
+                        "detail": "Trial period has expired. Please upgrade to continue receiving messages.",
+                        "timestamp": now.isoformat()
+                    }
+                )
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"⚠️  Could not parse trial_ends_at: {trial_ends_at}, error: {e}")
+            # If we can't parse the date, allow the message through to prevent false negatives
+    
+    # Allow for 'active' or 'trial' (with future/null trial_ends_at)
+    if subscription_status not in ["active", "trial"]:
+        # If status is something unexpected, log and block for safety
+        logger.warning(
+            f"🚫 Blocked incoming message: tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+            f"unexpected subscription_status={subscription_status}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "TENANT_SUBSCRIPTION_EXPIRED",
+                "detail": f"Tenant subscription status is not valid: {subscription_status}",
+                "timestamp": now.isoformat()
+            }
+        )
+    
+    logger.info(
+        f"✅ Tenant access granted: tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+        f"subscription_status={subscription_status}"
+    )
+    
+    return {
+        "tenant_id": tenant_id,
+        "subscription_status": subscription_status,
+        "trial_ends_at": trial_ends_at
+    }
 
 # Request Models
 class IncomingWhatsAppMessage(BaseModel):
@@ -44,52 +172,90 @@ async def receive_whatsapp_message(
     Flow:
     1. Baileys listener receives WhatsApp message
     2. Baileys calls this endpoint with message data
-    3. This endpoint identifies tenant from phone number
-    4. Inserts message into whatsapp_message_queue
-    5. Desktop app polls queue and processes message
+    3. Resolves tenant from business WhatsApp number (tenant_config)
+    4. Enforces subscription access control
+    5. Identifies customer from sender phone (whatsapp_customer_mappings)
+    6. Inserts message into whatsapp_message_queue
+    7. Desktop app polls queue and processes message
     """
     try:
         logger.info(f"📨 Incoming WhatsApp message from {message.from_number}")
 
-        # Step 1: Resolve tenant_id and user_id from customer phone
-        supabase = get_supabase_client()
-
-        mapping_result = supabase.table("whatsapp_customer_mappings").select(
-            "tenant_id, user_id, customer_name"
-        ).eq(
-            "customer_phone", message.from_number
-        ).eq(
-            "is_active", True
-        ).execute()
-
-        if not mapping_result.data or len(mapping_result.data) == 0:
-            logger.warning(f"❌ Unknown customer phone: {message.from_number}")
+        # Step 1: Validate business number is provided
+        if not message.to_number:
+            logger.error("❌ Missing to_number (business WhatsApp number)")
             raise HTTPException(
-                status_code=404,
+                status_code=400,
                 detail={
-                    "error": "UNKNOWN_CUSTOMER",
-                    "detail": f"Phone number {message.from_number} is not registered with any tenant",
+                    "error": "MISSING_BUSINESS_NUMBER",
+                    "detail": "Business WhatsApp number (to_number) is required",
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
 
-        # Handle multiple matches (conflict scenario)
-        if len(mapping_result.data) > 1:
+        # Step 2: Resolve tenant from business WhatsApp number and enforce subscription
+        supabase = get_supabase_client()
+        
+        tenant_info = resolve_tenant_from_business_number(message.to_number, supabase)
+        tenant_id = tenant_info["tenant_id"]
+        subscription_status = tenant_info["subscription_status"]
+        
+        logger.info(
+            f"✅ Tenant resolved from business number: tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+            f"subscription_status={subscription_status}"
+        )
+
+        # Step 3: Normalize sender phone and resolve user_id from customer mappings
+        # Scope the lookup to the resolved tenant_id
+        normalized_from = normalize_whatsapp_number(message.from_number)
+        
+        # Try with normalized number first
+        mapping_result = supabase.table("whatsapp_customer_mappings").select(
+            "tenant_id, user_id, customer_name"
+        ).eq(
+            "tenant_id", tenant_id
+        ).eq(
+            "customer_phone", normalized_from
+        ).eq(
+            "is_active", True
+        ).execute()
+        
+        # If not found, try with original number
+        if not mapping_result.data or len(mapping_result.data) == 0:
+            mapping_result = supabase.table("whatsapp_customer_mappings").select(
+                "tenant_id, user_id, customer_name"
+            ).eq(
+                "tenant_id", tenant_id
+            ).eq(
+                "customer_phone", message.from_number
+            ).eq(
+                "is_active", True
+            ).execute()
+
+        if not mapping_result.data or len(mapping_result.data) == 0:
             logger.warning(
-                f"⚠️  Multiple tenants found for {message.from_number}: "
-                f"{[m['tenant_id'] for m in mapping_result.data]}"
+                f"❌ Unknown customer phone for tenant {tenant_id[:8] if tenant_id else 'N/A'}...: "
+                f"{message.from_number}"
             )
-            # For now, use the first match; in production, may need disambiguation
-            # TODO: Implement disambiguation logic if needed
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "UNKNOWN_CUSTOMER",
+                    "detail": f"Phone number {message.from_number} is not registered with this tenant",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
 
         mapping = mapping_result.data[0]
-        tenant_id = mapping["tenant_id"]
         user_id = mapping.get("user_id")
         customer_name = mapping.get("customer_name")
 
-        logger.info(f"✅ Resolved tenant: {tenant_id} for customer {message.from_number}")
+        logger.info(
+            f"✅ Customer resolved: phone={message.from_number}, "
+            f"user_id={user_id}, tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..."
+        )
 
-        # Step 2: Insert into whatsapp_message_queue
+        # Step 4: Insert into whatsapp_message_queue
         message_id = str(uuid.uuid4())
 
         queue_insert = {
@@ -116,9 +282,12 @@ async def receive_whatsapp_message(
                 detail="Failed to queue message"
             )
 
-        logger.info(f"✅ Message queued: {message_id} for tenant {tenant_id}")
+        logger.info(
+            f"✅ Message queued: message_id={message_id}, tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+            f"subscription_status={subscription_status}"
+        )
 
-        # Step 3: Return 202 Accepted with message_id
+        # Step 5: Return 202 Accepted with message_id
         return {
             "message_id": message_id
         }
