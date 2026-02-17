@@ -40,3 +40,7 @@ sentry-sdk[fastapi]>=1.40.0
 # Utilities
 tenacity>=8.2.0
 nest_asyncio>=1.6.0
+
+# Testing (development)
+pytest>=7.4.0
+httpx>=0.26.0  # Already listed above, but required for TestClient

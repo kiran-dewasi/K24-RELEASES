@@ -76,6 +76,7 @@ app.add_middleware(
 # NOTE: Some routers temporarily commented out until backend.* dependencies are refactored
 from routers import whatsapp_cloud
 from routers import devices
+from routers import webhooks
 
 # Include routers
 # TODO: Uncomment these after extracting shared modules from backend/
@@ -85,6 +86,7 @@ app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
 app.include_router(whatsapp_cloud.router, prefix="/api/whatsapp/cloud", tags=["WhatsApp Cloud"])
 # app.include_router(baileys.router, prefix="/api/baileys", tags=["Baileys"])
 # app.include_router(query.router, prefix="/api/query", tags=["Smart Query"])
+app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 
 @app.get("/")
 async def root():
