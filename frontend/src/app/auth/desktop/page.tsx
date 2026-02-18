@@ -54,8 +54,9 @@ function DesktopCallbackContent() {
                     return;
                 }
 
-                // Register device with backend
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/devices/register`, {
+                // Register device with cloud backend (this page runs in browser, not desktop)
+                const cloudApiUrl = process.env.NEXT_PUBLIC_CLOUD_API_URL || "https://weare-production.up.railway.app";
+                const response = await fetch(`${cloudApiUrl}/api/devices/register`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
