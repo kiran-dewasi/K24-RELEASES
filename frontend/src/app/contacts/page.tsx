@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +42,7 @@ export default function ContactsPage() {
             const headers: Record<string, string> = { "x-api-key": "k24-secret-key-123" };
             if (token) headers["Authorization"] = `Bearer ${token}`;
 
-            const res = await fetch("http://localhost:8000/contacts/detailed", {
+            const res = await fetch(`${API_URL}/contacts/detailed`, {
                 headers: headers
             });
 

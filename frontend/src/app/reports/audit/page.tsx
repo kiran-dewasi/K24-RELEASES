@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +33,7 @@ export default function AuditPage() {
     const fetchAudit = async () => {
         setLoading(true);
         try {
-            const res = await fetch("http://localhost:8000/audit/run", {
+            const res = await fetch(`${API_URL}/audit/run`, {
                 headers: { "x-api-key": "k24-secret-key-123" }
             });
             const data = await res.json();

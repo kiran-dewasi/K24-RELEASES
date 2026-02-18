@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Check, Loader2 } from "lucide-react";
@@ -21,7 +23,7 @@ export default function PaymentPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await fetch("http://localhost:8000/operations/payment", {
+            const res = await fetch(`${API_URL}/operations/payment`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

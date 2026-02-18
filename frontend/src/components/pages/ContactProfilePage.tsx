@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,14 +41,14 @@ function ContactProfileContent() {
         const fetchData = async () => {
             try {
                 // Fetch vouchers
-                const vouchersRes = await fetch(`http://localhost:8000/ledgers/${encodeURIComponent(ledgerName)}/vouchers`, {
+                const vouchersRes = await fetch(`${API_URL}/ledgers/${encodeURIComponent(ledgerName)}/vouchers`, {
                     headers: { "x-api-key": "k24-secret-key-123" }
                 });
                 const vouchersData = await vouchersRes.json();
                 setVouchers(vouchersData.vouchers || []);
 
                 // Fetch contact details
-                const detailsRes = await fetch(`http://localhost:8000/customer-details/`, {
+                const detailsRes = await fetch(`${API_URL}/customer-details/`, {
                     method: "POST",
                     headers: {
                         "x-api-key": "k24-secret-key-123",

@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +47,7 @@ export default function PremiumReceiptPage() {
 
         const timer = setTimeout(async () => {
             try {
-                const res = await fetch(`http://localhost:8000/ledgers/search?query=${partyQuery}`, {
+                const res = await fetch(`${API_URL}/ledgers/search?query=${partyQuery}`, {
                     headers: { "x-api-key": "k24-secret-key-123" }
                 });
                 const data = await res.json();
@@ -67,7 +69,7 @@ export default function PremiumReceiptPage() {
 
         const fetchOutstanding = async () => {
             try {
-                const res = await fetch(`http://localhost:8000/bills/receivables`, {
+                const res = await fetch(`${API_URL}/bills/receivables`, {
                     headers: { "x-api-key": "k24-secret-key-123" }
                 });
                 const data = await res.json();
@@ -116,7 +118,7 @@ export default function PremiumReceiptPage() {
         const finalPartyName = formData.party_name || partyQuery;
 
         try {
-            const res = await fetch("http://localhost:8000/operations/receipt", {
+            const res = await fetch(`${API_URL}/operations/receipt`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -1,5 +1,7 @@
 'use client';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useEffect, useState, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -248,7 +250,7 @@ function Customer360Content() {
             const headers: Record<string, string> = { 'x-api-key': 'k24-secret-key-123' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch(`http://localhost:8000/api/customers/${id}/360`, { headers });
+            const res = await fetch(`${API_URL}/api/customers/${id}/360`, { headers });
 
             if (!res.ok) {
                 if (res.status === 404) {

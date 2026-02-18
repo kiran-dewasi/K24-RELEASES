@@ -1,5 +1,7 @@
 "use client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import MagicInput from "@/components/MagicInput";
@@ -23,7 +25,7 @@ export default function OutstandingReportClient() {
                 const token = localStorage.getItem("k24_token");
                 if (token) headers["Authorization"] = `Bearer ${token}`;
 
-                const res = await fetch("http://localhost:8000/reports/outstanding", {
+                const res = await fetch(`${API_URL}/reports/outstanding`, {
                     headers: headers
                 });
                 const data = await res.json();
