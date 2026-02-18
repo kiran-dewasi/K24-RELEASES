@@ -318,9 +318,10 @@ def render_bill_allocations(allocations: Sequence[BillAllocation], indent: str) 
             lines.append(
                 f"{inner_indent}<INTERESTCOLLECTION>{_escape(allocation.interest_collection)}</INTERESTCOLLECTION>"
             )
+        joined_lines = "\n".join(lines)
         rendered.append(
             f"{indent}<BILLALLOCATIONS.LIST>\n"
-            f"{'\n'.join(lines)}\n"
+            f"{joined_lines}\n"
             f"{indent}</BILLALLOCATIONS.LIST>"
         )
     return rendered
@@ -582,9 +583,10 @@ class InventoryEntry:
             allocation_xml
         ]
         
+        joined_lines = "\n".join(lines)
         return (
             f"        <ALLINVENTORYENTRIES.LIST>\n"
-            f"{'\n'.join(lines)}\n"
+            f"{joined_lines}\n"
             f"        </ALLINVENTORYENTRIES.LIST>"
         )
 

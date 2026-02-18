@@ -16,8 +16,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 logger = logging.getLogger(__name__)
 
-# Global connection pool
-_pool: asyncpg.Pool | None = None
+# Global connection pool (typed as Any to handle asyncpg being unavailable)
+_pool: "Any | None" = None
 
 def get_database_url() -> str:
     """Retrieve the Supabase/Postgres Database URL."""

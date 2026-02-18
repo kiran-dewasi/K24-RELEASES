@@ -1,0 +1,45 @@
+﻿.\venv\Scripts\python.exe : Traceback (most recent 
+call last):
+At line:1 char:1
++ .\venv\Scripts\python.exe -c "from backend.api 
+import app" 2>&1 | Out ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Trace 
+   back (most recent call last)::String) [], Remo  
+  teException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "<string>", line 1, in <module>
+    from backend.api import app
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEA
+RE\weare\backend\api.py", line 15, in <module>
+    import sentry_sdk
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEA
+RE\weare\venv\Lib\site-packages\sentry_sdk\__init__
+.py", line 3, in <module>
+    from sentry_sdk.scope import Scope
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEA
+RE\weare\venv\Lib\site-packages\sentry_sdk\scope.py
+", line 1977, in <module>
+    from sentry_sdk.client import 
+NonRecordingClient
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEA
+RE\weare\venv\Lib\site-packages\sentry_sdk\client.p
+y", line 36, in <module>
+    from sentry_sdk.transport import 
+BaseHttpTransport, make_transport
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEA
+RE\weare\venv\Lib\site-packages\sentry_sdk\transpor
+t.py", line 692, in <module>
+    import httpcore
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEA
+RE\weare\venv\Lib\site-packages\httpcore\__init__.p
+y", line 139, in <module>
+    setattr(__locals[__name], "__module__", 
+"httpcore")  # noqa
+    
+~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'typing.Union' object has no 
+attribute '__module__' and no __dict__ for setting 
+new attributes. Did you mean: '__reduce__'?

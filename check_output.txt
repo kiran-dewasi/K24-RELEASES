@@ -1,0 +1,39 @@
+WARNING:langchain_google_genai.chat_models:Unexpected argument 'transport' provided to ChatGoogleGenerativeAI.
+c:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\routers\agent.py:15: UserWarning: WARNING! transport is not default parameter.
+                transport was transferred to model_kwargs.
+                Please confirm that transport is what you intended.
+  from backend.graph import build_graph
+Python: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+OK: sentry_sdk
+DEBUG: Initial DATABASE_URL: sqlite:///C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\k24_shadow.db
+[JOB MANAGER] Initialized in IN_PROCESS mode
+c:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\routers\baileys.py:14: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+[SECURITY] Development mode - API accessible without desktop token
+WARNING:langchain_google_genai.chat_models:Unexpected argument 'transport' provided to ChatGoogleGenerativeAI.
+c:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\orchestrator.py:34: UserWarning: WARNING! transport is not default parameter.
+                transport was transferred to model_kwargs.
+                Please confirm that transport is what you intended.
+  self.intent_recognizer = IntentRecognizer(api_key)
+INFO:backend.intent_recognizer:Initialized IntentRecognizer with model gemini-2.0-flash (use_pro=False)
+WARNING:backend.context_manager:Redis unavailable: Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.. Using in-memory fallback.
+WARNING:langchain_google_genai.chat_models:Unexpected argument 'transport' provided to ChatGoogleGenerativeAI.
+c:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\agent.py:246: UserWarning: WARNING! transport is not default parameter.
+                transport was transferred to model_kwargs.
+                Please confirm that transport is what you intended.
+  self.llm = get_gemini_llm()
+INFO:tally_api:Orchestrator initialized successfully
+WARNING:backend.context_manager:Redis unavailable: Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.. Using in-memory fallback.
+[INFO] TALLY LIVE UPDATE ENABLED: True
+[CONFIG] Loaded config from k24_config.json
+[GEMINI] Initializing with API key (length: 39)
+[GEMINI] Initialization successful ✓
+DEBUG: Database Tables Checked/Created.
+SUCCESS: backend.api imported OK

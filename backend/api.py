@@ -11,12 +11,18 @@ import uuid
 # Load environment variables IMMEDIATELY
 load_dotenv()
 
-# Task 2.1: Sentry Error Monitoring
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
+# Task 2.1: Sentry Error Monitoring (optional - may not work on Python 3.14)
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    _sentry_available = True
+except Exception as _sentry_err:
+    sentry_sdk = None  # type: ignore
+    _sentry_available = False
+    print(f"[WARNING] sentry_sdk unavailable (Python 3.14 compat issue): {_sentry_err}")
 
 sentry_dsn = os.getenv("SENTRY_DSN")
-if sentry_dsn:
+if sentry_dsn and _sentry_available:
     sentry_sdk.init(
         dsn=sentry_dsn,
         environment=os.getenv("ENV", "production"),
@@ -110,7 +116,7 @@ app = FastAPI(title="K24 API", description="Financial Intelligence Engine", life
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    if sentry_dsn:
+    if sentry_dsn and _sentry_available:
         sentry_sdk.capture_exception(exc)
     
     logging.error(f"Global Exception: {exc}")
