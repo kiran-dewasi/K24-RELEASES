@@ -1,4 +1,4 @@
-# WhatsApp Queue Polling - Tenant Isolation Implementation
+ru# WhatsApp Queue Polling - Tenant Isolation Implementation
 
 ## Summary
 Updated the WhatsApp queue polling system to enforce strict tenant isolation with subscription validation. The backend now validates tenant existence and subscription status before returning messages, while the desktop poller gracefully handles subscription errors.

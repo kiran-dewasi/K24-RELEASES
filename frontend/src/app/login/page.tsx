@@ -57,7 +57,7 @@ export default function LoginPage() {
             // Set cookie for Middleware (Server-Side) Guard
             document.cookie = `k24_token=${data.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
-            router.push("/daybook");
+            router.push("/");
         } catch (err: any) {
             setError(err.message || "Failed to login");
         } finally {
