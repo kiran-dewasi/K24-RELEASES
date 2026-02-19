@@ -1,13 +1,27 @@
+// DEV ONLY: bypass device licensing in development mode to unblock auth/dashboard work.
 "use client";
 
 import { useEffect, useState } from "react";
 import ConnectDevice from "./ConnectDevice";
 import { Loader2 } from "lucide-react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
 
     useEffect(() => {
+        // ─── DEV BYPASS ───────────────────────────────────────────────────────────
+        // In development mode, skip ALL license checks so the auth/dashboard flow
+        // is never blocked. The ConnectDevice / license gate is still intact for
+        // production builds (NODE_ENV === 'production').
+        if (process.env.NODE_ENV === "development") {
+            console.log("[DeviceGuard] DEV MODE — license gate bypassed, setting isAuthorized = true");
+            setIsAuthorized(true);
+            return; // Skip license check, API calls, and periodic timer entirely
+        }
+        // ─── END DEV BYPASS ───────────────────────────────────────────────────────
+
         const checkLicense = async () => {
             console.log("[DeviceGuard] Starting license check...");
 
@@ -27,7 +41,7 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
 
         checkLicense();
 
-        // Periodic Validation (Every 5 minutes)
+        // Periodic Validation (Every 5 minutes) — production only
         const interval = setInterval(async () => {
             const license = localStorage.getItem("k24_license_key");
             const deviceId = localStorage.getItem("k24_device_id");
@@ -35,8 +49,9 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
             if (!license || !deviceId) return;
 
             try {
-                const port = sessionStorage.getItem("k24_backend_port") || "8000";
-                const response = await fetch(`http://localhost:${port}/api/devices/validate?license_key=${license}&device_id=${deviceId}`);
+                const response = await fetch(
+                    `${API_BASE}/api/devices/validate?license_key=${license}&device_id=${deviceId}`
+                );
                 if (!response.ok) return;
 
                 const data = await response.json();
@@ -61,10 +76,10 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
     useEffect(() => {
         const handleKeyPress = (e: KeyboardEvent) => {
             // Strict guard: only in development mode
-            if (process.env.NODE_ENV !== 'development') return;
+            if (process.env.NODE_ENV !== "development") return;
 
             // Ctrl+Shift+R to reset activation
-            if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+            if (e.ctrlKey && e.shiftKey && e.key === "R") {
                 e.preventDefault();
                 console.log("[DEV] Resetting device activation state...");
 
@@ -80,8 +95,8 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
             }
         };
 
-        window.addEventListener('keydown', handleKeyPress);
-        return () => window.removeEventListener('keydown', handleKeyPress);
+        window.addEventListener("keydown", handleKeyPress);
+        return () => window.removeEventListener("keydown", handleKeyPress);
     }, []);
 
     console.log("[DeviceGuard] RENDER - isAuthorized state:", isAuthorized);

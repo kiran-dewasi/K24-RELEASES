@@ -16,7 +16,11 @@ const isTauri = () => {
 };
 
 // Development fallback configuration
-const DEV_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const DEV_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+// API key for local backend routes that use Depends(get_api_key)
+// This matches API_KEY in backend/dependencies.py (env: API_KEY, default: 'k24-secret-key-123')
+const LOCAL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'k24-secret-key-123';
 
 /**
  * Get JWT token from localStorage
@@ -53,7 +57,8 @@ export async function apiRequest<T = any>(
                 endpoint,
                 method,
                 body: body ? JSON.stringify(body) : null,
-                authToken
+                authToken,
+                apiKey: LOCAL_API_KEY
             });
 
             try {
@@ -77,6 +82,7 @@ export async function apiRequest<T = any>(
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
+            'x-api-key': LOCAL_API_KEY,  // Required by dashboard & other routes using Depends(get_api_key)
         };
 
         if (authToken) {
@@ -183,6 +189,7 @@ export const API_CONFIG = {
     getHeaders: () => {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
+            'x-api-key': LOCAL_API_KEY,  // Required by routes using Depends(get_api_key)
         };
 
         if (typeof window !== 'undefined') {

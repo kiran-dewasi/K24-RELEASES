@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lock, Mail, Zap, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { API_CONFIG, apiClient } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -24,32 +24,13 @@ export default function LoginPage() {
         setError("");
 
         try {
-            const response = await apiClient("/api/auth/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    email: formData.email,
-                    password: formData.password
-                })
-            });
+            // apiRequest uses NEXT_PUBLIC_API_URL → http://127.0.0.1:8000 in dev
+            const data = await apiRequest<{ access_token: string; user: any }>(
+                "/api/auth/login",
+                "POST",
+                { email: formData.email, password: formData.password }
+            );
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-
-                if (response.status === 401) {
-                    throw new Error("Invalid email or password. Please try again.");
-                } else if (response.status === 429) {
-                    throw new Error("Too many login attempts. Please try again later.");
-                } else if (response.status >= 500) {
-                    throw new Error("Server error. Please try again later.");
-                } else {
-                    throw new Error(errorData.detail || "Login failed. Please check your connection.");
-                }
-            }
-
-            const data = await response.json();
             localStorage.setItem("k24_token", data.access_token);
             // Optionally store user info or rely on /me
             localStorage.setItem("k24_user", JSON.stringify(data.user));
