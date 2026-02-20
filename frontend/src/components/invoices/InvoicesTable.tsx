@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 import {
     Table,
@@ -42,11 +42,22 @@ export function InvoicesTable() {
     useEffect(() => {
         const fetchInvoices = async () => {
             try {
-                // Fetching all vouchers for now, can filter by ?type=Sales if needed
-                const res = await fetch(`${API_CONFIG.BASE_URL}/vouchers`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
+                // Build a 30-day date range for recent vouchers
+                const today = new Date();
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(today.getDate() - 30);
+                const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+                const params = new URLSearchParams({
+                    start_date: fmt(thirtyDaysAgo),
+                    end_date: fmt(today),
+                    limit: '100',
                 });
-                const data = await res.json();
+
+                // /api/vouchers — vouchers router is mounted with prefix="/api"
+                const data = await apiRequest<{ vouchers: any[]; total_count: number }>(
+                    `/api/vouchers?${params.toString()}`
+                );
 
                 const vouchers = (data.vouchers || []).map((v: any) => ({
                     id: v.id || Math.random().toString(),
@@ -55,7 +66,7 @@ export function InvoicesTable() {
                     voucher_no: v.voucher_number || "PENDING",
                     party: v.party_name,
                     amount: v.amount,
-                    status: "Paid", // TODO: Fetch real status from outstanding bills logic
+                    status: "Paid" as Transaction['status'],
                     gst_compliant: true, // Placeholder for now
                     synced: v.sync_status === "SYNCED"
                 }));

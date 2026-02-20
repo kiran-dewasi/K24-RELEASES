@@ -15,10 +15,12 @@
       "allow": [
         {
           "name": "binaries/k24-backend",
+          "cmd": "binaries/k24-backend",
           "args": true
         },
         {
           "name": "binaries/k24-listener",
+          "cmd": "binaries/k24-listener",
           "args": true
         }
       ]

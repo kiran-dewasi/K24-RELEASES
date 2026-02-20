@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Package, Filter } from 'lucide-react';
+import { apiRequest } from '@/lib/api';
 
 export default function ItemsListPage() {
     const [items, setItems] = useState<any[]>([]);
@@ -21,9 +22,7 @@ export default function ItemsListPage() {
         setLoading(true);
         try {
             const query = search ? `?search=${encodeURIComponent(search)}` : '';
-            const res = await fetch(`/api/items${query}`);
-            if (!res.ok) throw new Error('Failed to fetch items');
-            const data = await res.json();
+            const data = await apiRequest<{ items: any[] }>(`/api/items${query}`);
             setItems(data.items || []);
         } catch (error) {
             console.error(error);

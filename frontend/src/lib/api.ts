@@ -15,8 +15,15 @@ const isTauri = () => {
     return typeof window !== 'undefined' && '__TAURI__' in window;
 };
 
+// In Tauri DEV mode (npx tauri dev), Next.js runs on localhost so backend is
+// the external uvicorn on port 8001 — use direct HTTP, not Rust invoke().
+// In PRODUCTION Tauri build, use Rust invoke('backend_request') for security.
+const isTauriDev = () => {
+    return isTauri() && (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost');
+};
+
 // Development fallback configuration
-const DEV_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const DEV_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
 
 // API key for local backend routes that use Depends(get_api_key)
 // This matches API_KEY in backend/dependencies.py (env: API_KEY, default: 'k24-secret-key-123')
@@ -48,8 +55,9 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
     const authToken = getAuthToken();
 
-    if (isTauri()) {
-        // Production: Use Tauri backend_request command
+    // In Tauri production build: use Rust backend_request command for security
+    // In Tauri dev mode: fall through to direct HTTP (same as browser dev)
+    if (isTauri() && !isTauriDev()) {
         try {
             const { invoke } = await import('@tauri-apps/api/core');
 
@@ -77,7 +85,9 @@ export async function apiRequest<T = any>(
             throw new Error(error?.message || error);
         }
     } else {
-        // Development: Direct HTTP with JWT token
+        // Dev mode: route through Next.js proxy to avoid Tauri WebView fetch restrictions.
+        // In plain browser (no Tauri), fetch directly to the backend.
+        // Development / Tauri dev: Direct HTTP to backend
         const url = endpoint.startsWith('http') ? endpoint : `${DEV_API_URL}${endpoint}`;
 
         const headers: Record<string, string> = {
@@ -134,7 +144,8 @@ function handleAuthError() {
  * Check if backend is running
  */
 export async function checkBackendStatus(): Promise<{ running: boolean; port?: number }> {
-    if (isTauri()) {
+    // In Tauri production build, ask Rust for backend status
+    if (isTauri() && !isTauriDev()) {
         try {
             const { invoke } = await import('@tauri-apps/api/core');
             return await invoke('get_backend_status');
@@ -143,13 +154,13 @@ export async function checkBackendStatus(): Promise<{ running: boolean; port?: n
         }
     }
 
-    // Development: Check if backend is reachable
+    // Dev mode (browser or Tauri dev): check external uvicorn directly
     try {
         const response = await fetch(`${DEV_API_URL}/health`, {
             method: 'GET',
             signal: AbortSignal.timeout(5000)
         });
-        return { running: response.ok, port: 8000 };
+        return { running: response.ok, port: 8001 };
     } catch {
         return { running: false };
     }
@@ -159,9 +170,9 @@ export async function checkBackendStatus(): Promise<{ running: boolean; port?: n
  * Start the backend (Tauri only)
  */
 export async function startBackend(): Promise<{ port: number; mode: string }> {
-    if (!isTauri()) {
-        // Development mode - backend is external
-        return { port: 8000, mode: 'development' };
+    if (!isTauri() || isTauriDev()) {
+        // Development mode - backend is external uvicorn
+        return { port: 8001, mode: 'development' };
     }
 
     const { invoke } = await import('@tauri-apps/api/core');

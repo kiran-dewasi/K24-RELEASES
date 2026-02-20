@@ -20,6 +20,8 @@ export function UpdateNotification() {
 
     async function checkForUpdates() {
         if (typeof window === 'undefined') return;
+        // Only run in real Tauri environment (not browser dev mode)
+        if (!('__TAURI__' in window)) return;
         try {
             const msg = await invoke<string>('check_updates');
             console.log("Update check:", msg);
@@ -28,7 +30,7 @@ export function UpdateNotification() {
                 setVisible(true);
             }
         } catch (e) {
-            console.error("Update check failed:", e);
+            // Silently ignore — command may not be registered in all builds
         }
     }
 

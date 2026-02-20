@@ -26,6 +26,7 @@ export default function Navbar() {
     const [searchQuery, setSearchQuery] = useState("");
     const [isSyncing, setIsSyncing] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [syncError, setSyncError] = useState<string | null>(null);
     const [syncHealth, setSyncHealth] = useState<{ connected: boolean; lastSync: string | null }>({ connected: false, lastSync: null });
 
     // Search State
@@ -77,11 +78,12 @@ export default function Navbar() {
     useEffect(() => {
         const checkHealth = async () => {
             try {
-                // Check desktop backend health
-                const res = await fetch(`${API_CONFIG.BASE_URL}/health`);
+                const res = await fetch(`http://127.0.0.1:8001/health`, {
+                    cache: 'no-cache',
+                    signal: AbortSignal.timeout(5000)
+                });
 
                 if (res.ok) {
-                    // Backend is online
                     const newStatus = {
                         connected: true,
                         lastSync: new Date().toISOString()
@@ -91,11 +93,8 @@ export default function Navbar() {
                 } else {
                     setSyncHealth({ connected: false, lastSync: null });
                 }
-            } catch (e) {
-                // Only log in development to avoid console noise in production
-                if (process.env.NODE_ENV === 'development') {
-                    console.error("Health check failed:", e);
-                }
+            } catch {
+                // Backend not ready yet — fail silently, dot stays red until it's up
                 setSyncHealth({ connected: false, lastSync: null });
             }
         };
@@ -112,10 +111,12 @@ export default function Navbar() {
 
     const handleSync = async () => {
         setIsSyncing(true);
+        setSyncError(null);
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/api/sync/tally`, {
+            const res = await fetch(`http://127.0.0.1:8001/api/sync/tally`, {
                 method: "POST",
-                headers: API_CONFIG.getHeaders()
+                headers: { 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(15000)
             });
             if (res.ok) {
                 setShowSuccess(true);
@@ -125,11 +126,14 @@ export default function Navbar() {
                 }, 2000);
             } else {
                 const error = await res.json();
-                alert(`Sync Failed: ${error.detail || 'Unknown error'}`);
+                setSyncError(error.detail || 'Sync failed');
+                setTimeout(() => setSyncError(null), 4000);
             }
         } catch (error) {
             console.error("Sync error:", error);
-            alert("Sync Error: Is backend running?");
+            // Show non-blocking error banner instead of alert()
+            setSyncError('Backend not reachable — is it running?');
+            setTimeout(() => setSyncError(null), 4000);
         } finally {
             setIsSyncing(false);
         }
@@ -147,6 +151,11 @@ export default function Navbar() {
                 <div className="fixed top-4 right-4 z-50 bg-emerald-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-in slide-in-from-top text-sm font-medium">
                     <CheckCircle2 className="h-4 w-4" />
                     <span>Sync Completed</span>
+                </div>
+            )}
+            {syncError && (
+                <div className="fixed top-4 right-4 z-50 bg-rose-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-in slide-in-from-top text-sm font-medium max-w-xs">
+                    <span>⚠ {syncError}</span>
                 </div>
             )}
 
