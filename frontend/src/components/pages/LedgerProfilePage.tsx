@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-config";
 import {
     ArrowLeft,
@@ -50,8 +50,8 @@ interface LedgerDetails {
 
 function LedgerProfileContent() {
     const router = useRouter();
-    const params = useParams();
-    const ledger_id = params.ledger_id as string;
+    const searchParams = useSearchParams();
+    const ledger_id = searchParams.get('id') || '';
 
     const [ledger, setLedger] = useState<LedgerDetails | null>(null);
     const [loading, setLoading] = useState(true);
@@ -78,7 +78,7 @@ function LedgerProfileContent() {
         }
     };
 
-    if (ledger_id === 'default') {
+    if (!ledger_id || ledger_id === 'default') {
         return <div className="p-8 text-center">Select a ledger to view details.</div>;
     }
 

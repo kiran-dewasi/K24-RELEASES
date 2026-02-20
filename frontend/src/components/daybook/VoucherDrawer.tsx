@@ -1,11 +1,10 @@
 "use client";
 
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@radix-ui/react-dropdown-menu"; // Separator usually in ui/separator, using simple div or border for now if missing
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, Cloud, ExternalLink, Pen, Trash2, Printer, Clock } from "lucide-react";
+import { Cloud, Pen, Trash2, Printer, Clock } from "lucide-react";
 
 interface Voucher {
     date: string;
@@ -43,7 +42,7 @@ export function VoucherDrawer({ open, onClose, voucher }: VoucherDrawerProps) {
                         </div>
                         <div className="text-right">
                             <div className="text-2xl font-bold tracking-tight">
-                                ₹{voucher.amount.toLocaleString('en-IN')}
+                                ₹{Number(voucher.amount).toLocaleString('en-IN')}
                             </div>
                             <div className="flex items-center justify-end gap-1.5 mt-1 text-xs text-emerald-600 font-medium">
                                 <Cloud className="h-3 w-3" /> Synced to Tally

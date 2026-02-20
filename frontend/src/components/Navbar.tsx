@@ -191,7 +191,7 @@ export default function Navbar() {
                                             {results.ledgers.map((l: any) => (
                                                 <div
                                                     key={l.id}
-                                                    onClick={() => router.push(`/parties/${l.id}`)}
+                                                    onClick={() => router.push(`/parties?id=${l.id}`)}
                                                     className="flex items-center justify-between p-2 rounded hover:bg-muted cursor-pointer text-sm"
                                                 >
                                                     <span className="font-medium text-foreground">{l.name}</span>

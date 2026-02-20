@@ -181,7 +181,7 @@ export default function ContactsPage() {
                                 <Button
                                     variant="default"
                                     className="bg-blue-600 hover:bg-blue-700"
-                                    onClick={() => router.push(`/customers/${selectedContact.id}`)}
+                                    onClick={() => router.push(`/customers?id=${selectedContact.id}`)}
                                 >
                                     <ExternalLink className="mr-2 h-4 w-4" />
                                     View 360° Profile

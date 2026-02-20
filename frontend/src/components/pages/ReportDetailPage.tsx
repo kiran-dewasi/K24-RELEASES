@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Calendar, Download, Filter, SlidersHorizontal, Loader2 } from "lucide-react";
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Badge } from "@/components/ui/badge";
 import {
     Select,
@@ -20,8 +20,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 
 function ReportDetailContent() {
-    const params = useParams();
-    const slug = params.slug as string;
+    const searchParams = useSearchParams();
+    const slug = searchParams.get('slug') || '';
 
     if (slug === 'default') {
         return <div className="p-8 text-center text-muted-foreground">Select a report to view details.</div>;

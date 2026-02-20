@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
     ArrowLeft, Package, TrendingUp, TrendingDown, Users,
     DollarSign, Activity, BarChart3, RefreshCcw, AlertCircle, Loader2
@@ -47,8 +47,8 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass }: any) => (
 
 
 function Item360Content() {
-    const params = useParams();
-    const itemId = params.id as string;
+    const searchParams = useSearchParams();
+    const itemId = searchParams.get('id') || '';
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');

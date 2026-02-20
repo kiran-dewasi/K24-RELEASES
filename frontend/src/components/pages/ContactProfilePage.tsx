@@ -3,7 +3,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 import { useState, useEffect, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Building2, Mail, Phone, MapPin, TrendingUp, TrendingDown, Clock, ArrowRight, Plus, Loader2 } from "lucide-react";
@@ -29,9 +29,9 @@ interface ContactDetails {
 
 
 function ContactProfileContent() {
-    const params = useParams();
+    const searchParams = useSearchParams();
     const router = useRouter();
-    const ledgerName = decodeURIComponent(params.name as string);
+    const ledgerName = decodeURIComponent(searchParams.get('name') || '');
 
     const [vouchers, setVouchers] = useState<Voucher[]>([]);
     const [contactDetails, setContactDetails] = useState<ContactDetails | null>(null);

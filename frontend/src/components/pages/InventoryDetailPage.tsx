@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { StockMovementTable } from '@/components/inventory/StockMovementTable';
 import { ArrowLeft, Edit, Trash, Package, IndianRupee, Activity, Box, Loader2 } from 'lucide-react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from "@/components/ui/use-toast";
 
 
@@ -17,13 +17,10 @@ import { useToast } from "@/components/ui/use-toast";
 
 function InventoryDetailContent() {
     const router = useRouter();
-    const params = useParams();
+    const searchParams = useSearchParams();
     const { toast } = useToast();
 
-    // Handle potential array or string param
-    const rawItemId = params?.itemId;
-    const itemIdStr = Array.isArray(rawItemId) ? rawItemId[0] : rawItemId;
-    const itemName = itemIdStr ? decodeURIComponent(itemIdStr) : '';
+    const itemName = searchParams.get('item') ? decodeURIComponent(searchParams.get('item')!) : '';
 
     const [item, setItem] = useState<InventoryItem | null>(null);
     const [movements, setMovements] = useState<StockMovement[]>([]);

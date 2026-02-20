@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api-config';
 import { InventoryTable } from '@/components/inventory/InventoryTable';
 import { InventoryStats } from '@/components/inventory/InventoryStats';
@@ -10,8 +11,23 @@ import { Button } from '@/components/ui/button';
 import { Plus, RefreshCw, FileDown, FileUp, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/components/ui/use-toast";
+import InventoryDetailPage from '@/components/pages/InventoryDetailPage';
 
-export default function InventoryPage() {
+function InventoryContent() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const { toast } = useToast();
+    const itemParam = searchParams.get('item');
+
+    // If ?item= is set, show detail page
+    if (itemParam) {
+        return <InventoryDetailPage />;
+    }
+
+    return <InventoryListPage />;
+}
+
+function InventoryListPage() {
     const router = useRouter();
     const { toast } = useToast();
 
@@ -36,23 +52,19 @@ export default function InventoryPage() {
     const fetchInventory = async () => {
         try {
             setLoading(true);
-            // Construct query params
             const params = new URLSearchParams();
             if (searchQuery) params.append("search", searchQuery);
             if (statusFilter !== 'all') params.append("status", statusFilter);
             if (categoryFilter !== 'all') params.append("category", categoryFilter);
 
-            // Parallel fetch: Items + Summary
             const [itemsRes, summaryRes] = await Promise.all([
                 apiClient(`/api/inventory?${params.toString()}`),
-                apiClient('/api/inventory/summary') // Summary is usually global, or filtered? Let's keep global for cards
+                apiClient('/api/inventory/summary')
             ]);
 
             if (itemsRes.ok) {
                 const data = await itemsRes.json();
                 setItems(data.items || []);
-
-                // Extract unique categories for filter
                 const uniqueCats = Array.from(new Set((data.items || []).map((i: any) => i.category || 'General')));
                 setCategories(uniqueCats as string[]);
             }
@@ -75,7 +87,6 @@ export default function InventoryPage() {
         }
     };
 
-    // Debounced Search Effect
     useEffect(() => {
         const timer = setTimeout(() => {
             fetchInventory();
@@ -137,5 +148,17 @@ export default function InventoryPage() {
                 <InventoryTable items={items} isLoading={loading} />
             </div>
         </div>
+    );
+}
+
+export default function Page() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen items-center justify-center">
+                <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+            </div>
+        }>
+            <InventoryContent />
+        </Suspense>
     );
 }

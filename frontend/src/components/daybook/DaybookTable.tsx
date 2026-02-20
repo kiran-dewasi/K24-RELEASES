@@ -16,12 +16,56 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 
 import Link from "next/link";
 
+// ---------------------------------------------------------------------------
+// Tally Voucher Debit / Credit Classification
+// Rule: based on which side the PARTY ledger lands on.
+// ---------------------------------------------------------------------------
+const CREDIT_VOUCHER_TYPES = new Set([
+    // Supplier is CREDITED — we owe them / goods/cash coming in
+    'Purchase',          // Dr Purchase A/c  | Cr Supplier
+    'Receipt',           // Dr Cash/Bank      | Cr Customer (settling receivable)
+    'Credit Note',       // Dr Sales Returns  | Cr Customer (reducing receivable)
+    'Contra',            // Dr Cash           | Cr Bank (internal transfer)
+    'Receipt Note',      // Stock inward — like a purchase
+    'Rejection Out',     // Goods returned to supplier — Dr Supplier, Cr Stock
+    'Purchase Order',    // Future purchase obligation — credit intent
+]);
+
+const DEBIT_VOUCHER_TYPES = new Set([
+    // Customer / party is DEBITED — they owe us / money/goods going out
+    'Sales',             // Dr Customer       | Cr Sales A/c
+    'Payment',           // Dr Supplier       | Cr Cash/Bank (paying off payable)
+    'Debit Note',        // Dr Supplier       | Cr Purchase Returns
+    'Delivery Note',     // Stock outward to customer
+    'Sales Order',       // Future sale obligation — debit intent
+    'Rejection In',      // Defective goods returned inward — Dr Stock, Cr Supplier
+    // Ambiguous / no-party vouchers — shown on Debit side by convention
+    'Journal',
+    'Stock Journal',
+    'Memorandum',
+]);
+
+/** Returns true if the voucher amount belongs in the Debit column */
+function isDebitVoucher(type: string): boolean {
+    if (DEBIT_VOUCHER_TYPES.has(type)) return true;
+    // Any unknown type not in the credit set — default to debit so amount is always visible
+    if (!CREDIT_VOUCHER_TYPES.has(type)) return true;
+    return false;
+}
+
+/** Returns true if the voucher amount belongs in the Credit column */
+function isCreditVoucher(type: string): boolean {
+    return CREDIT_VOUCHER_TYPES.has(type);
+}
+
+// ---------------------------------------------------------------------------
+
 interface Voucher {
     date: string;
     voucher_type: string;
     voucher_number: string;
     party_name: string;
-    amount: number;
+    amount: number | string;
     narration: string;
     ledger_id?: number | string;
 }
@@ -91,9 +135,18 @@ export function DaybookTable({
                                 <TableCell>
                                     <Badge
                                         variant="secondary"
-                                        className={`font-normal text-xs px-2 ${voucher.voucher_type === 'Receipt' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' :
-                                            voucher.voucher_type === 'Payment' ? 'bg-rose-50 text-rose-700 hover:bg-rose-100' :
-                                                'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                        className={`font-normal text-xs px-2 ${
+                                            // Credit-side vouchers → green
+                                            ['Receipt', 'Purchase', 'Credit Note', 'Contra', 'Receipt Note', 'Rejection Out', 'Purchase Order'].includes(voucher.voucher_type)
+                                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                                // Debit-side vouchers → red/rose  
+                                                : ['Payment', 'Sales', 'Debit Note', 'Delivery Note', 'Sales Order', 'Rejection In'].includes(voucher.voucher_type)
+                                                    ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                                    // Journal / Stock Journal / Memo → amber
+                                                    : ['Journal', 'Stock Journal', 'Memorandum'].includes(voucher.voucher_type)
+                                                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                                        // Default fallback
+                                                        : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
                                             }`}
                                     >
                                         {voucher.voucher_type}
@@ -103,7 +156,7 @@ export function DaybookTable({
                                     <div className="flex flex-col">
                                         {voucher.ledger_id ? (
                                             <Link
-                                                href={`/parties/${voucher.ledger_id}`}
+                                                href={`/parties?id=${voucher.ledger_id}`}
                                                 className="font-medium text-foreground hover:underline hover:text-primary transition-colors"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
@@ -119,19 +172,19 @@ export function DaybookTable({
                                         )}
                                     </div>
                                 </TableCell>
-                                <TableCell className="hidden md:table-cell text-right font-mono text-sm">
-                                    {/* Debit Side Types */}
-                                    {['Payment', 'Purchase', 'Journal', 'Debit Note'].includes(voucher.voucher_type) &&
-                                        <span className="text-foreground">
-                                            {voucher.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                <TableCell className="hidden md:table-cell text-right font-mono text-sm text-rose-700">
+                                    {/* DEBIT side — party is debited (customer owes us / supplier being reduced) */}
+                                    {isDebitVoucher(voucher.voucher_type) &&
+                                        <span>
+                                            {Number(voucher.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                         </span>
                                     }
                                 </TableCell>
-                                <TableCell className="text-right font-mono text-sm">
-                                    {/* Credit Side Types */}
-                                    {['Receipt', 'Sales', 'Contra', 'Credit Note'].includes(voucher.voucher_type) &&
-                                        <span className="text-foreground">
-                                            {voucher.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                <TableCell className="text-right font-mono text-sm text-emerald-700">
+                                    {/* CREDIT side — party is credited (supplier we owe / customer settled) */}
+                                    {isCreditVoucher(voucher.voucher_type) &&
+                                        <span>
+                                            {Number(voucher.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                         </span>
                                     }
                                 </TableCell>

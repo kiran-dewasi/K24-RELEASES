@@ -933,22 +933,21 @@ class TallyReader:
                 elif "payment" in v_type:
                     total_payments += amt
                     logger.debug(f"  - Payment: ₹{amt:.2f}")
-                # Sales with Cash payment = Cash coming in
+                # Sales with Cash payment = Cash coming in (Cash is debited = negative in Tally XML)
                 elif "sales" in v_type:
-                    # Check if Cash is the debited party (customer side)
                     for led in ledgers:
                         if "cash" in (led.get("name") or "").lower():
                             led_amt = led.get("amount", 0)
-                            if led_amt < 0:  # Debit in Tally = negative
+                            if led_amt < 0:  # Debit in Tally XML = negative
                                 total_receipts += abs(led_amt)
                                 logger.debug(f"  + Sales (Cash): ₹{abs(led_amt):.2f}")
                             break
-                # Purchase with Cash payment = Cash going out
+                # Purchase with Cash payment = Cash going out (Cash is credited = positive in Tally XML)
                 elif "purchase" in v_type:
                     for led in ledgers:
                         if "cash" in (led.get("name") or "").lower():
                             led_amt = led.get("amount", 0)
-                            if led_amt > 0:  # Credit in Tally = positive
+                            if led_amt > 0:  # Credit in Tally XML = positive
                                 total_payments += abs(led_amt)
                                 logger.debug(f"  - Purchase (Cash): ₹{abs(led_amt):.2f}")
                             break
@@ -1099,19 +1098,20 @@ class TallyReader:
                             l_amt = float(l_amt_str)
                         except: pass
                     
-                    # Accumulate Dr/Cr
-                    # In Tally XML: Negative is Credit, Positive is Debit (usually)
+                    # Accumulate absolute amounts — we use max(dr, cr) to get the voucher total.
+                    # In a balanced voucher both sides are equal, so this always gives the correct amount.
+                    # The debit/credit column display is handled in the frontend based on voucher_type.
                     if l_amt < 0:
-                        total_cr += abs(l_amt)
+                        total_dr += abs(l_amt)
                     else:
-                        total_dr += l_amt
+                        total_cr += l_amt
 
                     # Identify if Tax Ledger
                     is_tax = any(x in (l_name or "").upper() for x in ["GST", "TAX", "CESS", "DUTY"])
                     
                     ledgers.append({
                         "name": l_name,
-                        "amount": l_amt, 
+                        "amount": l_amt,
                         "is_tax": is_tax
                     })
 

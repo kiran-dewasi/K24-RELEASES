@@ -80,6 +80,13 @@ class VoucherDraft(BaseModel):
 from datetime import date, timedelta
 from backend.tally_reader import TallyReader
 from backend.routers.data_utils import normalize_tally_voucher
+import time
+
+# --- In-memory Tally Voucher Cache ---
+# Caches the full normalized+sorted voucher list per (start_date, end_date) key.
+# Entries expire after CACHE_TTL seconds to balance freshness vs. performance.
+CALLY_CACHE_TTL = 60   # seconds
+_voucher_cache: dict = {}  # key -> {"data": [...], "ledger_map": {...}, "ts": float}
 
 @router.get("/vouchers", dependencies=[Depends(get_api_key)])
 async def get_vouchers(
@@ -102,58 +109,76 @@ async def get_vouchers(
         if not end_date:
             end_date = today.strftime("%Y%m%d")
         
-        reader = TallyReader()
+        # --- Cache Check ---
+        # Re-use the full normalized list for the same date range within TTL.
+        cache_key = (start_date, end_date)
+        cached = _voucher_cache.get(cache_key)
+        now = time.time()
         
-        # Fetch from Tally
-        # Note: party_filter could be mapped from voucher_type logic if needed, but for now we fetch all
-        raw_txns = reader.get_transactions(start_date, end_date)
-        
-        # Pre-fetch Ledger Map for ID linking
-        # This enables clicking on party name to go to profile
-        all_ledgers = db.query(Ledger.name, Ledger.id).all()
-        ledger_map = {l.name.lower(): l.id for l in all_ledgers}
-        
-        normalized_vouchers = []
-        for txn in raw_txns:
-            # 1. Strict Date Filter (Python Side)
-            # Tally XML sometimes ignores date params in Voucher Register, so we enforce it here.
-            txn_date = txn.get("date", "")
-            if start_date and txn_date < start_date:
-                continue
-            if end_date and txn_date > end_date:
-                continue
+        if cached and (now - cached["ts"]) < CALLY_CACHE_TTL:
+            # Cache HIT: use pre-fetched data
+            all_normalized = cached["data"]
+            ledger_map = cached["ledger_map"]
+            logger.debug(f"[Cache HIT] {cache_key} — {len(all_normalized)} vouchers")
+        else:
+            # Cache MISS: hit Tally
+            reader = TallyReader()
+            raw_txns = reader.get_transactions(start_date, end_date)
+            
+            # Pre-fetch Ledger Map for ID linking
+            all_ledgers = db.query(Ledger.name, Ledger.id).all()
+            ledger_map = {l.name.lower(): l.id for l in all_ledgers}
+            
+            all_normalized = []
+            for txn in raw_txns:
+                # Strict Date Filter (Python Side)
+                txn_date = txn.get("date", "")
+                if start_date and txn_date < start_date:
+                    continue
+                if end_date and txn_date > end_date:
+                    continue
 
-            # 2. Normalize
-            norm_v = normalize_tally_voucher(txn)
+                norm_v = normalize_tally_voucher(txn)
+                
+                # Inject Ledger ID if found in local DB
+                p_name = norm_v.get("party_name", "").lower()
+                if p_name in ledger_map:
+                    norm_v["ledger_id"] = ledger_map[p_name]
+                
+                all_normalized.append(norm_v)
             
-            # Inject Ledger ID if found in local DB
-            p_name = norm_v.get("party_name", "").lower()
-            if p_name in ledger_map:
-                norm_v["ledger_id"] = ledger_map[p_name]
+            # Sort by date desc
+            all_normalized.sort(key=lambda x: x["date"], reverse=True)
             
-            # 3. Filter by TYPE if requested
+            # Store in cache
+            _voucher_cache[cache_key] = {
+                "data": all_normalized,
+                "ledger_map": ledger_map,
+                "ts": now,
+            }
+            logger.info(f"[Cache MISS] Fetched {len(all_normalized)} vouchers from Tally for {cache_key}")
+        
+        # Apply in-memory filters (type + search) on cached data
+        normalized_vouchers = []
+        for norm_v in all_normalized:
+            # Filter by TYPE if requested
             if voucher_type:
-                # Tally types are "Sales", "Payment", etc. Match case-insensitive partial
                 if voucher_type.lower() != "all_types" and voucher_type.lower() not in norm_v["voucher_type"].lower():
                     continue
 
-            # 4. Filter by Search Query (Party, Voucher No, Amount)
+            # Filter by Search Query
             if search_query:
                 q = search_query.lower()
-                # Check party, number, amount, narration
-                match = False
-                if q in str(norm_v.get("party_name", "")).lower(): match = True
-                elif q in str(norm_v.get("voucher_number", "")).lower(): match = True
-                elif q in str(norm_v.get("amount", "")).lower(): match = True
-                elif q in str(norm_v.get("narration", "")).lower(): match = True
-                
+                match = (
+                    q in str(norm_v.get("party_name", "")).lower() or
+                    q in str(norm_v.get("voucher_number", "")).lower() or
+                    q in str(norm_v.get("amount", "")).lower() or
+                    q in str(norm_v.get("narration", "")).lower()
+                )
                 if not match:
                     continue
             
             normalized_vouchers.append(norm_v)
-            
-        # Sort by date desc (Tally usually returns asc or insertion order)
-        normalized_vouchers.sort(key=lambda x: x["date"], reverse=True)
         
         # Pagination Logic
         total_count = len(normalized_vouchers)
@@ -171,9 +196,6 @@ async def get_vouchers(
         
     except Exception as e:
         logger.exception("Failed to fetch vouchers from Tally")
-        # In production, we might fallback to DB here?
-        # For L0 strictness, we just return error or empty list to signal Tally is down.
-        # But failing gracefully is better usage.
         return {
             "vouchers": [],
             "total_count": 0, 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 import { Loader2, Zap, AlertTriangle } from "lucide-react";
 
 export function TallySettings() {
@@ -19,13 +19,10 @@ export function TallySettings() {
     useEffect(() => {
         async function fetchConfig() {
             try {
-                const res = await fetch(`${API_CONFIG.BASE_URL}/setup/status`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setTallyUrl(data.tally_url || "http://localhost:9000");
-                    setGoogleApiKey(data.google_api_key || "");
-                    setAutoPostToTally(data.auto_post_to_tally || false);
-                }
+                const data = await apiRequest('/api/setup/status', 'GET');
+                setTallyUrl(data.tally_url || "http://localhost:9000");
+                setGoogleApiKey(data.google_api_key || "");
+                setAutoPostToTally(data.auto_post_to_tally || false);
             } catch (error) {
                 console.error("Failed to fetch settings", error);
             } finally {
@@ -39,21 +36,12 @@ export function TallySettings() {
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/setup/save`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    tally_url: tallyUrl,
-                    google_api_key: googleApiKey,
-                    auto_post_to_tally: autoPostToTally
-                })
+            await apiRequest('/api/setup/save', 'POST', {
+                tally_url: tallyUrl,
+                google_api_key: googleApiKey,
+                auto_post_to_tally: autoPostToTally
             });
-
-            if (res.ok) {
-                alert("Settings saved successfully.");
-            } else {
-                alert("Failed to save settings.");
-            }
+            alert("Settings saved successfully.");
         } catch (error) {
             console.error("Failed to save", error);
             alert("Error saving settings.");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -46,9 +46,9 @@ interface Transaction {
 
 
 function PartyProfileContent() {
-    const params = useParams();
+    const searchParams = useSearchParams();
     const router = useRouter();
-    const id = params.id as string;
+    const id = searchParams.get('id') || '';
 
     const [profile, setProfile] = useState<LedgerProfile | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -118,7 +118,7 @@ function PartyProfileContent() {
                     <Button
                         variant="default"
                         className="gap-2 bg-blue-600 hover:bg-blue-700"
-                        onClick={() => router.push(`/customers/${id}`)}
+                        onClick={() => router.push(`/customers?id=${id}`)}
                     >
                         <ArrowUpRight className="h-4 w-4" /> View 360° Profile
                     </Button>

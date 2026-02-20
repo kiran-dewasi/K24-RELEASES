@@ -378,6 +378,49 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     return current_user
 
+class UpdateProfileRequest(BaseModel):
+    full_name: str | None = None
+    whatsapp_number: str | None = None
+    mobile: str | None = None
+
+@router.put("/profile")
+async def update_profile(
+    profile_data: UpdateProfileRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update user profile (full_name, whatsapp_number, mobile)."""
+    if profile_data.full_name is not None:
+        current_user.full_name = profile_data.full_name
+    if profile_data.whatsapp_number is not None:
+        current_user.whatsapp_number = profile_data.whatsapp_number
+    if profile_data.mobile is not None:
+        # Store in whatsapp_number if no separate mobile column
+        current_user.whatsapp_number = profile_data.mobile
+
+    db.commit()
+    db.refresh(current_user)
+
+    # Try to sync full_name to Supabase (non-blocking, best effort)
+    try:
+        from backend.services.supabase_service import supabase_service
+        if supabase_service.client and profile_data.full_name:
+            supabase_service.client.table("profiles").update({
+                "full_name": profile_data.full_name,
+            }).eq("id", current_user.google_api_key).execute()
+    except Exception:
+        pass  # Offline is fine; local update succeeded
+
+    return {
+        "status": "success",
+        "user": {
+            "full_name": current_user.full_name,
+            "whatsapp_number": current_user.whatsapp_number,
+            "email": current_user.email,
+            "role": current_user.role,
+        }
+    }
+
 @router.post("/setup-company")
 def setup_company(
     company_data: CompanySetup,

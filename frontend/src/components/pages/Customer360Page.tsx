@@ -3,7 +3,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 import { useEffect, useState, Suspense } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -234,9 +234,9 @@ function TierBadge({ tier }: { tier: string }) {
 
 
 function Customer360Content() {
-    const params = useParams();
+    const searchParams = useSearchParams();
     const router = useRouter();
-    const id = params.id as string;
+    const id = searchParams.get('id') || '';
 
     const [data, setData] = useState<Customer360Data | null>(null);
     const [loading, setLoading] = useState(true);

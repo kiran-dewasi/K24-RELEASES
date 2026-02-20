@@ -86,7 +86,7 @@ export function InventoryTable({ items, isLoading }: InventoryTableProps) {
                                 <div className="flex flex-col">
                                     <span
                                         className="font-medium text-foreground cursor-pointer hover:text-primary transition-colors"
-                                        onClick={() => router.push(`/inventory/${encodeURIComponent(item.name)}`)}
+                                        onClick={() => router.push(`/inventory?item=${encodeURIComponent(item.name)}`)}
                                     >
                                         {item.name}
                                     </span>
@@ -122,10 +122,10 @@ export function InventoryTable({ items, isLoading }: InventoryTableProps) {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                        <DropdownMenuItem onClick={() => router.push(`/inventory/${encodeURIComponent(item.name)}`)}>
+                                        <DropdownMenuItem onClick={() => router.push(`/inventory?item=${encodeURIComponent(item.name)}`)}>
                                             <Eye className="mr-2 h-4 w-4" /> View Details
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => router.push(`/inventory/${encodeURIComponent(item.name)}/movements`)}>
+                                        <DropdownMenuItem onClick={() => router.push(`/inventory?item=${encodeURIComponent(item.name)}&tab=movements`)}>
                                             <History className="mr-2 h-4 w-4" /> History
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
