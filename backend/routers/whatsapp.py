@@ -246,7 +246,7 @@ async def list_customer_mappings(
     """
     List all WhatsApp customer mappings for current user
     """
-    user_id = str(current_user.id) # Access attribute directly, convert to string for DB
+    user_id = str(current_user["id"]) if isinstance(current_user, dict) else str(current_user.id)
     
     conn = sqlite3.connect("k24_shadow.db")
     conn.row_factory = sqlite3.Row
@@ -318,9 +318,10 @@ async def create_customer_mapping(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Add new customer phone mapping
+    Add new customer phone mapping (synced to Supabase)
     """
-    user_id = str(current_user.id)
+    user_id = str(current_user["id"]) if isinstance(current_user, dict) else str(current_user.id)
+    tenant_id = current_user.get("tenant_id") if isinstance(current_user, dict) else getattr(current_user, "tenant_id", None)
     
     # Validate phone format
     phone = mapping.customer_phone.strip()
@@ -365,7 +366,32 @@ async def create_customer_mapping(
     
     conn.commit()
     conn.close()
-    
+
+    # ── Sync to Supabase (non-blocking) ──────────────────────────────────────
+    try:
+        from backend.services.supabase_service import supabase_http_service
+        if supabase_http_service.client:
+            import httpx
+            headers = supabase_http_service._get_headers(use_service_key=True)
+            httpx.post(
+                f"{supabase_http_service.url}/rest/v1/whatsapp_customer_mappings",
+                headers={**headers, "Prefer": "resolution=merge-duplicates,return=minimal"},
+                json={
+                    "id": mapping_id,
+                    "user_id": user_id,
+                    "tenant_id": tenant_id or "",
+                    "customer_name": mapping.customer_name,
+                    "customer_phone": phone,
+                    "client_code": mapping.client_code,
+                    "notes": mapping.notes,
+                    "is_active": True,
+                },
+                timeout=10
+            )
+            print(f"✅ Customer mapping synced to Supabase: {phone}")
+    except Exception as e:
+        print(f"⚠️ Supabase customer sync warning (non-fatal): {e}")
+
     return {
         "id": mapping_id,
         "message": "Customer mapping created successfully",
@@ -382,7 +408,7 @@ async def update_customer_mapping(
     """
     Update existing customer mapping
     """
-    user_id = str(current_user.id)
+    user_id = str(current_user["id"]) if isinstance(current_user, dict) else str(current_user.id)
     
     conn = sqlite3.connect("k24_shadow.db")
     cursor = conn.cursor()
@@ -449,9 +475,9 @@ async def delete_customer_mapping(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Delete/deactivate customer mapping
+    Delete/deactivate customer mapping (synced to Supabase)
     """
-    user_id = str(current_user.id)
+    user_id = str(current_user["id"]) if isinstance(current_user, dict) else str(current_user.id)
     
     conn = sqlite3.connect("k24_shadow.db")
     cursor = conn.cursor()
@@ -469,8 +495,75 @@ async def delete_customer_mapping(
     
     conn.commit()
     conn.close()
-    
+
+    # ── Sync delete to Supabase (soft-delete: set is_active = false) ─────────
+    try:
+        from backend.services.supabase_service import supabase_http_service
+        if supabase_http_service.client:
+            import httpx
+            httpx.patch(
+                f"{supabase_http_service.url}/rest/v1/whatsapp_customer_mappings?id=eq.{mapping_id}",
+                headers=supabase_http_service._get_headers(use_service_key=True),
+                json={"is_active": False},
+                timeout=10
+            )
+    except Exception as e:
+        print(f"⚠️ Supabase delete sync warning (non-fatal): {e}")
+
     return {"message": "Mapping deleted successfully"}
+
+
+# ============================================
+# MESSAGE STATS
+# ============================================
+
+@router.get("/api/whatsapp/message-stats")
+async def get_message_stats(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Return real sent/received WhatsApp message counts from the local queue DB.
+    Counts rows in whatsapp_message_queue per direction.
+    """
+    user_id = str(current_user["id"]) if isinstance(current_user, dict) else str(current_user.id)
+
+    conn = sqlite3.connect("k24_shadow.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Ensure table exists before querying (safe guard)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_message_queue (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT,
+            user_id TEXT,
+            direction TEXT DEFAULT 'inbound',
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    # Count messages sent (outbound) by this user
+    cursor.execute("""
+        SELECT COUNT(*) as cnt FROM whatsapp_message_queue
+        WHERE user_id = ? AND direction IN ('outbound', 'sent')
+    """, (user_id,))
+    sent = cursor.fetchone()["cnt"]
+
+    # Count messages received (inbound) by this user
+    cursor.execute("""
+        SELECT COUNT(*) as cnt FROM whatsapp_message_queue
+        WHERE user_id = ? AND direction IN ('inbound', 'received')
+    """, (user_id,))
+    received = cursor.fetchone()["cnt"]
+
+    conn.close()
+
+    return {
+        "sent": sent,
+        "received": received,
+        "total": sent + received
+    }
 
 
 @router.post("/api/whatsapp/identify-user")

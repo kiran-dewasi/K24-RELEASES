@@ -19,7 +19,7 @@ if not SECRET_KEY:
     raise ValueError("JWT_SECRET_KEY not set in environment")
 
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 365))  # 1 year default for dev
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 

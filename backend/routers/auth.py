@@ -389,27 +389,55 @@ async def update_profile(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Update user profile (full_name, whatsapp_number, mobile)."""
+    """Update user profile (full_name, whatsapp_number, mobile). Syncs to Supabase."""
     if profile_data.full_name is not None:
         current_user.full_name = profile_data.full_name
-    if profile_data.whatsapp_number is not None:
-        current_user.whatsapp_number = profile_data.whatsapp_number
-    if profile_data.mobile is not None:
-        # Store in whatsapp_number if no separate mobile column
-        current_user.whatsapp_number = profile_data.mobile
+
+    # Accept both field names for the phone number
+    new_whatsapp = profile_data.whatsapp_number or profile_data.mobile
+    if new_whatsapp is not None:
+        current_user.whatsapp_number = new_whatsapp
 
     db.commit()
     db.refresh(current_user)
 
-    # Try to sync full_name to Supabase (non-blocking, best effort)
+    # ── Sync to Supabase (non-blocking, best-effort) ──────────────────────────
+    supabase_user_id = current_user.google_api_key  # Supabase UUID stored here
+    tenant_id = current_user.tenant_id
+
     try:
-        from backend.services.supabase_service import supabase_service
-        if supabase_service.client and profile_data.full_name:
-            supabase_service.client.table("profiles").update({
-                "full_name": profile_data.full_name,
-            }).eq("id", current_user.google_api_key).execute()
-    except Exception:
-        pass  # Offline is fine; local update succeeded
+        from backend.services.supabase_service import supabase_http_service
+        if supabase_http_service.client:
+            import httpx
+            headers = supabase_http_service._get_headers(use_service_key=True)
+
+            # 1. Update public.user_profiles
+            profile_update: dict = {}
+            if profile_data.full_name is not None:
+                profile_update["full_name"] = profile_data.full_name
+            if new_whatsapp is not None:
+                profile_update["whatsapp_number"] = new_whatsapp
+
+            if profile_update and supabase_user_id:
+                httpx.patch(
+                    f"{supabase_http_service.url}/rest/v1/user_profiles?id=eq.{supabase_user_id}",
+                    headers=headers,
+                    json=profile_update,
+                    timeout=10
+                )
+
+            # 2. Update public.tenants.whatsapp_number when phone changes
+            if new_whatsapp is not None and tenant_id:
+                httpx.patch(
+                    f"{supabase_http_service.url}/rest/v1/tenants?id=eq.{tenant_id}",
+                    headers=headers,
+                    json={"whatsapp_number": new_whatsapp},
+                    timeout=10
+                )
+                print(f"✅ Synced whatsapp_number to Supabase tenant {tenant_id}: {new_whatsapp}")
+
+    except Exception as e:
+        print(f"⚠️ Supabase profile sync warning (non-fatal): {e}")
 
     return {
         "status": "success",

@@ -141,8 +141,14 @@ export default function Navbar() {
 
     const handleSearch = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && searchQuery.trim()) {
+            setIsOpen(false);
             router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
         }
+    };
+
+    const closeSearch = () => {
+        setIsOpen(false);
+        setSearchQuery("");
     };
 
     return (
@@ -200,7 +206,7 @@ export default function Navbar() {
                                             {results.ledgers.map((l: any) => (
                                                 <div
                                                     key={l.id}
-                                                    onClick={() => router.push(`/parties?id=${l.id}`)}
+                                                    onClick={() => { closeSearch(); router.push(`/parties?id=${l.id}`); }}
                                                     className="flex items-center justify-between p-2 rounded hover:bg-muted cursor-pointer text-sm"
                                                 >
                                                     <span className="font-medium text-foreground">{l.name}</span>
@@ -219,7 +225,7 @@ export default function Navbar() {
                                             {results.items.map((i: any) => (
                                                 <div
                                                     key={i.id}
-                                                    // Assuming we have an item details page or just show specific info
+                                                    onClick={() => { closeSearch(); router.push(`/items?search=${encodeURIComponent(i.name)}`); }}
                                                     className="flex items-center justify-between p-2 rounded hover:bg-muted cursor-pointer text-sm"
                                                 >
                                                     <span className="font-medium text-foreground">{i.name}</span>
@@ -239,6 +245,7 @@ export default function Navbar() {
                                             {results.vouchers.map((v: any) => (
                                                 <div
                                                     key={v.id}
+                                                    onClick={() => { closeSearch(); router.push(`/daybook?voucher=${v.id}`); }}
                                                     className="group flex flex-col p-2 rounded hover:bg-muted cursor-pointer text-sm"
                                                 >
                                                     <div className="flex justify-between">

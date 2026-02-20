@@ -4,46 +4,47 @@ import { useState } from "react";
 import {
     Settings,
     MessageSquare,
-    Database,
     Shield,
     CreditCard,
     User,
-    Laptop,
-    Zap
 } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { WhatsAppSettings } from "@/components/settings/WhatsAppSettings";
-import { TallySettings } from "@/components/settings/TallySettings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState("general");
 
-    const menuItems = [
-        {
-            category: "General",
-            items: [
-                { id: "general", label: "Preferences", icon: Settings, component: GeneralSettings },
-                { id: "account", label: "Account", icon: User, disabled: true },
-            ]
-        },
-        {
-            category: "Integrations",
-            items: [
-                { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, component: WhatsAppSettings },
-                { id: "tally", label: "Tally Connector", icon: Database, component: TallySettings },
-            ]
-        },
-        {
-            category: "System",
-            items: [
-                { id: "billing", label: "Billing & Plans", icon: CreditCard, disabled: true },
-                { id: "security", label: "Security", icon: Shield, disabled: true },
-            ]
-        }
-    ];
+    const menuItems: {
+        category: string;
+        items: { id: string; label: string; icon: React.ElementType; component?: React.ComponentType; disabled?: boolean }[];
+    }[] = [
+            {
+                category: "General",
+                items: [
+                    { id: "general", label: "Preferences", icon: Settings, component: GeneralSettings },
+                    { id: "account", label: "Account", icon: User, disabled: true },
+                ]
+            },
+            {
+                category: "Integrations",
+                items: [
+                    { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, component: WhatsAppSettings },
+                ]
+            },
+            {
+                category: "System",
+                items: [
+                    { id: "billing", label: "Billing & Plans", icon: CreditCard, disabled: true },
+                    { id: "security", label: "Security", icon: Shield, disabled: true },
+                ]
+            }
+        ];
+
 
     const ActiveComponent = menuItems
         .flatMap(cat => cat.items)

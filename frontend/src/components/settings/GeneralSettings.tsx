@@ -34,22 +34,56 @@ export function GeneralSettings() {
         }
     }, [user]);
 
+    const [saveSuccess, setSaveSuccess] = useState(false);
+
     const handleSave = async () => {
         try {
             setSaving(true);
+            setSaveSuccess(false);
+
+            // Verify token exists before trying
+            const token = typeof window !== "undefined" ? localStorage.getItem("k24_token") : null;
+            if (!token) {
+                toast({
+                    title: "Session expired",
+                    description: "Please log in again to save changes.",
+                    variant: "destructive",
+                });
+                setTimeout(() => { window.location.href = "/login"; }, 1500);
+                return;
+            }
+
             await apiRequest("/api/auth/profile", "PUT", {
                 full_name: fullName,
                 whatsapp_number: mobile,
             });
-            await refreshUser(); // refresh UserContext so Sidebar/Navbar reflect new name
-            toast({ title: "Settings saved", description: "Your profile has been updated." });
+
+            await refreshUser();
+            setSaveSuccess(true);
+            toast({ title: "✓ Saved", description: "Your profile has been updated." });
+            setTimeout(() => setSaveSuccess(false), 2500);
+
         } catch (err: any) {
-            console.error("Failed to save profile:", err);
-            toast({ title: "Error", description: err?.message || "Failed to save settings", variant: "destructive" });
+            const msg: string = err?.message || "Failed to save settings";
+            const isExpired = msg.toLowerCase().includes("unauthorized") || msg.includes("401");
+
+            if (isExpired) {
+                toast({
+                    title: "Session expired",
+                    description: "Your session has expired. Redirecting to login…",
+                    variant: "destructive",
+                });
+                localStorage.removeItem("k24_token");
+                localStorage.removeItem("k24_user");
+                setTimeout(() => { window.location.href = "/login"; }, 1800);
+            } else {
+                toast({ title: "Error saving", description: msg, variant: "destructive" });
+            }
         } finally {
             setSaving(false);
         }
     };
+
 
     const handleCancel = () => {
         if (user) {
@@ -133,11 +167,16 @@ export function GeneralSettings() {
                 <Button variant="ghost" onClick={handleCancel} disabled={saving}>
                     Cancel
                 </Button>
-                <Button onClick={handleSave} disabled={saving}>
+                <Button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className={saveSuccess ? "bg-emerald-600 hover:bg-emerald-700 text-white transition-colors" : ""}
+                >
                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {saving ? "Saving…" : "Save Changes"}
+                    {saving ? "Saving…" : saveSuccess ? "✓ Saved!" : "Save Changes"}
                 </Button>
             </div>
+
         </div>
     );
 }
