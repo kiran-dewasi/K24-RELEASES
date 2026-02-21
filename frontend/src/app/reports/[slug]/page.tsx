@@ -2,7 +2,6 @@ import ReportDetailPage from "@/components/pages/ReportDetailPage";
 
 export async function generateStaticParams() {
     return [
-        { slug: 'default' },
         { slug: 'sales-register' },
         { slug: 'purchase-register' },
         { slug: 'cash-flow' },
@@ -14,6 +13,12 @@ export async function generateStaticParams() {
 
 export const dynamicParams = false;
 
-export default function Page() {
-    return <ReportDetailPage />;
+// In Next.js 15 App Router, params is a Promise — must be awaited in async server components.
+export default async function Page({
+    params,
+}: {
+    params: Promise<{ slug: string }>;
+}) {
+    const resolvedParams = await params;
+    return <ReportDetailPage slug={resolvedParams.slug} />;
 }
