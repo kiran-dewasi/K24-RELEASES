@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiClient } from "@/lib/api";
 
 // ─── Report config map ─────────────────────────────────────────────────────────
 interface ReportConfig {
@@ -289,15 +289,15 @@ function ReportDetailContent({ slug }: { slug: string }) {
         if (filters.voucherTypes.length) params.set("voucher_types", filters.voucherTypes.join(","));
         if (filters.partyName) params.set("party_name", filters.partyName);
 
-        // Build the backend URL (same base as apiRequest uses)
-        const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8001";
-        const url = `${baseUrl}/reports/${slug}/export?${params.toString()}`;
-
         try {
-            const res = await fetch(url, {
-                headers: { "X-API-Key": process.env.NEXT_PUBLIC_API_KEY || "k24-secret-key-123" },
-            });
-            if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+            // apiClient handles base URL + x-api-key + auth token for us
+            const res = await apiClient(
+                `/reports/${slug}/export?${params.toString()}`
+            );
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Server error ${res.status}: ${errText}`);
+            }
             const blob = await res.blob();
             const objUrl = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -307,9 +307,9 @@ function ReportDetailContent({ slug }: { slug: string }) {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(objUrl);
-        } catch (err) {
-            console.error("PDF export error:", err);
-            alert("Export failed — please check the backend is running.");
+        } catch (err: any) {
+            console.error("PDF export error:", err?.message || err);
+            alert(`Export failed: ${err?.message || "Unknown error — check backend is running."}`);
         }
     };
 
