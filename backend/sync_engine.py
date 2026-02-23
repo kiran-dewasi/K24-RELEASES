@@ -24,6 +24,19 @@ class SyncEngine:
     def __init__(self):
         self.tally = TallyConnector(url=TALLY_URL)
 
+    def _get_tenant_id(self, db: Session) -> str:
+        """
+        Derive the real tenant_id from the first active local user.
+        This is the single source of truth for all data written to the DB.
+        Never returns a hardcoded value — logs a warning if no user is found.
+        """
+        from backend.database import User as _User
+        user = db.query(_User).filter(_User.is_active == True).first()
+        if user and user.tenant_id:
+            return user.tenant_id
+        logger.warning("SyncEngine._get_tenant_id: no active user with tenant_id found.")
+        return "default"
+
     def _prepare_voucher_payload(self, voucher_data: dict):
         """Transform flat voucher_data into modern XML builder components"""
         company = self.tally.company_name or "Krishasales"
@@ -302,62 +315,62 @@ class SyncEngine:
         if db is None:
             db = SessionLocal()
             close_db = True
-        
+
+        tenant_id = self._get_tenant_id(db)
         synced = 0
         errors = 0
-        
+
         try:
             # Fetch from Tally
             ledgers = self.tally.fetch_ledgers().to_dict('records')
-            logger.info(f"📥 Fetched {len(ledgers)} ledgers from Tally")
-            
+            logger.info(f"📥 Fetched {len(ledgers)} ledgers from Tally (tenant={tenant_id})")
+
             for ledger_data in ledgers:
                 try:
                     name = ledger_data.get("name", ledger_data.get("NAME", ""))
                     if not name:
                         continue
-                    
-                    # Check if exists
-                    existing = db.query(Ledger).filter(Ledger.name == name).first()
-                    
-                    if existing:
-                        # Update
-                        existing.parent = ledger_data.get("parent", ledger_data.get("PARENT", existing.parent))
-                        # Don't overwrite closing_balance from List of Accounts as it's often 0
-                        # existing.closing_balance will be updated by _pull_ledger_balances
-                        existing.last_synced = datetime.now()
 
+                    # Check if exists (search by name, regardless of tenant, to handle migration)
+                    existing = db.query(Ledger).filter(Ledger.name == name).first()
+
+                    if existing:
+                        # Update — also correct tenant_id if it was previously "default"
+                        existing.tenant_id = tenant_id
+                        existing.parent = ledger_data.get("parent", ledger_data.get("PARENT", existing.parent))
+                        existing.last_synced = datetime.now()
                     else:
-                        # Create
+                        # Create with real tenant_id
                         new_ledger = Ledger(
+                            tenant_id=tenant_id,
                             name=name,
                             parent=ledger_data.get("parent", ledger_data.get("PARENT", "Sundry Debtors")),
-                            closing_balance=0.0, # Will be populated by _pull_ledger_balances
+                            closing_balance=0.0,  # Populated by _pull_ledger_balances
                             gstin=ledger_data.get("gstin", ledger_data.get("PARTYGSTIN")),
                             address=ledger_data.get("address"),
                             phone=ledger_data.get("phone"),
                             email=ledger_data.get("email"),
-                            tally_guid=ledger_data.get("guid", f"TALLY-{name}"), # GUID is tally_guid in model
+                            tally_guid=ledger_data.get("guid", f"TALLY-{name}"),
                             last_synced=datetime.now()
                         )
                         db.add(new_ledger)
-                    
+
                     synced += 1
                 except Exception as e:
                     logger.warning(f"Error syncing ledger {ledger_data}: {e}")
                     errors += 1
-            
-            # Post-Process: Sync Balances specifically using Group Summary (more reliable)
+
+            # Post-Process: Sync Balances using Group Summary (more reliable)
             self._pull_ledger_balances(db)
 
             if close_db:
                 db.commit()
                 db.close()
-                
+
         except Exception as e:
             logger.error(f"Pull Ledgers Error: {e}")
             errors += 1
-        
+
         return {"synced": synced, "errors": errors}
 
     def _pull_ledger_balances(self, db: Session):
@@ -473,41 +486,37 @@ class SyncEngine:
         if db is None:
             db = SessionLocal()
             close_db = True
-        
+
+        tenant_id = self._get_tenant_id(db)
         synced = 0
         errors = 0
-        
+
         try:
-            # Default to last 30 days if no dates
             if not from_date:
-                from_date = (datetime.now() - __import__('datetime').timedelta(days=30)).strftime("%Y%m%d")
+                from_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
             if not to_date:
                 to_date = datetime.now().strftime("%Y%m%d")
-            
+
             vouchers = self.tally.fetch_vouchers(from_date=from_date, to_date=to_date).to_dict('records')
-            logger.info(f"📥 Fetched {len(vouchers)} vouchers from Tally")
-            
+            logger.info(f"📥 Fetched {len(vouchers)} vouchers from Tally (tenant={tenant_id})")
+
             for vch_data in vouchers:
                 try:
                     guid = vch_data.get("guid", vch_data.get("GUID", ""))
                     if not guid:
                         continue
-                    
-                    # Check if exists by GUID
+
                     existing = db.query(Voucher).filter(Voucher.guid == guid).first()
-                    
-                    # Parse date
+
                     date_str = vch_data.get("date", vch_data.get("DATE", ""))
                     try:
-                        if len(str(date_str)) == 8:
-                            vch_date = datetime.strptime(str(date_str), "%Y%m%d")
-                        else:
-                            vch_date = datetime.now()
-                    except:
+                        vch_date = datetime.strptime(str(date_str), "%Y%m%d") if len(str(date_str)) == 8 else datetime.now()
+                    except Exception:
                         vch_date = datetime.now()
-                    
+
                     if existing:
-                        # Update only if newer
+                        # Update and correct tenant_id if it was previously wrong
+                        existing.tenant_id = tenant_id
                         existing.voucher_type = vch_data.get("voucher_type", vch_data.get("VOUCHERTYPENAME", existing.voucher_type))
                         existing.party_name = vch_data.get("party_name", vch_data.get("PARTYLEDGERNAME", existing.party_name))
                         existing.amount = float(vch_data.get("amount", vch_data.get("AMOUNT", existing.amount or 0)) or 0)
@@ -515,6 +524,7 @@ class SyncEngine:
                         existing.sync_status = "SYNCED"
                     else:
                         new_voucher = Voucher(
+                            tenant_id=tenant_id,
                             voucher_number=vch_data.get("voucher_number", vch_data.get("VOUCHERNUMBER", "")),
                             date=vch_date,
                             voucher_type=vch_data.get("voucher_type", vch_data.get("VOUCHERTYPENAME", "Unknown")),
@@ -526,20 +536,20 @@ class SyncEngine:
                             last_synced=datetime.now()
                         )
                         db.add(new_voucher)
-                    
+
                     synced += 1
                 except Exception as e:
                     logger.warning(f"Error syncing voucher {vch_data}: {e}")
                     errors += 1
-            
+
             if close_db:
                 db.commit()
                 db.close()
-                
+
         except Exception as e:
             logger.error(f"Pull Vouchers Error: {e}")
             errors += 1
-        
+
         return {"synced": synced, "errors": errors}
     
     def replay_offline_queue(self) -> dict:
@@ -810,6 +820,7 @@ class SyncEngine:
                     is_receivable = bill_data.get("is_receivable", True)
                     
                     if existing:
+                        existing.tenant_id = self._get_tenant_id(db)
                         existing.party_name = party_name or existing.party_name
                         existing.amount = amount if is_receivable else -amount
                         existing.due_date = due_date or existing.due_date
@@ -817,6 +828,7 @@ class SyncEngine:
                         existing.last_synced = datetime.now()
                     else:
                         new_bill = Bill(
+                            tenant_id=self._get_tenant_id(db),
                             bill_name=bill_ref,
                             party_name=party_name,
                             amount=amount if is_receivable else -amount,

@@ -41,7 +41,14 @@ def perform_sync_task(db: Session):
     2. Fetch Recent Vouchers -> Save to DB
     """
     reader = TallyReader()
-    tenant_id = "default" # TODO: Get from context/auth if needed
+
+    # Resolve tenant_id from the first active local user (single-installation desktop app).
+    # Never hardcode — every row written to the DB must carry the real user's tenant_id.
+    from backend.database import User as _User
+    _user = db.query(_User).filter(_User.is_active == True).first()
+    tenant_id = _user.tenant_id if (_user and _user.tenant_id) else "default"
+    if tenant_id == "default":
+        logger.warning("perform_sync_task: no active user with tenant_id found — data will be tagged 'default'.")
 
     try:
         # 1. SYNC MASTERS (Ledgers)
