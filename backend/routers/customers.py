@@ -31,21 +31,29 @@ def _resolve_tenant_id(current_user: Optional[User], db: Session) -> Optional[st
 
     This ensures every data query is scoped to the real tenant — never a hardcoded string.
     """
-    if current_user and current_user.tenant_id:
+    # Placeholder values that mean "not yet assigned a real tenant"
+    _INVALID_TENANTS = {"offline-default", "default", "", None}
+
+    if current_user and current_user.tenant_id not in _INVALID_TENANTS:
         return current_user.tenant_id
 
-    # API-key-only path (desktop app, no active browser session).
-    # For single-user desktop installations there is exactly one active user.
-    fallback_user = db.query(User).filter(User.is_active == True).first()
+    # JWT user exists but has a placeholder tenant_id, OR no JWT at all.
+    # Fall back to the first active user that has a real tenant_id.
+    # On a single-installation desktop app there is exactly one real tenant.
+    fallback_user = (
+        db.query(User)
+        .filter(User.is_active == True, User.tenant_id.notin_(list(_INVALID_TENANTS)))
+        .first()
+    )
     if fallback_user and fallback_user.tenant_id:
         logger.debug(
-            "No JWT user; falling back to tenant_id '%s' from local user '%s'",
+            "tenant resolved via fallback: '%s' (from user '%s')",
             fallback_user.tenant_id,
             fallback_user.username,
         )
         return fallback_user.tenant_id
 
-    logger.warning("Could not resolve tenant_id — no authenticated user and no local user found.")
+    logger.warning("Could not resolve tenant_id — no valid tenant found for any local user.")
     return None
 
 
