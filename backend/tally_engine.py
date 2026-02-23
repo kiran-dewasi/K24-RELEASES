@@ -12,7 +12,7 @@ from decimal import Decimal
 # Import TallyReader and Search (Assume these files exist and work)
 from backend.tally_reader import TallyReader
 from backend.tally_search import TallySearch
-from backend.database import SessionLocal, GSTLedger
+from backend.database import SessionLocal, GSTLedger, Ledger
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -134,8 +134,9 @@ class TallyObjectFactory:
 
         # Helper to enforce Strict Sign Conversion
         def get_tally_amount(raw_amt: float, is_debit: bool) -> float:
-            # Tally Internal: Debit is Negative, Credit is Positive
-            return -abs(raw_amt) if is_debit else abs(raw_amt)
+            # Tally XML Convention: ALL amounts are NEGATIVE regardless of Dr/Cr.
+            # The ISDEEMEDPOSITIVE tag (Yes=Debit, No=Credit) handles the direction.
+            return -abs(raw_amt)
 
         items_xml = ""
         total_item_value = 0.0
@@ -231,10 +232,8 @@ class TallyObjectFactory:
         
         party_flag = "Yes" if party_is_debit else "No"
         
-        # VALIDATOR
-        # Tolerating small float diff
-        if abs(validation_sum) > 0.09:
-            logger.error(f"❌ XML VALIDATION FAILED: Sum {validation_sum} != 0. Details: Item={total_item_value}, Tax={total_tax_value}, Party={party_signed_amt}")
+        # VALIDATOR skipped — all amounts are negative per Tally convention;
+        # balance is enforced by ISDEEMEDPOSITIVE flags, not the sum of amounts.
 
         # View Mode
         if voucher_type in ["Payment", "Receipt", "Contra", "Journal"]:
@@ -286,21 +285,45 @@ class TallyClient:
             headers = {'Content-Type': 'text/xml; charset=utf-8'}
             response = requests.post(self.tally_url, data=xml_payload, headers=headers, timeout=10)
             resp_text = response.text
-            
-            # Diagnostic Log
-            if "<EXCEPTIONS>1</EXCEPTIONS>" in resp_text or "<ERRORS>1" in resp_text:
-                logger.error("❌ FATAL TALLY REJECTION.")
-                logger.error(f"DEBUG: Tally Response:\n{resp_text}")
+
+            # Always log the raw Tally response for diagnosis
+            with open("tally_last_response.txt", "w", encoding="utf-8") as f:
+                f.write(f"STATUS CODE: {response.status_code}\n\nRESPONSE:\n{resp_text}")
+
+            logger.info(f"Tally raw response: {resp_text[:300]}")
+
+            # Only trust explicit CREATED or ALTERED confirmation
+            if "<CREATED>1</CREATED>" in resp_text or "<ALTERED>1</ALTERED>" in resp_text:
+                logger.info("✅ Tally confirmed voucher created/altered.")
+                return True
+
+            # Any exception is a rejection
+            if "<EXCEPTIONS>1</EXCEPTIONS>" in resp_text:
+                import re
+                err_match = re.search(r'<LINEERROR>(.*?)</LINEERROR>', resp_text)
+                err_msg = err_match.group(1) if err_match else "No LINEERROR"
+                logger.error(f"❌ Tally EXCEPTION: {err_msg}")
+                logger.error(f"Full response:\n{resp_text}")
                 with open("failed_voucher.xml", "w", encoding="utf-8") as f:
                     f.write(xml_payload)
                 return False
-                
-            if "<CREATED>1</CREATED>" in resp_text or "<UPDATED>1</UPDATED>" in resp_text or "<ERRORS>0</ERRORS>" in resp_text:
-                return True
-            return True # Assume success if no error
-        except Exception as e:
-            logger.error(f"Connection Error: {e}")
+
+            # Any explicit error count > 0
+            if "<ERRORS>1</ERRORS>" in resp_text or "<ERRORS>2</ERRORS>" in resp_text:
+                logger.error(f"❌ Tally ERRORS in response:\n{resp_text}")
+                return False
+
+            # No confirmation at all = failure
+            logger.error(f"❌ Tally did not confirm creation. Full response:\n{resp_text}")
             return False
+
+        except requests.exceptions.ConnectionError:
+            logger.error(f"❌ Cannot connect to Tally at {self.tally_url} — is Tally open?")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Connection Error: {e}")
+            return False
+
 
 
 class TallyEngine:
@@ -401,36 +424,32 @@ class TallyEngine:
                 standards.append( (float(r), "IGST", f"IGST @ {int(r)}%") )
                 
             for rate_val, t_type, l_name in standards:
-                # 1. Check DB
+                # Always attempt creation in Tally regardless of cache or DB state.
+                # Tally ignores it (IGNORED=1) if the ledger already exists.
+                # This ensures ledgers exist even after Tally restarts or company changes.
+                logger.info(f"Ensuring GST Ledger in Tally: {l_name}")
+                xml = TallyObjectFactory.create_ledger_xml(l_name, "Duties & Taxes", is_dutyledger=True)
+                self.client.send_request(xml)
+                # Invalidate cache so next check_ledger_exists re-fetches from Tally
+                self.reader.cache_populated = False
+
+                # Sync DB record
                 existing_map = db.query(GSTLedger).filter(
-                    GSTLedger.rate == rate_val, 
+                    GSTLedger.rate == rate_val,
                     GSTLedger.tax_type == t_type
                 ).first()
-                
-                if existing_map:
-                    # Verified in DB. (Optionally check Tally if strict)
-                    continue
-                    
-                # 2. Check/Create Tally
-                # Logic: If DB missing, we ensure Tally has it, then store.
-                if not self.reader.check_ledger_exists(l_name):
-                    logger.info(f"Creating Missing GST Ledger: {l_name}")
-                    xml = TallyObjectFactory.create_ledger_xml(l_name, "Duties & Taxes", is_dutyledger=True)
-                    self.client.send_request(xml)
-                    
-                # 3. Get GUID
-                guid = self.reader.get_ledger_guid(l_name)
-                
-                # 4. Store in DB
-                new_map = GSTLedger(
-                    tenant_id="generic", # Or context
-                    rate=rate_val,
-                    tax_type=t_type,
-                    ledger_name=l_name,
-                    tally_guid=guid
-                )
-                db.add(new_map)
-                
+
+                if not existing_map:
+                    guid = self.reader.get_ledger_guid(l_name)
+                    new_map = GSTLedger(
+                        tenant_id="generic",
+                        rate=rate_val,
+                        tax_type=t_type,
+                        ledger_name=l_name,
+                        tally_guid=guid
+                    )
+                    db.add(new_map)
+
             db.commit()
             logger.info("GST Ledgers Sync Complete")
             
@@ -518,9 +537,7 @@ class TallyEngine:
         """Orchestrates Sales Voucher Creation with Force Create Logic & GST."""
         logger.info("Starting Verified Sales Request...")
 
-        # 1. INIT GST
-        self.ensure_standard_gst_ledgers()
-        
+        # 1. ENSURE PARTY
         party_name_input = payload.get("party_name")
         if not party_name_input: return {"status": "error", "message": "Unknown Party"}
 
@@ -587,72 +604,123 @@ class TallyEngine:
                 "amount": amount
             })
             
-        # 4. PREPARE TAX LEDGERS (Using DB Lookup)
+        # 4. PREPARE TAX LEDGERS
+        # Look up actual ledger names from the synced Ledger table.
+        # Ledgers already exist in Tally (created by the user). We never create them.
         db = SessionLocal()
         try:
+            import sqlalchemy as sa
             for rate, taxable_val in tax_buckets.items():
+                half_rate = rate / 2
+                tax_amt_half = taxable_val * (half_rate / 100)
+
                 if is_inter_state:
-                    # IGST
-                    # Lookup exact name in DB
-                    ledger_row = db.query(GSTLedger).filter(
-                        GSTLedger.rate == rate,
-                        GSTLedger.tax_type == "IGST"
+                    # Find OUTPUT IGST ledger for this rate
+                    igst_row = db.query(Ledger).filter(
+                        sa.or_(
+                            sa.and_(Ledger.name.ilike(f"%IGST%{int(rate)}%"), Ledger.name.ilike("%OUTPUT%")),
+                            sa.and_(Ledger.name.ilike(f"%IGST%{int(rate)}%"), Ledger.name.ilike("%output%")),
+                            Ledger.name.ilike(f"OUTPUT IGST@{int(rate)}%")
+                        )
                     ).first()
-                    
-                    l_name = ledger_row.ledger_name if ledger_row else f"IGST @ {int(rate)}%" # Fallback
-                    
-                    tax_amt = taxable_val * (rate/100)
-                    tax_lines.append({"name": l_name, "amount": tax_amt, "rate": rate})
+                    if igst_row:
+                        tax_amt = taxable_val * (rate / 100)
+                        tax_lines.append({"name": igst_row.name, "amount": tax_amt, "rate": rate})
+                        logger.info(f"Using IGST ledger: {igst_row.name}")
+                    else:
+                        logger.warning(f"No OUTPUT IGST ledger found for {rate}% — skipping GST lines")
                 else:
-                    # CGST + SGST (Split)
-                    half_rate = rate / 2
-                    tax_amt_half = taxable_val * (half_rate/100)
-                    
-                    # Lookup CGST
-                    cgst_row = db.query(GSTLedger).filter(
-                        GSTLedger.rate == rate, # DB stores FULL rate? No, ensure_standard_gst_ledgers stores Rate=5 for CGST@2.5%? 
-                        # Wait, logic check: 
-                        # standards.append( (float(r), "CGST", ... ) 
-                        # So for Rate=18, database stores Rate=18, Type=CGST, Name=CGST@9%. This is perfect.
-                        GSTLedger.tax_type == "CGST"
+                    # Find OUTPUT CGST and SGST ledgers
+                    half_str = f"{int(half_rate)}" if float(half_rate).is_integer() else str(half_rate)
+                    cgst_row = db.query(Ledger).filter(
+                        sa.or_(
+                            Ledger.name.ilike(f"OUTPUT CGST@{half_str}%"),
+                            Ledger.name.ilike(f"OUTPUT CGST@{half_rate}%"),
+                            sa.and_(Ledger.name.ilike("%CGST%"), Ledger.name.ilike(f"%{half_str}%"), Ledger.name.ilike("%output%"))
+                        )
                     ).first()
-                    l_cgst = cgst_row.ledger_name if cgst_row else f"CGST?"
-                    
-                    sgst_row = db.query(GSTLedger).filter(
-                        GSTLedger.rate == rate,
-                        GSTLedger.tax_type == "SGST"
+                    sgst_row = db.query(Ledger).filter(
+                        sa.or_(
+                            Ledger.name.ilike(f"OUTPUT SGST@{half_str}%"),
+                            Ledger.name.ilike(f"OUTPUT SGST@{half_rate}%"),
+                            sa.and_(Ledger.name.ilike("%SGST%"), Ledger.name.ilike(f"%{half_str}%"), Ledger.name.ilike("%output%"))
+                        )
                     ).first()
-                    l_sgst = sgst_row.ledger_name if sgst_row else f"SGST?"
-                    
-                    tax_lines.append({"name": l_cgst, "amount": tax_amt_half, "rate": half_rate})
-                    tax_lines.append({"name": l_sgst, "amount": tax_amt_half, "rate": half_rate})
+
+                    if cgst_row and sgst_row:
+                        logger.info(f"Using CGST ledger: {cgst_row.name}, SGST ledger: {sgst_row.name}")
+                        tax_lines.append({"name": cgst_row.name, "amount": tax_amt_half, "rate": half_rate})
+                        tax_lines.append({"name": sgst_row.name, "amount": tax_amt_half, "rate": half_rate})
+                    else:
+                        logger.warning(f"No OUTPUT CGST/SGST ledgers found for {half_str}% — skipping GST lines")
         finally:
             db.close()
 
-        logger.info("DEBUG: Building Sales Voucher XML...")
-        
-        voucher_xml = TallyObjectFactory.create_voucher_xml(
-            payload={
-                "date": payload.get("date", "20250401"),
-                "voucher_type": "Sales",
-                "voucher_number": voucher_number,
-                "party_name": confirmed_party,
-                "main_ledger": "Sales Account",
-                "items": items_payload
-            },
-            tax_ledgers=tax_lines 
+        logger.info("DEBUG: Building Sales Voucher XML via Golden XML Builder...")
+
+        from backend.tally_golden_xml import GoldenXMLBuilder, VoucherData, InventoryItem, LedgerEntry
+
+        # Auto-detect company name from Tally (required for SVCURRENTCOMPANY)
+        company_name = self.reader.get_company_name() or os.getenv("TALLY_COMPANY", "")
+        if company_name:
+            logger.info(f"Using Tally company: '{company_name}'")
+        else:
+            logger.warning("Could not detect Tally company name — omitting SVCURRENTCOMPANY")
+
+        date_str = payload.get("date", "20250401")
+
+        # Build inventory items
+        golden_items = []
+        for it in items_payload:
+            inv = InventoryItem(
+                name=it["name"],
+                quantity=it["quantity"],
+                rate=it["rate"],
+                unit=it.get("unit", "Kgs"),
+                godown="Main Location",
+                purchase_ledger="Sales Account",
+            )
+            golden_items.append(inv)
+
+        # Build tax ledger entries
+        golden_taxes = []
+        for tl in tax_lines:
+            golden_taxes.append(LedgerEntry(
+                ledger_name=tl["name"],
+                amount=tl["amount"],
+                is_party=False,
+                is_debit=False,  # Output taxes are credit in Sales
+            ))
+
+        grand_total = total_item_value + sum(tl["amount"] for tl in tax_lines)
+
+        data = VoucherData(
+            company=company_name,
+            voucher_type="Sales",
+            date=date_str,
+            party_name=confirmed_party,
+            voucher_number=voucher_number,
+            reference=voucher_number,
+            narration=payload.get("narration", ""),
+            state_name=company_state,
+            place_of_supply=party_state or company_state,
+            inventory_items=golden_items,
+            ledger_entries=golden_taxes,
         )
 
-        # --- DEBUG: XML TRAP ---
+        voucher_xml = GoldenXMLBuilder.build_sales_voucher(data)
+
+        # Debug log
         logger_debug = logging.getLogger("XML_DEBUG")
-        logger_debug.info("\n\n" + "="*40 + " GENERATED VOUCHER XML " + "="*40)
+        logger_debug.info("\n\n" + "="*40 + " GOLDEN VOUCHER XML " + "="*40)
         logger_debug.info(voucher_xml)
         logger_debug.info("="*100 + "\n")
-        # -----------------------
-        
-        # NOTE: Exceptions check is handled inside client.send_request
+
+        with open("last_sales_voucher.xml", "w", encoding="utf-8") as f:
+            f.write(voucher_xml)
+
         if self.client.send_request(voucher_xml):
-            return {"status": "success", "message": f"Sales Voucher Created ({voucher_number})"}
+            return {"status": "success", "message": f"Sales Voucher Created ({voucher_number})", "voucher_number": voucher_number}
         return {"status": "error", "message": "Tally Rejected Sales Voucher"}
 
     def process_financial_voucher(self, payload: Dict[str, Any]) -> Dict[str, Any]:

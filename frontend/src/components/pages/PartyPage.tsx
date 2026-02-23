@@ -84,6 +84,29 @@ function PartyProfileContent() {
         }
     };
 
+    const handleExport = () => {
+        if (!profile) return;
+        // Build CSV from transactions
+        const rows = [
+            ['Date', 'Voucher No', 'Type', 'Amount', 'Narration'],
+            ...transactions.map(t => [
+                new Date(t.date).toLocaleDateString('en-IN'),
+                t.voucher_number,
+                t.voucher_type,
+                t.amount.toFixed(2),
+                t.narration || ''
+            ])
+        ];
+        const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${profile.name.replace(/[^a-z0-9]/gi, '_')}_transactions.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     if (id === 'default') {
         return <div className="p-8 text-center text-muted-foreground">Select a party to view profile.</div>;
     }
@@ -122,10 +145,17 @@ function PartyProfileContent() {
                     >
                         <ArrowUpRight className="h-4 w-4" /> View 360° Profile
                     </Button>
-                    <Button variant="outline" className="gap-2">
+                    <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => handleExport()}
+                    >
                         <Download className="h-4 w-4" /> Export
                     </Button>
-                    <Button className="gap-2">
+                    <Button
+                        className="gap-2"
+                        onClick={() => router.push(`/vouchers/new/sales?party=${encodeURIComponent(profile?.name || '')}`)}
+                    >
                         <FileText className="h-4 w-4" /> Create Invoice
                     </Button>
                 </div>

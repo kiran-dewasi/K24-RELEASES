@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -88,6 +88,68 @@ import time
 CALLY_CACHE_TTL = 60   # seconds
 _voucher_cache: dict = {}  # key -> {"data": [...], "ledger_map": {...}, "ts": float}
 
+@router.get("/vouchers/detail", dependencies=[Depends(get_api_key)])
+async def get_voucher_detail(
+    voucher_number: str,
+    voucher_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    🔍 Fetch full voucher detail including line items (inventory entries)
+    from Tally. Used for transaction drill-down in the 360° profile.
+
+    Returns:
+        - voucher header (date, type, party, narration)
+        - items[] with name, quantity, rate, amount
+        - ledgers[] (accounting entries)
+        - tax_breakdown[]
+        - total_amount
+    """
+    try:
+        detail = tally_connector.fetch_voucher_with_line_items(
+            voucher_number=voucher_number,
+            voucher_type=voucher_type,
+        )
+
+        if not detail:
+            # Fallback: try from local DB
+            v = db.query(Voucher).filter(Voucher.voucher_number == voucher_number).first()
+            if v:
+                return {
+                    "voucher_number": v.voucher_number,
+                    "date": v.date.strftime("%Y%m%d") if v.date else "",
+                    "voucher_type": v.voucher_type,
+                    "party_name": v.party_name,
+                    "narration": v.narration or "",
+                    "guid": v.guid or "",
+                    "items": [],
+                    "ledgers": [],
+                    "tax_breakdown": [],
+                    "total_amount": v.amount,
+                    "source": "local_db",
+                }
+            raise HTTPException(status_code=404, detail=f"Voucher '{voucher_number}' not found")
+
+        # Format date
+        raw_date = detail.get("date", "")
+        formatted_date = raw_date
+        if raw_date and len(raw_date) >= 8:
+            try:
+                formatted_date = datetime.strptime(raw_date[:8], "%Y%m%d").strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        detail["date"] = formatted_date
+        detail["source"] = "tally"
+        return detail
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to fetch voucher detail for {voucher_number}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/vouchers", dependencies=[Depends(get_api_key)])
 async def get_vouchers(
     voucher_type: Optional[str] = None, 
@@ -96,10 +158,36 @@ async def get_vouchers(
     search_query: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
-    db: Session = Depends(get_db), 
-    tenant_id: str = Depends(get_current_tenant_id)
+    db: Session = Depends(get_db),
+    request: Request = None,
 ):
-    """Fetch vouchers directly from Tally (Live Daybook) with Pagination"""
+    """Fetch vouchers directly from Tally (Live Daybook) with Pagination.
+    
+    Daybook reads live data from Tally — not tenant-scoped from DB.
+    Auth is optional: if a valid JWT exists, we use its tenant_id; 
+    otherwise we fall back gracefully to 'default' (dev / local mode).
+    """
+    # Graceful tenant resolution — don't block daybook if user isn't logged in
+    tenant_id = "default"
+    try:
+        from fastapi.security import OAuth2PasswordBearer
+        from backend.auth import get_current_tenant_id as _get_tid, get_current_user
+        from backend.database import get_db as _get_db
+        if request:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+                from backend.auth import SECRET_KEY, ALGORITHM
+                from jose import jwt as _jwt, JWTError
+                payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                username = payload.get("sub")
+                if username:
+                    from backend.database import User
+                    user = db.query(User).filter(User.username == username).first()
+                    if user and user.tenant_id:
+                        tenant_id = user.tenant_id
+    except Exception:
+        pass  # Fall back to "default"
     try:
         # Default Daybook View: Today if not specified
         today = date.today()

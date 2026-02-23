@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-import { apiRequest, apiClient } from "@/lib/api";
+import { apiRequest } from "@/lib/api";
 
 // ─── Report config map ─────────────────────────────────────────────────────────
 interface ReportConfig {
@@ -283,20 +283,18 @@ function ReportDetailContent({ slug }: { slug: string }) {
 
     const handleExport = async () => {
         if (!data) return;
-        const params = new URLSearchParams();
+        const params = new URLSearchParams({ slug });
         if (filters.dateFrom) params.set("date_from", filters.dateFrom);
         if (filters.dateTo) params.set("date_to", filters.dateTo);
         if (filters.voucherTypes.length) params.set("voucher_types", filters.voucherTypes.join(","));
         if (filters.partyName) params.set("party_name", filters.partyName);
 
         try {
-            // apiClient handles base URL + x-api-key + auth token for us
-            const res = await apiClient(
-                `/reports/${slug}/export?${params.toString()}`
-            );
+            // Call the Next.js API proxy — runs server-side, no Tauri/CORS issues
+            const res = await fetch(`/api/export-pdf?${params.toString()}`);
             if (!res.ok) {
-                const errText = await res.text();
-                throw new Error(`Server error ${res.status}: ${errText}`);
+                const errJson = await res.json().catch(() => ({ error: res.statusText }));
+                throw new Error(errJson?.error || `HTTP ${res.status}`);
             }
             const blob = await res.blob();
             const objUrl = URL.createObjectURL(blob);
@@ -309,7 +307,7 @@ function ReportDetailContent({ slug }: { slug: string }) {
             URL.revokeObjectURL(objUrl);
         } catch (err: any) {
             console.error("PDF export error:", err?.message || err);
-            alert(`Export failed: ${err?.message || "Unknown error — check backend is running."}`);
+            alert(`Export failed: ${err?.message || "Unknown error — check the backend is running."}`);
         }
     };
 

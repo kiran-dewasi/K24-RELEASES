@@ -29,15 +29,18 @@ def get_tenant_id_or_default() -> str:
 
 
 def is_tally_online() -> bool:
-    """Quick check if Tally is responding"""
+    """Quick check if Tally is responding.
+    
+    Uses a GET request — Tally's HTTP server responds 200 to GET on port 9000.
+    POST with partial XML often times out or gets rejected by Tally.
+    """
     if not TALLY_AVAILABLE:
         return False
     try:
         import requests
-        response = requests.post(
+        response = requests.get(
             "http://localhost:9000",
-            data="<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY></BODY></ENVELOPE>",
-            timeout=5  # Increased from 1 to 5 seconds
+            timeout=3
         )
         return response.status_code == 200
     except:
@@ -275,52 +278,97 @@ def get_dashboard_stock(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id_or_default)
 ):
-    """Returns stock summary metrics."""
-    # Try Tally first
-    if is_tally_online():
+    """Returns stock summary metrics. Always tries Tally first, falls back to DB."""
+    # Always attempt Tally (don't pre-check connectivity — just try and catch)
+    if TALLY_AVAILABLE:
         try:
             reader = TallyReader()
             items = reader.get_stock_summary()
             
-            total_value = 0.0
-            low_stock_count = 0
-            detailed_items = []
-            
-            for i in items:
-                try:
-                    val = float(i.get("value", 0) or 0)
-                    qty = float(i.get("closing_balance", 0) or 0)
-                    rate = float(i.get("rate", 0) or 0)
-                except:
-                    val, qty, rate = 0.0, 0.0, 0.0
-                    
-                total_value += val
+            if items:  # Only use Tally result if it actually returned data
+                total_value = 0.0
+                low_stock_count = 0
+                detailed_items = []
                 
-                status = "In Stock"
-                if qty <= 0:
-                    status = "Out of Stock"
-                elif qty < 10:
-                    status = "Low Stock"
-                    low_stock_count += 1
+                for i in items:
+                    try:
+                        val = float(i.get("value", 0) or 0)
+                        qty = float(i.get("closing_balance", 0) or 0)
+                        rate = float(i.get("rate", 0) or 0)
+                    except:
+                        val, qty, rate = 0.0, 0.0, 0.0
+                        
+                    total_value += val
                     
-                detailed_items.append({
-                    "name": i.get("name", "Unknown"),
-                    "quantity": qty,
-                    "rate": rate,
-                    "value": val,
-                    "status": status
-                })
-                     
-            detailed_items.sort(key=lambda x: x["value"], reverse=True)
-                     
-            return {
-                "total_items": len(items),
-                "low_stock_items": low_stock_count,
-                "total_value": total_value,
-                "items": detailed_items[:50]
-            }
+                    status = "In Stock"
+                    if qty <= 0:
+                        status = "Out of Stock"
+                    elif qty < 10:
+                        status = "Low Stock"
+                        low_stock_count += 1
+                        
+                    detailed_items.append({
+                        "name": i.get("name", "Unknown"),
+                        "quantity": qty,
+                        "rate": rate,
+                        "value": val,
+                        "status": status
+                    })
+                         
+                detailed_items.sort(key=lambda x: x["value"], reverse=True)
+                         
+                return {
+                    "total_items": len(items),
+                    "low_stock_items": low_stock_count,
+                    "total_value": total_value,
+                    "items": detailed_items[:50],
+                    "source": "tally"
+                }
         except Exception as e:
-            logger.warning(f"Tally stock summary failed: {e}")
+            logger.warning(f"Tally stock summary failed, falling back to DB: {e}")
+    
+    # Fallback: Database
+    items = db.query(StockItem).filter(
+        StockItem.tenant_id == tenant_id
+    ).all()
+    
+    total_value = 0.0
+    low_stock_count = 0
+    detailed_items = []
+    
+    for item in items:
+        qty = item.closing_balance or 0
+        rate = item.rate or 0
+        val = qty * rate
+        
+        total_value += val
+        
+        status = "In Stock"
+        if qty <= 0:
+            status = "Out of Stock"
+        elif qty < 10:
+            status = "Low Stock"
+            low_stock_count += 1
+            
+        detailed_items.append({
+            "name": item.name or "Unknown",
+            "quantity": qty,
+            "rate": rate,
+            "value": val,
+            "status": status
+        })
+    
+    detailed_items.sort(key=lambda x: x["value"], reverse=True)
+    
+    return {
+        "total_items": len(items),
+        "low_stock_items": low_stock_count,
+        "total_value": total_value,
+        "items": detailed_items[:50],
+        "source": "database"
+    }
+
+
     
     # Fallback: Database
     items = db.query(StockItem).filter(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Wallet, TrendingUp, CreditCard, PiggyBank, ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react";
@@ -58,6 +59,7 @@ export default function DashboardStats() {
     const [partyStats, setPartyStats] = useState<PartyStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const router = useRouter();
 
     useEffect(() => {
         const fetchAll = async () => {
@@ -268,7 +270,7 @@ export default function DashboardStats() {
                             • Low Stock Items: <span className="font-bold text-amber-600">{stockStats?.low_stock_items || 0}</span>
                         </p>
                     </div>
-                    <Button variant="outline" size="sm">View Full Inventory</Button>
+                    <Button variant="outline" size="sm" onClick={() => router.push('/inventory')}>View Full Inventory</Button>
                 </CardHeader>
                 <CardContent>
                     <div className="rounded-md border">

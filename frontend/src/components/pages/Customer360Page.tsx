@@ -1,8 +1,7 @@
 'use client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
 import { useEffect, useState, Suspense } from 'react';
+import { apiClient } from '@/lib/api';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,8 +10,190 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     ArrowLeft, Phone, Mail, MapPin, FileText, Download,
     TrendingUp, TrendingDown, AlertTriangle, CheckCircle,
-    Clock, CreditCard, Package, BarChart3, RefreshCw, Loader2
+    Clock, CreditCard, Package, BarChart3, RefreshCw, Loader2, X, ChevronRight
 } from 'lucide-react';
+
+// --- Voucher Detail Types ---
+interface VoucherLineItem {
+    name: string;
+    quantity: number;
+    rate: number;
+    amount: number;
+    godown?: string;
+    batch?: string;
+}
+interface VoucherDetail {
+    voucher_number: string;
+    date: string;
+    voucher_type: string;
+    party_name: string;
+    narration: string;
+    items: VoucherLineItem[];
+    ledgers: { name: string; amount: number; is_tax: boolean }[];
+    tax_breakdown: { name: string; amount: number }[];
+    total_amount: number;
+    source?: string;
+}
+
+// --- Voucher Detail Modal ---
+function VoucherDetailModal({
+    voucher,
+    loading,
+    onClose,
+}: {
+    voucher: VoucherDetail | null;
+    loading: boolean;
+    onClose: () => void;
+}) {
+    const fmt = (n: number) =>
+        `₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const typeColor: Record<string, string> = {
+        Sales: 'bg-blue-100 text-blue-700',
+        Purchase: 'bg-purple-100 text-purple-700',
+        Receipt: 'bg-green-100 text-green-700',
+        Payment: 'bg-orange-100 text-orange-700',
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onClick={onClose}>
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            {/* Panel */}
+            <div
+                className="relative w-full max-w-2xl mx-4 bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-slate-800 to-slate-700">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <span className="text-white font-bold text-lg">
+                                {loading ? 'Loading…' : (voucher?.voucher_number || '—')}
+                            </span>
+                            {voucher && (
+                                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${typeColor[voucher.voucher_type] || 'bg-gray-100 text-gray-700'}`}>
+                                    {voucher.voucher_type}
+                                </span>
+                            )}
+                        </div>
+                        {voucher && (
+                            <p className="text-slate-300 text-sm mt-0.5">
+                                {voucher.party_name} · {voucher.date}
+                            </p>
+                        )}
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="text-slate-400 hover:text-white rounded-full p-1 transition-colors"
+                    >
+                        <X className="h-5 w-5" />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="overflow-y-auto flex-1 p-6">
+                    {loading && (
+                        <div className="flex flex-col items-center justify-center py-16">
+                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-3" />
+                            <p className="text-gray-500 text-sm">Fetching voucher details from Tally…</p>
+                        </div>
+                    )}
+
+                    {!loading && !voucher && (
+                        <div className="text-center py-16">
+                            <AlertTriangle className="h-10 w-10 text-orange-400 mx-auto mb-3" />
+                            <p className="text-gray-600 font-medium">Voucher details not available</p>
+                            <p className="text-gray-400 text-sm mt-1">Tally may not have returned line items for this voucher type.</p>
+                        </div>
+                    )}
+
+                    {!loading && voucher && (
+                        <div className="space-y-5">
+                            {/* Narration */}
+                            {voucher.narration && (
+                                <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 italic">
+                                    {voucher.narration}
+                                </div>
+                            )}
+
+                            {/* Line Items */}
+                            {voucher.items.length > 0 ? (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                        <Package className="h-4 w-4" /> Items ({voucher.items.length})
+                                    </h3>
+                                    <div className="rounded-xl border overflow-hidden">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-slate-50">
+                                                <tr>
+                                                    <th className="text-left py-2 px-3 font-medium text-slate-600">#</th>
+                                                    <th className="text-left py-2 px-3 font-medium text-slate-600">Item</th>
+                                                    <th className="text-right py-2 px-3 font-medium text-slate-600">Qty</th>
+                                                    <th className="text-right py-2 px-3 font-medium text-slate-600">Rate</th>
+                                                    <th className="text-right py-2 px-3 font-medium text-slate-600">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {voucher.items.map((item, i) => (
+                                                    <tr key={i} className="border-t hover:bg-slate-50">
+                                                        <td className="py-3 px-3 text-slate-400">{i + 1}</td>
+                                                        <td className="py-3 px-3">
+                                                            <p className="font-medium text-slate-800">{item.name}</p>
+                                                            {item.godown && item.godown !== 'Main Location' && (
+                                                                <p className="text-xs text-slate-400">{item.godown}</p>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-3 text-right text-slate-600">{item.quantity}</td>
+                                                        <td className="py-3 px-3 text-right text-slate-600">{fmt(item.rate)}</td>
+                                                        <td className="py-3 px-3 text-right font-semibold text-slate-800">{fmt(item.amount)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="border border-dashed rounded-lg p-6 text-center text-slate-400">
+                                    <Package className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                                    <p className="text-sm">No inventory items on this voucher</p>
+                                    <p className="text-xs mt-1">(Receipt / Payment vouchers don't carry stock entries)</p>
+                                </div>
+                            )}
+
+                            {/* Ledger Entries */}
+                            {voucher.ledgers.length > 0 && (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                        <CreditCard className="h-4 w-4" /> Accounting Entries
+                                    </h3>
+                                    <div className="space-y-1">
+                                        {voucher.ledgers.map((led, i) => (
+                                            <div key={i} className={`flex justify-between items-center px-3 py-2 rounded-lg text-sm ${led.is_tax ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-700'
+                                                }`}>
+                                                <span className="font-medium">{led.name}</span>
+                                                <span className={`font-mono font-semibold ${led.amount < 0 ? 'text-green-600' : 'text-red-600'
+                                                    }`}>
+                                                    {led.amount < 0 ? 'Cr ' : 'Dr '}{fmt(Math.abs(led.amount))}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Total */}
+                            <div className="border-t pt-4 flex justify-between items-center">
+                                <span className="text-base font-semibold text-slate-700">Total Amount</span>
+                                <span className="text-xl font-bold text-slate-900">{fmt(voucher.total_amount)}</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // --- Types ---
 interface Customer360Data {
@@ -242,21 +423,41 @@ function Customer360Content() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Voucher detail modal state
+    const [selectedVoucher, setSelectedVoucher] = useState<VoucherDetail | null>(null);
+    const [voucherModalOpen, setVoucherModalOpen] = useState(false);
+    const [voucherLoading, setVoucherLoading] = useState(false);
+
+    const openVoucherDetail = async (voucherNumber: string, voucherType: string) => {
+        setSelectedVoucher(null);
+        setVoucherModalOpen(true);
+        setVoucherLoading(true);
+        try {
+            const params = new URLSearchParams({ voucher_number: voucherNumber, voucher_type: voucherType });
+            const res = await apiClient(`/api/vouchers/detail?${params}`);
+            if (res.ok) {
+                const detail = await res.json();
+                setSelectedVoucher(detail);
+            }
+        } catch (err) {
+            console.error('Failed to fetch voucher detail:', err);
+        } finally {
+            setVoucherLoading(false);
+        }
+    };
+
     const fetchData = async () => {
         setLoading(true);
         setError(null);
         try {
-            const token = localStorage.getItem('k24_token');
-            const headers: Record<string, string> = { 'x-api-key': 'k24-secret-key-123' };
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-            const res = await fetch(`${API_URL}/api/customers/${id}/360`, { headers });
+            const res = await apiClient(`/api/customers/${id}/360`);
 
             if (!res.ok) {
                 if (res.status === 404) {
                     setError('Customer not found');
                 } else {
-                    setError('Failed to load customer data');
+                    const errBody = await res.json().catch(() => ({}));
+                    setError(errBody.detail || 'Failed to load customer data');
                 }
                 return;
             }
@@ -269,6 +470,58 @@ function Customer360Content() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleExport = () => {
+        if (!data) return;
+        const { customer, recent_transactions, outstanding_bills, summary } = data;
+
+        // Sheet 1: Summary
+        const summaryRows = [
+            ['Customer 360° Export'],
+            ['Name', customer.name],
+            ['Group', customer.group || ''],
+            ['GSTIN', customer.gstin || ''],
+            ['Phone', customer.phone || ''],
+            ['Closing Balance', summary.current_balance.toFixed(2)],
+            ['Total Sales', summary.total_sales.toFixed(2)],
+            ['Total Purchases', summary.total_purchases.toFixed(2)],
+            ['Outstanding Total', summary.outstanding_total.toFixed(2)],
+            ['Overdue Total', summary.overdue_total.toFixed(2)],
+            ['Transaction Count', summary.transaction_count],
+            [],
+            ['--- RECENT TRANSACTIONS ---'],
+            ['Date', 'Voucher No', 'Type', 'Amount', 'Narration'],
+            ...recent_transactions.map(t => [
+                t.date,
+                t.voucher_number,
+                t.voucher_type,
+                t.amount.toFixed(2),
+                t.narration || ''
+            ]),
+            [],
+            ['--- OUTSTANDING BILLS ---'],
+            ['Bill Name', 'Amount', 'Pending', 'Due Date', 'Overdue Days', 'Aging'],
+            ...outstanding_bills.map(b => [
+                b.bill_name,
+                b.amount.toFixed(2),
+                b.pending_amount.toFixed(2),
+                b.due_date || '',
+                b.overdue_days,
+                b.aging_bucket
+            ])
+        ];
+
+        const csv = summaryRows
+            .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${customer.name.replace(/[^a-z0-9]/gi, '_')}_360_profile.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     useEffect(() => {
@@ -338,11 +591,15 @@ function Customer360Content() {
                                 <RefreshCw className="h-4 w-4 mr-2" />
                                 Refresh
                             </Button>
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" onClick={handleExport}>
                                 <Download className="h-4 w-4 mr-2" />
                                 Export
                             </Button>
-                            <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                            <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700"
+                                onClick={() => router.push(`/vouchers/new/sales?party=${encodeURIComponent(customer.name)}`)}
+                            >
                                 <FileText className="h-4 w-4 mr-2" />
                                 Create Invoice
                             </Button>
@@ -569,6 +826,9 @@ function Customer360Content() {
                                 <CardDescription>Last 20 transactions with this customer</CardDescription>
                             </CardHeader>
                             <CardContent>
+                                <p className="text-xs text-blue-600 mb-3 flex items-center gap-1">
+                                    <ChevronRight className="h-3 w-3" /> Click any row to view full voucher detail
+                                </p>
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b bg-gray-50">
@@ -577,21 +837,30 @@ function Customer360Content() {
                                             <th className="text-left py-3 px-4 text-sm font-medium">Type</th>
                                             <th className="text-left py-3 px-4 text-sm font-medium">Narration</th>
                                             <th className="text-right py-3 px-4 text-sm font-medium">Amount</th>
+                                            <th className="py-3 px-4"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {recent_transactions.map((txn, i) => (
-                                            <tr key={i} className="border-b hover:bg-gray-50 transition-colors">
-                                                <td className="py-3 px-4">{txn.date}</td>
-                                                <td className="py-3 px-4 font-mono text-sm">{txn.voucher_number}</td>
+                                            <tr
+                                                key={i}
+                                                className="border-b hover:bg-blue-50 transition-colors cursor-pointer group"
+                                                onClick={() => openVoucherDetail(txn.voucher_number, txn.voucher_type)}
+                                                title="Click to view details"
+                                            >
+                                                <td className="py-3 px-4 text-sm">{txn.date}</td>
+                                                <td className="py-3 px-4 font-mono text-sm text-blue-600 group-hover:underline">{txn.voucher_number}</td>
                                                 <td className="py-3 px-4">
                                                     <Badge variant="outline">{txn.voucher_type}</Badge>
                                                 </td>
                                                 <td className="py-3 px-4 text-gray-600 text-sm max-w-xs truncate">
                                                     {txn.narration || '-'}
                                                 </td>
-                                                <td className="py-3 px-4 text-right font-mono">
+                                                <td className="py-3 px-4 text-right font-mono font-semibold">
                                                     {formatCurrency(txn.amount)}
+                                                </td>
+                                                <td className="py-3 px-4 text-right">
+                                                    <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-blue-500 ml-auto" />
                                                 </td>
                                             </tr>
                                         ))}
@@ -798,6 +1067,18 @@ function Customer360Content() {
                     </TabsContent>
                 </Tabs>
             </div>
+
+            {/* Voucher Detail Modal */}
+            {voucherModalOpen && (
+                <VoucherDetailModal
+                    voucher={selectedVoucher}
+                    loading={voucherLoading}
+                    onClose={() => {
+                        setVoucherModalOpen(false);
+                        setSelectedVoucher(null);
+                    }}
+                />
+            )}
         </div>
     );
 }

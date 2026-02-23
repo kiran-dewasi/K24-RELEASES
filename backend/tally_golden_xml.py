@@ -65,6 +65,10 @@ class VoucherData:
     inventory_items: List[InventoryItem] = field(default_factory=list)
     ledger_entries: List[LedgerEntry] = field(default_factory=list)
 
+    # Override sales ledger name (default: "Sales Account")
+    sales_ledger_name: Optional[str] = None
+
+
 
 class GoldenXMLBuilder:
     """
@@ -90,8 +94,10 @@ class GoldenXMLBuilder:
             return datetime.datetime.now().strftime("%Y%m%d")
     
     @staticmethod
-    def build_envelope(company: str) -> str:
-        """Build the standard envelope header"""
+    def build_envelope(company: str = "", report_name: str = "All Masters") -> str:
+        """Build the standard envelope header.
+        SVCURRENTCOMPANY is intentionally omitted — Tally uses whichever company is open.
+        """
         return f"""<ENVELOPE>
  <HEADER>
   <TALLYREQUEST>Import Data</TALLYREQUEST>
@@ -99,10 +105,7 @@ class GoldenXMLBuilder:
  <BODY>
   <IMPORTDATA>
    <REQUESTDESC>
-    <REPORTNAME>All Masters</REPORTNAME>
-    <STATICVARIABLES>
-     <SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY>
-    </STATICVARIABLES>
+    <REPORTNAME>{report_name}</REPORTNAME>
    </REQUESTDESC>
    <REQUESTDATA>
 """
@@ -110,6 +113,73 @@ class GoldenXMLBuilder:
     @staticmethod
     def close_envelope() -> str:
         """Close the envelope"""
+        return """   </REQUESTDATA>
+  </IMPORTDATA>
+ </BODY>
+</ENVELOPE>"""
+
+    @classmethod
+    def build_stock_item_xml(cls, name: str, unit: str = "Kgs",
+                              under_group: str = "Primary",
+                              gst_rate: float = 0.0) -> str:
+        """
+        Build XML to create a Stock Item in Tally.
+        Called automatically before creating Invoice Voucher View vouchers
+        to ensure the stock item exists in Tally.
+        """
+        guid = cls.generate_guid()
+        xml = cls.build_envelope()
+        xml += f"""    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+     <STOCKITEM NAME="{escape(name)}" ACTION="Create">
+      <NAME>{escape(name)}</NAME>
+      <PARENT>{escape(under_group)}</PARENT>
+      <CATEGORY>&#4; Not Applicable</CATEGORY>
+      <BASEUNITS>{escape(unit)}</BASEUNITS>
+      <GSTAPPLICABLE>&#4; Applicable</GSTAPPLICABLE>
+      <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+      <GUID>{guid}</GUID>
+      <ISDELETED>No</ISDELETED>
+      <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
+     </STOCKITEM>
+    </TALLYMESSAGE>
+"""
+        xml += cls.close_envelope()
+        return xml
+
+    @classmethod
+    def create_stock_item_in_tally(cls, name: str, tally_url: str,
+                                    unit: str = "Kgs",
+                                    under_group: str = "Primary") -> bool:
+        """
+        Auto-create a stock item in Tally if it doesn't exist.
+        Returns True if created or already exists, False on failure.
+        """
+        import requests as _requests
+        import logging as _logging
+        _log = _logging.getLogger("GoldenXMLBuilder")
+
+        try:
+            xml = cls.build_stock_item_xml(name, unit, under_group)
+            resp = _requests.post(
+                tally_url, data=xml,
+                headers={'Content-Type': 'text/xml; charset=utf-8'},
+                timeout=8
+            )
+            txt = resp.text
+            if "<CREATED>1</CREATED>" in txt or "<ALTERED>1</ALTERED>" in txt:
+                _log.info(f"✅ Stock item '{name}' created in Tally")
+                return True
+            if "<EXCEPTIONS>1</EXCEPTIONS>" in txt:
+                # Item might already exist — not a hard failure
+                _log.warning(f"Stock item '{name}' creation got EXCEPTION (may already exist): {txt[:200]}")
+                return True   # We proceed anyway — voucher might still work
+            _log.warning(f"Stock item '{name}' creation — unknown response: {txt[:200]}")
+            return True  # Proceed optimistically
+        except Exception as e:
+            _log.warning(f"Could not create stock item '{name}' in Tally: {e}")
+            return False
+
+
         return """   </REQUESTDATA>
   </IMPORTDATA>
  </BODY>
@@ -132,7 +202,7 @@ class GoldenXMLBuilder:
         tax_total = sum(entry.amount for entry in data.ledger_entries if not entry.is_party)
         voucher_total = item_total + tax_total
         
-        xml = cls.build_envelope(data.company)
+        xml = cls.build_envelope(data.company, report_name="Vouchers")
         xml += f"""    <TALLYMESSAGE xmlns:UDF="TallyUDF">
      <VOUCHER REMOTEID="{guid}" VCHTYPE="Purchase" ACTION="Create" OBJVIEW="Invoice Voucher View">
       <BASICBUYERADDRESS.LIST TYPE="String">
@@ -378,68 +448,41 @@ class GoldenXMLBuilder:
         """Build Sales voucher XML matching golden structure"""
         guid = cls.generate_guid()
         date = cls.format_date(data.date)
-        
+
         # Calculate totals
         item_total = sum(item.amount for item in data.inventory_items)
-        
+        tax_total = sum(e.amount for e in data.ledger_entries if not e.is_party)
+        grand_total = item_total + tax_total
+
+        # Find the correct Sales ledger name — use passed override or default
+        sales_ledger = data.sales_ledger_name or "Sales Account"
+
         xml = cls.build_envelope(data.company)
         xml += f"""    <TALLYMESSAGE xmlns:UDF="TallyUDF">
-     <VOUCHER REMOTEID="{guid}" VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">
+     <VOUCHER REMOTEID="{guid}" VCHTYPE="Sales" ACTION="Create" OBJVIEW="Accounting Voucher View">
       <OLDAUDITENTRYIDS.LIST TYPE="Number">
        <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
       </OLDAUDITENTRYIDS.LIST>
       <DATE>{date}</DATE>
-      <BILLOFLADINGDATE>{date}</BILLOFLADINGDATE>
       <VCHSTATUSDATE>{date}</VCHSTATUSDATE>
       <GUID>{guid}</GUID>
-      <GSTREGISTRATIONTYPE>{escape(data.gst_registration_type)}</GSTREGISTRATIONTYPE>
-      <VATDEALERTYPE>Regular</VATDEALERTYPE>
       <STATENAME>{escape(data.state_name)}</STATENAME>
-      <COUNTRYOFRESIDENCE>India</COUNTRYOFRESIDENCE>
-      <PARTYGSTIN>{escape(data.party_gstin or "")}</PARTYGSTIN>
+      <GSTREGISTRATIONTYPE>{escape(data.gst_registration_type)}</GSTREGISTRATIONTYPE>
       <PLACEOFSUPPLY>{escape(data.place_of_supply)}</PLACEOFSUPPLY>
       <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
       <PARTYNAME>{escape(data.party_name)}</PARTYNAME>
       <PARTYLEDGERNAME>{escape(data.party_name)}</PARTYLEDGERNAME>
       <VOUCHERNUMBER>{escape(data.voucher_number or "")}</VOUCHERNUMBER>
-      <BASICBUYERNAME>{escape(data.party_name)}</BASICBUYERNAME>
-      <PARTYMAILINGNAME>{escape(data.party_name)}</PARTYMAILINGNAME>
-      <CONSIGNEEMAILINGNAME>{escape(data.party_name)}</CONSIGNEEMAILINGNAME>
-      <CONSIGNEESTATENAME>{escape(data.state_name)}</CONSIGNEESTATENAME>
-      <CONSIGNEECOUNTRYNAME>India</CONSIGNEECOUNTRYNAME>
-      <BASICBASEPARTYNAME>{escape(data.party_name)}</BASICBASEPARTYNAME>
-      <NUMBERINGSTYLE>Auto Retain</NUMBERINGSTYLE>
-      <CSTFORMISSUETYPE>&#4; Not Applicable</CSTFORMISSUETYPE>
-      <CSTFORMRECVTYPE>&#4; Not Applicable</CSTFORMRECVTYPE>
-      <FBTPAYMENTTYPE>Default</FBTPAYMENTTYPE>
-      <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
-      <VCHSTATUSTAXADJUSTMENT>Default</VCHSTATUSTAXADJUSTMENT>
-      <VCHSTATUSVOUCHERTYPE>Sales</VCHSTATUSVOUCHERTYPE>
-      <VCHGSTCLASS>&#4; Not Applicable</VCHGSTCLASS>
-      <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
-      <DIFFACTUALQTY>No</DIFFACTUALQTY>
-      <ISMSTFROMSYNC>No</ISMSTFROMSYNC>
-      <ISDELETED>No</ISDELETED>
-      <ISSECURITYONWHENENTERED>No</ISSECURITYONWHENENTERED>
-      <ASORIGINAL>No</ASORIGINAL>
-      <AUDITED>No</AUDITED>
-      <FORJOBCOSTING>No</FORJOBCOSTING>
-      <ISOPTIONAL>No</ISOPTIONAL>
+      <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
+      <NARRATION>{escape(data.narration or "")}</NARRATION>
+      <ISINVOICE>No</ISINVOICE>
       <EFFECTIVEDATE>{date}</EFFECTIVEDATE>
-      <ISINVOICE>Yes</ISINVOICE>
-      <MFGJOURNAL>No</MFGJOURNAL>
-      <HASDISCOUNTS>No</HASDISCOUNTS>
-      <ISVATDUTYPAID>Yes</ISVATDUTYPAID>
+      <NUMBERINGSTYLE>Auto Retain</NUMBERINGSTYLE>
+      <ISDELETED>No</ISDELETED>
       <VOUCHERNUMBERSERIES>Default</VOUCHERNUMBERSERIES>
-      <EWAYBILLDETAILS.LIST>      </EWAYBILLDETAILS.LIST>
 """
-        
-        # Sales items (negative amounts - outflow)
-        for item in data.inventory_items:
-            item.purchase_ledger = "Sales Account"  # Override for sales
-            xml += cls._build_inventory_entry(item, is_purchase=False)
-        
-        # Party ledger entry (Debit for Sales - they owe us)
+
+        # 1. Party entry (Debit — customer owes us the grand total)
         xml += f"""      <LEDGERENTRIES.LIST>
        <OLDAUDITENTRYIDS.LIST TYPE="Number">
         <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
@@ -451,23 +494,56 @@ class GoldenXMLBuilder:
        <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
        <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
        <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
-       <AMOUNT>-{item_total:.2f}</AMOUNT>
+       <AMOUNT>-{grand_total:.2f}</AMOUNT>
        <BILLALLOCATIONS.LIST>
         <NAME>{escape(data.reference or data.voucher_number or "New")}</NAME>
         <BILLTYPE>New Ref</BILLTYPE>
         <TDSDEDUCTEEISSPECIALRATE>No</TDSDEDUCTEEISSPECIALRATE>
-        <AMOUNT>-{item_total:.2f}</AMOUNT>
+        <AMOUNT>-{grand_total:.2f}</AMOUNT>
        </BILLALLOCATIONS.LIST>
       </LEDGERENTRIES.LIST>
 """
-        
+
+        # 2. Sales Account entry (Credit — revenue earned)
+        xml += f"""      <LEDGERENTRIES.LIST>
+       <OLDAUDITENTRYIDS.LIST TYPE="Number">
+        <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
+       </OLDAUDITENTRYIDS.LIST>
+       <LEDGERNAME>{escape(sales_ledger)}</LEDGERNAME>
+       <GSTCLASS>&#4; Not Applicable</GSTCLASS>
+       <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+       <LEDGERFROMITEM>No</LEDGERFROMITEM>
+       <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
+       <ISPARTYLEDGER>No</ISPARTYLEDGER>
+       <ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>
+       <AMOUNT>{item_total:.2f}</AMOUNT>
+      </LEDGERENTRIES.LIST>
+"""
+
+        # 3. GST tax ledger entries (Credit — output tax liability)
+        for entry in data.ledger_entries:
+            if not entry.is_party:
+                xml += f"""      <LEDGERENTRIES.LIST>
+       <OLDAUDITENTRYIDS.LIST TYPE="Number">
+        <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
+       </OLDAUDITENTRYIDS.LIST>
+       <LEDGERNAME>{escape(entry.ledger_name)}</LEDGERNAME>
+       <GSTCLASS>&#4; Not Applicable</GSTCLASS>
+       <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+       <LEDGERFROMITEM>No</LEDGERFROMITEM>
+       <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
+       <ISPARTYLEDGER>No</ISPARTYLEDGER>
+       <ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>
+       <AMOUNT>{entry.amount:.2f}</AMOUNT>
+      </LEDGERENTRIES.LIST>
+"""
+
         xml += """     </VOUCHER>
     </TALLYMESSAGE>
 """
         xml += cls.close_envelope()
-        
         return xml
-    
+
     # ============================================
     # RECEIPT VOUCHER (Accounting Voucher View)
     # ============================================

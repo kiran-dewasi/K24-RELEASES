@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiClient } from "@/lib/api-config";
 import { LedgerAutocomplete } from "@/components/ui/ledger-autocomplete";
 
 interface LineItem {
@@ -25,6 +25,7 @@ interface SelectedLedger {
 
 export default function NewSalesClient() {
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     // Form State
     const [partyName, setPartyName] = useState("");
@@ -37,6 +38,14 @@ export default function NewSalesClient() {
     const [gstRate, setGstRate] = useState(18); // Default 18% GST
     const [discount, setDiscount] = useState(0);
     const [narration, setNarration] = useState("");
+
+    // Pre-fill party from ?party= query param
+    useEffect(() => {
+        const partyParam = searchParams.get('party');
+        if (partyParam) {
+            setPartyName(decodeURIComponent(partyParam));
+        }
+    }, [searchParams]);
 
     // UI State
     const [loading, setLoading] = useState(false);
@@ -93,12 +102,9 @@ export default function NewSalesClient() {
         setErrorMsg(null);
 
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/vouchers/sales`, {
+            const res = await apiClient(`/api/vouchers/sales`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": "k24-secret-key-123"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     party_name: partyName,
                     invoice_number: invoiceNumber,
@@ -109,7 +115,6 @@ export default function NewSalesClient() {
                         rate: item.rate,
                         amount: item.amount
                     })),
-                    // Ensure numbers are numbers
                     subtotal: Number(subtotal),
                     discount_percent: Number(discount),
                     discount_amount: Number(discountAmount),

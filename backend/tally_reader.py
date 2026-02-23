@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 import logging
 import re
 from typing import List, Dict, Any, Optional
+from xml.sax.saxutils import escape
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -20,6 +21,48 @@ class TallyReader:
         self.ledger_cache: Dict[str, str] = {} # Key: Lowercase Name, Value: Actual Name
         self.item_cache: Dict[str, str] = {}
         self.cache_populated = False
+        self._company_name: Optional[str] = None  # Cached company name
+
+    def get_company_name(self) -> Optional[str]:
+        """
+        Fetch the currently open company name from Tally.
+        Uses the COMPANYNAME collection which returns the active company.
+        Result is cached for the session lifetime.
+        """
+        if self._company_name:
+            return self._company_name
+
+        xml = """<ENVELOPE>
+ <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+ <BODY><EXPORTDATA><REQUESTDESC>
+  <REPORTNAME>List of Companies</REPORTNAME>
+  <STATICVARIABLES>
+   <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+  </STATICVARIABLES>
+ </REQUESTDESC></EXPORTDATA></BODY>
+</ENVELOPE>"""
+        try:
+            resp = requests.post(self.tally_url, data=xml,
+                                 headers={'Content-Type': 'text/xml'}, timeout=5)
+            cleaned = self._clean_xml(resp.text)
+            root = ET.fromstring(cleaned)
+            # Tally returns <COMPANY><NAME>CompanyName</NAME>...
+            for node in root.findall('.//COMPANY'):
+                name = node.findtext('NAME') or node.get('NAME')
+                if name and name.strip():
+                    self._company_name = name.strip()
+                    logger.info(f"✅ Tally active company: '{self._company_name}'")
+                    return self._company_name
+            # Fallback: try NAME at any level
+            for node in root.findall('.//NAME'):
+                if node.text and node.text.strip():
+                    self._company_name = node.text.strip()
+                    logger.info(f"✅ Tally company (fallback): '{self._company_name}'")
+                    return self._company_name
+        except Exception as e:
+            logger.warning(f"Could not fetch company name from Tally: {e}")
+        return None
+
 
     def _clean_xml(self, xml_string: str) -> str:
         """Removes invalid characters to ensure ElementTree can parse it."""
