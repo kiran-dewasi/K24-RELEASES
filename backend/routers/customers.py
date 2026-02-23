@@ -2,21 +2,51 @@
 Customer 360° Profile API
 Salesforce-style complete customer view with all interactions, transactions, and insights.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_, desc
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 
-from backend.database import get_db, Ledger, Voucher, Bill, StockMovement, StockItem
-from backend.auth import get_current_tenant_id
+from backend.database import get_db, Ledger, Voucher, Bill, StockMovement, StockItem, User
+from backend.auth import get_current_tenant_id, get_optional_current_user
 from backend.dependencies import get_api_key
 
 import logging
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 logger = logging.getLogger("customers")
+
+
+def _resolve_tenant_id(current_user: Optional[User], db: Session) -> Optional[str]:
+    """
+    Resolve the correct tenant_id for the current request.
+
+    Priority order:
+      1. JWT-authenticated user  →  use their tenant_id directly (multi-tenant safe)
+      2. API-key-only request    →  derive from the first active user in the local DB
+                                   (single-installation desktop app fallback)
+      3. No user found anywhere  →  return None (caller can decide to 404 or return empty)
+
+    This ensures every data query is scoped to the real tenant — never a hardcoded string.
+    """
+    if current_user and current_user.tenant_id:
+        return current_user.tenant_id
+
+    # API-key-only path (desktop app, no active browser session).
+    # For single-user desktop installations there is exactly one active user.
+    fallback_user = db.query(User).filter(User.is_active == True).first()
+    if fallback_user and fallback_user.tenant_id:
+        logger.debug(
+            "No JWT user; falling back to tenant_id '%s' from local user '%s'",
+            fallback_user.tenant_id,
+            fallback_user.username,
+        )
+        return fallback_user.tenant_id
+
+    logger.warning("Could not resolve tenant_id — no authenticated user and no local user found.")
+    return None
 
 
 # --- Pydantic Response Models ---
@@ -88,31 +118,32 @@ class Customer360Response(BaseModel):
 async def get_customer_360(
     customer_id: int,
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id),
-    months: int = Query(12, ge=1, le=36, description="Months of history to include")
+    months: int = Query(12, ge=1, le=36, description="Months of history to include"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     🎯 Get complete 360° view of a customer/party
-    
-    Aggregates data from: ledgers, vouchers, bills, payments, inventory
+
+    Aggregates data from: ledgers, vouchers, bills, payments, inventory.
     Returns everything needed for a Salesforce-style customer profile.
+
+    Auth: protected by API key; tenant_id is always derived from the
+    authenticated JWT user (multi-tenant SaaS) or the single local user
+    (single-installation desktop app). Never falls back to a hardcoded string.
     """
-    
+    # Resolve tenant — always from a real user, never hardcoded
+    tenant_id = _resolve_tenant_id(current_user, db)
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="Cannot determine tenant — please log in.")
+
     # 1. Get Basic Customer Info (Ledger)
     ledger = db.query(Ledger).filter(
         Ledger.id == customer_id,
         Ledger.tenant_id == tenant_id
     ).first()
-    
+
     if not ledger:
-        # Try finding by name as fallback
-        ledger = db.query(Ledger).filter(
-            Ledger.name == str(customer_id),
-            Ledger.tenant_id == tenant_id
-        ).first()
-    
-    if not ledger:
-        raise HTTPException(status_code=404, detail="Customer not found")
+        raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found for your account.")
     
     customer_data = {
         "id": ledger.id,

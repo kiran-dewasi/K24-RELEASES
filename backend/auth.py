@@ -159,3 +159,31 @@ def get_current_tenant_id(current_user: User = Depends(get_current_active_user))
         # Fallback for legacy users (should not happen with new constraints)
         return "default"
     return current_user.tenant_id
+
+
+def get_optional_current_user(
+    token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """
+    Returns the authenticated User if a valid Bearer token is provided.
+    Returns None if no token or invalid token — does NOT raise 401.
+
+    Use this in endpoints that also accept API-key-only requests (e.g. local desktop app),
+    where tenant_id must still be resolved from whoever is actually logged in.
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if not username:
+            return None
+        exp = payload.get("exp")
+        if exp and datetime.fromtimestamp(exp) < datetime.utcnow():
+            return None
+    except JWTError:
+        return None
+
+    user = db.query(User).filter(User.username == username).first()
+    return user  # Could be None if user was deleted
