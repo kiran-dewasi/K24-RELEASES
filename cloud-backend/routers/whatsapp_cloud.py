@@ -167,65 +167,41 @@ async def receive_whatsapp_message(
     authenticated: bool = Depends(verify_baileys_secret)
 ):
     """
-    Cloud webhook for incoming WhatsApp messages from Baileys service
+    Cloud webhook for incoming WhatsApp messages from Baileys service.
 
+    Architecture: ONE shared bot number (+917851074499) for ALL tenants.
+    Tenant is resolved by looking up the SENDER's phone in whatsapp_customer_mappings.
+    
     Flow:
-    1. Baileys listener receives WhatsApp message
-    2. Baileys calls this endpoint with message data
-    3. Resolves tenant from business WhatsApp number (tenant_config)
-    4. Enforces subscription access control
-    5. Identifies customer from sender phone (whatsapp_customer_mappings)
-    6. Inserts message into whatsapp_message_queue
-    7. Desktop app polls queue and processes message
+    1. Baileys receives WhatsApp message on the shared master number
+    2. Calls this endpoint with from_number = customer's phone
+    3. Look up from_number in whatsapp_customer_mappings (cross-tenant) to find tenant
+    4. Validate that tenant's subscription
+    5. Insert message into whatsapp_message_queue for that tenant
+    6. Desktop app polls queue, processes via Tally, sends reply
     """
     try:
         logger.info(f"📨 Incoming WhatsApp message from {message.from_number}")
 
-        # Step 1: Validate business number is provided
-        if not message.to_number:
-            logger.error("❌ Missing to_number (business WhatsApp number)")
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "MISSING_BUSINESS_NUMBER",
-                    "detail": "Business WhatsApp number (to_number) is required",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
-
-        # Step 2: Resolve tenant from business WhatsApp number and enforce subscription
         supabase = get_supabase_client()
-        
-        tenant_info = resolve_tenant_from_business_number(message.to_number, supabase)
-        tenant_id = tenant_info["tenant_id"]
-        subscription_status = tenant_info["subscription_status"]
-        
-        logger.info(
-            f"✅ Tenant resolved from business number: tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
-            f"subscription_status={subscription_status}"
-        )
 
-        # Step 3: Normalize sender phone and resolve user_id from customer mappings
-        # Scope the lookup to the resolved tenant_id
+        # Step 1: Normalize sender phone for consistent lookups
         normalized_from = normalize_whatsapp_number(message.from_number)
-        
-        # Try with normalized number first
+
+        # Step 2: Resolve tenant by looking up the SENDER's phone in customer mappings.
+        # This is the correct model: one shared bot number, tenant resolved from sender.
         mapping_result = supabase.table("whatsapp_customer_mappings").select(
             "tenant_id, user_id, customer_name"
-        ).eq(
-            "tenant_id", tenant_id
         ).eq(
             "customer_phone", normalized_from
         ).eq(
             "is_active", True
         ).execute()
-        
-        # If not found, try with original number
+
         if not mapping_result.data or len(mapping_result.data) == 0:
+            # Retry with original (un-normalized) number
             mapping_result = supabase.table("whatsapp_customer_mappings").select(
                 "tenant_id, user_id, customer_name"
-            ).eq(
-                "tenant_id", tenant_id
             ).eq(
                 "customer_phone", message.from_number
             ).eq(
@@ -233,34 +209,54 @@ async def receive_whatsapp_message(
             ).execute()
 
         if not mapping_result.data or len(mapping_result.data) == 0:
+            # Unknown sender — not registered with any tenant yet.
+            # Queue as unrouted so a tenant admin can assign them later.
             logger.warning(
-                f"❌ Unknown customer phone for tenant {tenant_id[:8] if tenant_id else 'N/A'}...: "
-                f"{message.from_number}"
+                f"⚠️ Unknown sender {message.from_number} (normalized: {normalized_from}). "
+                f"Queuing as unrouted."
             )
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "UNKNOWN_CUSTOMER",
-                    "detail": f"Phone number {message.from_number} is not registered with this tenant",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+            unrouted_id = str(uuid.uuid4())
+            supabase.table("whatsapp_message_queue").insert({
+                "id": unrouted_id,
+                "tenant_id": None,
+                "user_id": None,
+                "customer_phone": message.from_number,
+                "message_type": message.message_type,
+                "message_text": message.text,
+                "media_url": message.media_url,
+                "status": "unrouted",
+                "raw_payload": message.raw_payload or {},
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }).execute()
+            return {"message_id": unrouted_id, "status": "unrouted"}
+
+        # Handle conflict: same phone mapped to multiple tenants
+        if len(mapping_result.data) > 1:
+            logger.warning(
+                f"⚠️ Phone {message.from_number} mapped to {len(mapping_result.data)} tenants. "
+                f"Routing to first match."
             )
 
         mapping = mapping_result.data[0]
+        tenant_id = mapping.get("tenant_id")
         user_id = mapping.get("user_id")
         customer_name = mapping.get("customer_name")
 
         logger.info(
-            f"✅ Customer resolved: phone={message.from_number}, "
-            f"user_id={user_id}, tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..."
+            f"✅ Sender resolved: phone={message.from_number}, "
+            f"customer={customer_name}, tenant_id={str(tenant_id)[:8] if tenant_id else 'N/A'}..."
         )
+
+        # Step 3: Validate the resolved tenant's subscription
+        tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+        subscription_status = tenant_info["subscription_status"]
 
         # Step 4: Insert into whatsapp_message_queue
         message_id = str(uuid.uuid4())
 
         queue_insert = {
             "id": message_id,
-            "tenant_id": tenant_id,
+            "tenant_id": str(tenant_id),
             "user_id": str(user_id) if user_id else None,
             "customer_phone": message.from_number,
             "message_type": message.message_type,
@@ -277,23 +273,17 @@ async def receive_whatsapp_message(
 
         if not insert_result.data:
             logger.error(f"❌ Failed to insert message into queue")
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to queue message"
-            )
+            raise HTTPException(status_code=500, detail="Failed to queue message")
 
         logger.info(
-            f"✅ Message queued: message_id={message_id}, tenant_id={tenant_id[:8] if tenant_id else 'N/A'}..., "
+            f"✅ Message queued: message_id={message_id}, "
+            f"tenant_id={str(tenant_id)[:8] if tenant_id else 'N/A'}..., "
             f"subscription_status={subscription_status}"
         )
 
-        # Step 5: Return 202 Accepted with message_id
-        return {
-            "message_id": message_id
-        }
+        return {"message_id": message_id, "status": "queued"}
 
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
         logger.error(f"Error processing incoming message: {e}", exc_info=True)

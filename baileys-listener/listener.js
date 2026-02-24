@@ -139,10 +139,6 @@ if (!fs.existsSync(AUTH_DIR)) {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
 }
 
-// The WhatsApp number this Baileys session is connected to (the "bot" number).
-// Set once we connect. Can also be overridden via BOT_NUMBER env var.
-let botNumber = process.env.BOT_NUMBER || null;
-
 async function startBaileys() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
@@ -225,16 +221,7 @@ async function startBaileys() {
         } else if (connection === 'open') {
             latestQRDataUrl = null; // Clear QR — we're connected
             logger.info('✅ WhatsApp Connected Successfully');
-            // Extract the bot number (our own number) from sock.user.id
-            // sock.user.id format: "<number>@s.whatsapp.net" or "<number>:<device>@s.whatsapp.net"
-            const rawId = sock.user?.id || '';
-            const extractedNumber = rawId.split('@')[0].split(':')[0];
-            if (extractedNumber) {
-                botNumber = extractedNumber;
-                logger.info(`📱 Bot Number: +${botNumber}`);
-            } else {
-                logger.warn('⚠️ Could not extract bot number from sock.user.id: ' + rawId);
-            }
+            logger.info(`📱 Bot Number: +${sock.user?.id?.split('@')[0]?.split(':')[0] || 'unknown'}`);
 
             // Initialize the message batcher with socket and download function
             batcher.init(sock, downloadMediaMessage);
@@ -476,16 +463,10 @@ async function processMessageViaBackend(senderNumber, messageText, mediaData, so
         const timestamp = Math.floor(Date.now() / 1000);
         const cloudPayload = {
             from_number: senderNumber,
-            to_number: botNumber ? `+${botNumber}` : null,   // business/bot number for tenant resolution
             message_type: mediaData ? 'image' : 'text',
             text: messageText || null,
-            timestamp: timestamp,
             raw_payload: resolvedUserId ? { resolved_user_id: resolvedUserId, resolved_customer_name: resolvedCustomerName } : null
         };
-
-        if (!botNumber) {
-            logger.warn('⚠️ Bot number not yet known — to_number will be null. Set BOT_NUMBER env var to fix.');
-        }
 
         logger.info(`☁️ Queuing message to cloud: ${BACKEND_URL}/api/whatsapp/cloud/incoming`);
 
