@@ -126,6 +126,70 @@ const qrServer = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ size: lidToPhoneCache.size, entries }));
 
+    } else if (req.method === 'POST' && req.url === '/send-reply') {
+        // POST /send-reply
+        // Called by the desktop app after processing a queue message.
+        // Sends the reply text back to the customer via WhatsApp.
+        //
+        // Body: { "to": "185628738236618", "text": "Your balance is ₹5000" }
+        // Headers: X-Baileys-Secret: <shared secret>
+        //
+        // Security: same BAILEYS_SECRET used between cloud backend and listener.
+
+        // Verify secret
+        const secret = req.headers['x-baileys-secret'];
+        if (secret !== (process.env.BAILEYS_SECRET || 'k24_baileys_secret')) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid secret' }));
+            return;
+        }
+
+        if (!activeSock) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'WhatsApp not connected' }));
+            return;
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const { to, text } = JSON.parse(body);
+
+                if (!to || !text) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required fields: to, text' }));
+                    return;
+                }
+
+                // Build the JID — handle both raw numbers and @lid / @s.whatsapp.net formats
+                let jid = to;
+                if (!jid.includes('@')) {
+                    // Check if this is a known LID (in cache, its value IS the phone)
+                    // OR if the number itself is in the LID cache as a key
+                    // We just append the right suffix
+                    // Numbers > 15 digits are likely LIDs (WhatsApp internal IDs)
+                    const digits = jid.replace(/[^0-9]/g, '');
+                    if (digits.length > 15) {
+                        jid = `${digits}@lid`;
+                    } else {
+                        jid = `${digits}@s.whatsapp.net`;
+                    }
+                }
+
+                logger.info(`📤 Sending reply to ${jid}: "${text.substring(0, 50)}..."`);
+                await activeSock.sendMessage(jid, { text });
+                logger.info(`✅ Reply sent to ${jid}`);
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, to: jid }));
+            } catch (e) {
+                logger.error('send-reply error: ' + e.message);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: e.message }));
+            }
+        });
+
     } else {
         res.writeHead(404);
         res.end('Not found');
