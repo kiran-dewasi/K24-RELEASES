@@ -42,6 +42,10 @@ const AUTH_DIR = process.env.SESSION_DIR || path.join(__dirname, 'auth');
 // ============================================
 let latestQRDataUrl = null; // set each time a QR is generated
 
+// Module-level socket reference — set once Baileys connects.
+// Used by HTTP endpoints that need to query WhatsApp.
+let activeSock = null;
+
 // Railway sets $PORT automatically — always use it first so the proxy can reach us.
 // Falls back to QR_PORT (manual override) then 3000 for local dev.
 const QR_PORT = parseInt(process.env.PORT || process.env.QR_PORT || '3000', 10);
@@ -65,7 +69,63 @@ const qrServer = http.createServer(async (req, res) => {
         </body></html>`);
     } else if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'running', qrAvailable: !!latestQRDataUrl }));
+        res.end(JSON.stringify({ status: 'running', qrAvailable: !!latestQRDataUrl, connected: !!activeSock }));
+
+    } else if (req.url && req.url.startsWith('/resolve-contact')) {
+        // GET /resolve-contact?phone=917339906200
+        // Resolves a phone number to its WhatsApp JID (which may be a LID).
+        // Use this when registering a customer to also capture their LID.
+        const urlObj = new URL(req.url, `http://localhost`);
+        const phone = urlObj.searchParams.get('phone');
+        if (!phone) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing phone parameter' }));
+            return;
+        }
+        if (!activeSock) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'WhatsApp not connected yet' }));
+            return;
+        }
+        try {
+            const normalizedPhone = phone.replace(/[^0-9]/g, '');
+            const [result] = await activeSock.onWhatsApp(normalizedPhone);
+            if (!result) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ phone: normalizedPhone, exists: false, jid: null, lid: null }));
+                return;
+            }
+            // result.jid may be "917339906200@s.whatsapp.net" or "185628738236618@lid"
+            const isLid = result.jid && result.jid.endsWith('@lid');
+            const lidNumber = isLid ? result.jid.replace('@lid', '') : null;
+            const response = {
+                phone: normalizedPhone,
+                exists: result.exists,
+                jid: result.jid,
+                lid: lidNumber,        // null if not a LID account
+                isLidAccount: isLid    // true = store BOTH phone AND lid in customer_mappings
+            };
+            // Also cache it immediately
+            if (isLid) {
+                lidToPhoneCache.set(result.jid, normalizedPhone);
+                lidToPhoneCache.set(lidNumber, normalizedPhone);
+                logger.info(`📊 Cached LID via resolve-contact: ${lidNumber} → ${normalizedPhone}`);
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(response));
+        } catch (e) {
+            logger.error('resolve-contact error: ' + e.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message }));
+        }
+
+    } else if (req.url === '/lid-cache') {
+        // GET /lid-cache — shows the current LID-to-phone cache contents (for debugging)
+        const entries = {};
+        lidToPhoneCache.forEach((phone, lid) => { entries[lid] = phone; });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ size: lidToPhoneCache.size, entries }));
+
     } else {
         res.writeHead(404);
         res.end('Not found');
@@ -175,15 +235,17 @@ async function startBaileys() {
         // and can interfere with QR display. Silent keeps noise out.
         logger: pino({ level: 'silent' }),
         printQRInTerminal: true,      // always print QR to stdout as fallback
-        syncFullHistory: false,
-        shouldSyncHistoryMessage: () => false,
+        syncFullHistory: false,       // don't sync message history (we don't need old messages)
         generateHighQualityLinkPreview: false,
         // ── FIX 3: Use a realistic browser string.
         // Non-standard version strings (like "1.0.0") cause 405 ws rejections.
         browser: ["K24 Agent", "Chrome", "120.0.0"],
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 10000,
+        markOnlineOnConnect: false,   // don't show as online when bot connects
     });
+    // Make socket accessible to HTTP endpoints
+    activeSock = sock;
 
     // QR Code Handler (shows once on first run)
     sock.ev.on('connection.update', async (update) => {
