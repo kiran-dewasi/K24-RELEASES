@@ -209,26 +209,18 @@ async def receive_whatsapp_message(
             ).execute()
 
         if not mapping_result.data or len(mapping_result.data) == 0:
-            # Unknown sender — not registered with any tenant yet.
-            # Queue as unrouted so a tenant admin can assign them later.
+            # Unknown sender — not registered with any tenant.
+            # This usually means the LID wasn't resolved to a real phone number.
+            # Return 202 so the listener doesn't crash — but don't queue.
             logger.warning(
                 f"⚠️ Unknown sender {message.from_number} (normalized: {normalized_from}). "
-                f"Queuing as unrouted."
+                f"Not in whatsapp_customer_mappings. Skipping queue. "
+                f"Check LID resolution in the Baileys listener."
             )
-            unrouted_id = str(uuid.uuid4())
-            supabase.table("whatsapp_message_queue").insert({
-                "id": unrouted_id,
-                "tenant_id": None,
-                "user_id": None,
-                "customer_phone": message.from_number,
-                "message_type": message.message_type,
-                "message_text": message.text,
-                "media_url": message.media_url,
+            return {
                 "status": "unrouted",
-                "raw_payload": message.raw_payload or {},
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }).execute()
-            return {"message_id": unrouted_id, "status": "unrouted"}
+                "detail": "Sender not registered with any tenant. LID may not have resolved."
+            }
 
         # Handle conflict: same phone mapped to multiple tenants
         if len(mapping_result.data) > 1:

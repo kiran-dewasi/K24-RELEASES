@@ -304,6 +304,24 @@ async function startBaileys() {
     // contacts.set fires once on connect with the FULL contact list
     sock.ev.on('contacts.set', ({ contacts }) => {
         logger.info(`📲 contacts.set fired with ${contacts.length} contacts — building LID cache...`);
+
+        // DEBUG: Log the raw fields of the first 5 contacts to see what WhatsApp actually sends
+        // This tells us if the 'lid' field exists and what format it uses
+        const sample = contacts.slice(0, 5);
+        sample.forEach((c, i) => {
+            logger.info(`🔬 Contact[${i}] raw fields: ${JSON.stringify(c)}`);
+        });
+        // Also log the first LID contact we find (if any)
+        const lidContact = contacts.find(c => c.id && c.id.endsWith('@lid'));
+        if (lidContact) {
+            logger.info(`🔬 Sample LID contact: ${JSON.stringify(lidContact)}`);
+        } else {
+            logger.info(`🔬 No @lid contacts found in contacts.set payload`);
+        }
+        // Log how many contacts have a 'lid' field
+        const withLid = contacts.filter(c => c.lid);
+        logger.info(`🔬 Contacts with 'lid' field: ${withLid.length} / ${contacts.length}`);
+
         buildLidCache(contacts);
     });
 
