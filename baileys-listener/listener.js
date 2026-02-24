@@ -85,7 +85,20 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 // LID-to-Phone resolution cache
 // WhatsApp sometimes sends messages with LID (Linked ID) format instead of phone numbers
 // This cache stores the mapping once we resolve it
-const lidToPhoneCache = new Map(); // lid@lid -> phoneNumber
+const lidToPhoneCache = new Map(); // "185628738236618@lid" -> "917339906200"
+
+// ── Pre-populate from LID_PHONE_MAP env var (Railway override)
+// Format: LID_PHONE_MAP="185628738236618=917339906200,123456=910000000"
+if (process.env.LID_PHONE_MAP) {
+    process.env.LID_PHONE_MAP.split(',').forEach(pair => {
+        const [lid, phone] = pair.trim().split('=');
+        if (lid && phone) {
+            lidToPhoneCache.set(`${lid}@lid`, phone.trim());
+            lidToPhoneCache.set(lid.trim(), phone.trim()); // also store bare LID
+            logger.info(`📋 LID override loaded: ${lid} → ${phone}`);
+        }
+    });
+}
 
 // Pending conflict resolutions: phone -> { matches, expiresAt }
 const pendingConflicts = new Map();
@@ -226,13 +239,79 @@ async function startBaileys() {
             // Initialize the message batcher with socket and download function
             batcher.init(sock, downloadMediaMessage);
             logger.info('📦 Message batcher initialized for smart batching');
+
+            // Trigger contact sync to populate LID-to-phone cache.
+            // WhatsApp sends contacts.set shortly after connect — this just nudges it.
+            try {
+                const contacts = await sock.getOrderedContacts?.() ?? [];
+                if (contacts.length > 0) {
+                    buildLidCache(contacts);
+                    logger.info(`📒 Pre-loaded ${contacts.length} contacts into LID cache`);
+                }
+            } catch (e) {
+                // Not all Baileys versions expose getOrderedContacts — that's fine,
+                // contacts.set will fire shortly and handle it
+                logger.info('ℹ️ Contact pre-load skipped — waiting for contacts.set event');
+            }
         }
     });
 
     // Credentials Handler
     sock.ev.on('creds.update', saveCreds);
 
-    // MESSAGE HANDLER (The Core Logic)
+    // ============================================
+    // CONTACT SYNC — LID-TO-PHONE CACHE BUILDER
+    // WhatsApp fires contacts.set on connect with the full contact list.
+    // Each contact may have:
+    //   id: "185628738236618@lid"  (the LID)
+    //   lid: "185628738236618@lid" (same)
+    //   notify: "Kiran"            (display name, not useful)
+    // The phone number can come from:
+    //   - the @s.whatsapp.net JID version of the same contact
+    //   - a verifiedName or other field
+    // Baileys also fires contacts.upsert for individual contact updates.
+    // ============================================
+    function buildLidCache(contacts) {
+        let mapped = 0;
+        for (const contact of contacts) {
+            const id = contact.id || '';
+            // If this contact has a real phone JID AND a lid field, map lid -> phone
+            if (contact.lid && id.endsWith('@s.whatsapp.net')) {
+                const phone = id.replace('@s.whatsapp.net', '');
+                const lidKey = contact.lid.endsWith('@lid') ? contact.lid : `${contact.lid}@lid`;
+                if (!lidToPhoneCache.has(lidKey)) {
+                    lidToPhoneCache.set(lidKey, phone);
+                    lidToPhoneCache.set(contact.lid.replace('@lid', ''), phone); // bare LID too
+                    mapped++;
+                }
+            }
+            // Also: if the contact ID itself is a LID, but has a phone field or verifiedName
+            // some Baileys versions put the phone in contact.phone
+            if (id.endsWith('@lid') && contact.phone) {
+                const phone = contact.phone.replace(/[^0-9]/g, '');
+                if (phone && !lidToPhoneCache.has(id)) {
+                    lidToPhoneCache.set(id, phone);
+                    lidToPhoneCache.set(id.replace('@lid', ''), phone);
+                    mapped++;
+                }
+            }
+        }
+        if (mapped > 0) {
+            logger.info(`📒 LID cache updated: ${mapped} new LID→phone mappings (total: ${lidToPhoneCache.size / 2})`);
+        }
+    }
+
+    // contacts.set fires once on connect with the FULL contact list
+    sock.ev.on('contacts.set', ({ contacts }) => {
+        logger.info(`📲 contacts.set fired with ${contacts.length} contacts — building LID cache...`);
+        buildLidCache(contacts);
+    });
+
+    // contacts.upsert fires for incremental updates (new contacts, contact edits)
+    sock.ev.on('contacts.upsert', (contacts) => {
+        buildLidCache(contacts);
+    });
+
     sock.ev.on('messages.upsert', async (m) => {
         try {
             const msg = m.messages[0];
@@ -255,33 +334,32 @@ async function startBaileys() {
                 // This is LID format - need to resolve to phone
                 logger.info(`🔄 LID detected: ${remoteJid}`);
 
-                // Try to get phone from participant field or message context
+                // Try 1: participant field (for group messages, not applicable here but keep)
                 const participant = msg.key.participant;
                 if (participant && participant.includes('@s.whatsapp.net')) {
                     senderNumber = participant.replace('@s.whatsapp.net', '');
-                    logger.info(`✅ Resolved LID to phone via participant: ${senderNumber}`);
+                    logger.info(`✅ Resolved LID via participant: ${senderNumber}`);
                 } else {
-                    // Try to get from Baileys store/contacts
-                    try {
-                        // Check if we have this LID in our local cache
-                        const cachedPhone = lidToPhoneCache.get(remoteJid);
-                        if (cachedPhone) {
-                            senderNumber = cachedPhone;
-                            logger.info(`✅ Resolved LID from cache: ${senderNumber}`);
+                    // Try 2: lidToPhoneCache (populated from contacts.set on connect)
+                    const cachedPhone = lidToPhoneCache.get(remoteJid) || lidToPhoneCache.get(remoteJid.replace('@lid', ''));
+                    if (cachedPhone) {
+                        senderNumber = cachedPhone;
+                        logger.info(`✅ Resolved LID from cache: ${remoteJid} → ${senderNumber}`);
+                    } else {
+                        // Try 3: sock.contacts (Baileys in-memory store)
+                        const contactFromStore = sock.contacts?.[remoteJid];
+                        if (contactFromStore?.phone) {
+                            senderNumber = contactFromStore.phone.replace(/[^0-9]/g, '');
+                            lidToPhoneCache.set(remoteJid, senderNumber); // cache it
+                            logger.info(`✅ Resolved LID from sock.contacts: ${senderNumber}`);
                         } else {
-                            // Check pushName for phone-like patterns or use LID as fallback
-                            const pushName = msg.pushName || '';
-
-                            // Last resort: extract numbers from LID (not ideal but prevents failure)
-                            // The LID format is often a large number - we'll need user mapping
+                            // Last resort: use LID as identifier — will be 'unrouted' in queue
+                            // but NOT dropped. Admin can then add the LID to customer mappings.
                             senderNumber = remoteJid.replace('@lid', '');
-                            logger.warn(`⚠️ Could not resolve LID ${remoteJid}. Using LID as identifier.`);
-                            logger.warn(`   pushName: ${pushName}`);
-                            logger.warn(`   You may need to register this user's phone number.`);
+                            logger.warn(`⚠️ Could not resolve LID ${remoteJid} to phone.`);
+                            logger.warn(`   Fix: Set LID_PHONE_MAP env var on Railway: LID_PHONE_MAP="${senderNumber}=<phone_number>"`);
+                            logger.warn(`   Or wait for contacts.set to fire on next reconnect.`);
                         }
-                    } catch (e) {
-                        logger.error(`Failed to resolve LID: ${e.message}`);
-                        senderNumber = remoteJid.replace('@lid', '');
                     }
                 }
             } else {
