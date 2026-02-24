@@ -42,7 +42,9 @@ const AUTH_DIR = process.env.SESSION_DIR || path.join(__dirname, 'auth');
 // ============================================
 let latestQRDataUrl = null; // set each time a QR is generated
 
-const QR_PORT = parseInt(process.env.QR_PORT || '3000', 10);
+// Railway sets $PORT automatically — always use it first so the proxy can reach us.
+// Falls back to QR_PORT (manual override) then 3000 for local dev.
+const QR_PORT = parseInt(process.env.PORT || process.env.QR_PORT || '3000', 10);
 const qrServer = http.createServer(async (req, res) => {
     if (req.url === '/qr' || req.url === '/') {
         if (!latestQRDataUrl) {
