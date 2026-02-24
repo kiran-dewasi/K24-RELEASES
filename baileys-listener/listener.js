@@ -92,46 +92,16 @@ const pendingConflicts = new Map();
 const CONFLICT_TTL_MS = 5 * 60 * 1000; // 5 minutes to respond
 
 /**
- * Identify which K24 user owns this phone number
- * Returns: { status, userId, customerName } or { status: 'conflict', matches }
+ * Identify which K24 user owns this phone number.
+ * NOTE: The cloud backend does NOT expose /api/whatsapp/identify-user.
+ * Tenant resolution is done server-side inside /api/whatsapp/cloud/incoming.
+ * This function always returns 'unknown' so the listener skips client-side routing
+ * and lets the cloud queue handle multi-tenancy.
  */
 async function identifyUserByPhone(phone) {
-    // Normalize phone format
-    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
-
-    // Check cache first
-    const cached = routingCache.get(normalizedPhone);
-    if (cached && cached.expiresAt > Date.now()) {
-        logger.info(`[CACHE HIT] Phone ${normalizedPhone} -> User ${cached.userId}`);
-        return { status: 'found', userId: cached.userId, customerName: cached.customerName };
-    }
-
-    // Query backend API
-    try {
-        const response = await axios.post(
-            `${BACKEND_URL}/api/whatsapp/identify-user`,
-            null,
-            { params: { phone: normalizedPhone } }
-        );
-
-        const result = response.data;
-
-        // Cache successful lookups
-        if (result.status === 'found') {
-            routingCache.set(normalizedPhone, {
-                userId: result.user_id,
-                customerName: result.customer_name,
-                expiresAt: Date.now() + CACHE_TTL_MS
-            });
-            logger.info(`[CACHE SET] Phone ${normalizedPhone} -> User ${result.user_id}`);
-        }
-
-        return result;
-
-    } catch (error) {
-        logger.error(`[ROUTING ERROR] Failed to identify phone ${normalizedPhone}:`, error.message);
-        return { status: 'error', message: error.message };
-    }
+    // Tenant resolution is handled by the cloud backend's incoming endpoint.
+    // Return 'unknown' to skip local routing and proceed directly to cloud queue.
+    return { status: 'unknown' };
 }
 
 /**
@@ -427,33 +397,6 @@ async function startBaileys() {
 
             logger.info(`📝 Message Text: "${messageText}"`);
 
-            // --- SEND TO CLOUD WEBHOOK FOR QUEUEING ---
-            try {
-                const timestamp = msg.messageTimestamp ? parseInt(msg.messageTimestamp) : Math.floor(Date.now() / 1000);
-                const cloudPayload = {
-                    from_number: senderNumber,
-                    message_type: "text",
-                    text: messageText || null,
-                    timestamp: timestamp
-                };
-
-                await axios.post(
-                    `${BACKEND_URL}/api/whatsapp/cloud/incoming`,
-                    cloudPayload,
-                    {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Baileys-Secret': process.env.BAILEYS_SECRET || 'k24_baileys_secret'
-                        }
-                    }
-                );
-                logger.info(`☁️ Cloud webhook: queued (status 202)`);
-            } catch (cloudErr) {
-                logger.error(`☁️ Cloud webhook failed: ${cloudErr.response?.status || cloudErr.message}`);
-                // Don't stop processing - continue with existing flow
-            }
-            // --------------------------------------
-
             // --- INTERCEPT VERIFICATION COMMAND ---
             if (messageText && messageText.trim().toUpperCase().startsWith("VERIFY")) {
                 logger.info("🔐 Verification code detected. Intercepting...");
@@ -510,151 +453,54 @@ async function startBaileys() {
 }
 
 async function processMessageViaBackend(senderNumber, messageText, mediaData, sock, remoteJid, resolvedUserId = null, resolvedCustomerName = null) {
+    // ============================================
+    // CLOUD QUEUE ARCHITECTURE
+    // The Railway cloud backend only exposes /api/whatsapp/cloud/incoming.
+    // It queues messages for the desktop app to poll and process.
+    // There is no server-side AI agent on the cloud — processing is desktop-side.
+    // ============================================
     try {
-        // ============================================
-        // SMART QUERY ROUTING
-        // Text queries go to /api/query/whatsapp for intelligent responses
-        // Image processing still goes to /api/baileys/process
-        // ============================================
-
-        // If it's a text query (no media), try the smart query endpoint first
-        if (messageText && !mediaData) {
-            logger.info(`🧠 Routing text query to Smart Query API: "${messageText}"`);
-
-            try {
-                const queryResponse = await axios.post(
-                    `${BACKEND_URL}/api/query/whatsapp`,
-                    {
-                        query: messageText,
-                        context: {
-                            sender_phone: senderNumber,
-                            resolved_user_id: resolvedUserId,
-                            resolved_customer_name: resolvedCustomerName
-                        }
-                    },
-                    {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Baileys-Secret': process.env.BAILEYS_SECRET || 'k24_baileys_secret'
-                        },
-                        timeout: 60000 // 1 minute for query processing
-                    }
-                );
-
-                const result = queryResponse.data;
-
-                if (result.success) {
-                    // Send text response
-                    await sock.sendMessage(remoteJid, {
-                        text: result.message || '✅ Query processed'
-                    });
-
-                    // If there's a file to send (PDF/Excel)
-                    if (result.has_file && result.file) {
-                        logger.info(`📎 Sending file: ${result.file.filename}`);
-
-                        const filePath = result.file.path;
-                        const fileName = result.file.filename;
-                        const fileType = result.file.type;
-
-                        // Determine mimetype
-                        let mimetype;
-                        if (fileType === 'pdf') {
-                            mimetype = 'application/pdf';
-                        } else if (fileType === 'excel' || fileName.endsWith('.xlsx')) {
-                            mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-                        } else {
-                            mimetype = 'application/octet-stream';
-                        }
-
-                        // Check if file exists
-                        if (fs.existsSync(filePath)) {
-                            await sock.sendMessage(remoteJid, {
-                                document: fs.readFileSync(filePath),
-                                fileName: fileName,
-                                mimetype: mimetype
-                            });
-                            logger.info(`✅ File sent successfully: ${fileName}`);
-                        } else {
-                            logger.error(`❌ File not found: ${filePath}`);
-                            await sock.sendMessage(remoteJid, {
-                                text: `⚠️ File generated but couldn't be sent. Please check the dashboard.`
-                            });
-                        }
-                    }
-
-                    logger.info(`✅ Smart Query processed successfully`);
-                    return; // Exit after successful query processing
-                }
-
-            } catch (queryError) {
-                // If query endpoint fails, fall through to legacy processing
-                logger.warn(`⚠️ Smart Query failed, falling back to legacy: ${queryError.message}`);
-            }
-        }
-
-        // ============================================
-        // LEGACY PROCESSING (for images and fallback)
-        // ============================================
-        logger.info(`🔄 Sending to backend: ${BACKEND_URL}/api/baileys/process`);
-        if (resolvedUserId) {
-            logger.info(`📍 Routing to resolved user: ${resolvedUserId} (${resolvedCustomerName})`);
-        }
-
-        const payload = {
-            sender_phone: senderNumber,
-            message_text: messageText,
-            media: mediaData,
-            resolved_user_id: resolvedUserId,
-            resolved_customer_name: resolvedCustomerName
+        const timestamp = Math.floor(Date.now() / 1000);
+        const cloudPayload = {
+            from_number: senderNumber,
+            message_type: mediaData ? 'image' : 'text',
+            text: messageText || null,
+            timestamp: timestamp,
+            raw_payload: resolvedUserId ? { resolved_user_id: resolvedUserId, resolved_customer_name: resolvedCustomerName } : null
         };
 
+        logger.info(`☁️ Queuing message to cloud: ${BACKEND_URL}/api/whatsapp/cloud/incoming`);
+
         const response = await axios.post(
-            `${BACKEND_URL}/api/baileys/process`,
-            payload,
+            `${BACKEND_URL}/api/whatsapp/cloud/incoming`,
+            cloudPayload,
             {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Baileys-Secret': process.env.BAILEYS_SECRET || 'k24_baileys_secret'
                 },
-                timeout: 120000 // 2 minutes
+                timeout: 15000 // 15 seconds — cloud queue should be fast
             }
         );
 
-        const { status, reply_message, error } = response.data;
-
-        if (status === 'success') {
-            // Send success reply
-            let cleanMessage = reply_message || '✅ Message processed successfully';
-            // Clean up presentation (remove minus signs from amounts)
-            cleanMessage = cleanMessage.replace(/\(-\)/g, '');
-            cleanMessage = cleanMessage.replace(/-(\d)/g, '$1');
-
-            logger.info(`✅ Processing successful. Sending reply...`);
-            await sock.sendMessage(remoteJid, {
-                text: cleanMessage
-            });
+        if (response.status === 202) {
+            logger.info(`☁️ Message queued successfully (202 Accepted). Desktop app will process it.`);
+            // The cloud queue model: desktop polls and processes. No immediate reply from here.
+            // If you want to send a WhatsApp acknowledgment, uncomment:
+            // await sock.sendMessage(remoteJid, { text: '✅ Message received! Processing...' });
         } else {
-            // Send error reply
-            logger.error(`❌ Processing failed: ${error}`);
-            await sock.sendMessage(remoteJid, {
-                text: `❌ Error: ${error}`
-            });
-        }
-    } catch (error) {
-        logger.error('❌ Error sending to backend:', error.message);
-        if (error.response) {
-            logger.error('Backend Response Data:', error.response.data);
-            logger.error('Backend Status:', error.response.status);
+            logger.warn(`☁️ Unexpected cloud response: ${response.status}`);
         }
 
-        // Send error message to user
-        try {
-            await sock.sendMessage(remoteJid, {
-                text: '❌ Backend connection failed. Please try again later.'
-            });
-        } catch (e) {
-            logger.error('Failed to send error message:', e.message);
+    } catch (error) {
+        logger.error('❌ Failed to queue message to cloud backend:');
+        logger.error(`   URL: ${BACKEND_URL}/api/whatsapp/cloud/incoming`);
+        logger.error(`   Error: ${error.message}`);
+        if (error.response) {
+            logger.error(`   HTTP Status: ${error.response.status}`);
+            logger.error(`   Response: ${JSON.stringify(error.response.data)}`);
+        } else if (error.code) {
+            logger.error(`   Network error code: ${error.code}`);
         }
     }
 }
