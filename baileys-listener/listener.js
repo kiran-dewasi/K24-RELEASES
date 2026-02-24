@@ -2,12 +2,13 @@
 // K24 WhatsApp Message Handler with Smart Batching + Phone Routing
 
 const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
+const http = require('http');
 
 // Import batch handler for smart image grouping
 const { batcher } = require('./batch-handler');
@@ -34,6 +35,43 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 // volume or mounted directory to preserve WhatsApp session across deployments.
 // If SESSION_DIR is not set, defaults to ./auth next to listener.js
 const AUTH_DIR = process.env.SESSION_DIR || path.join(__dirname, 'auth');
+
+// ============================================
+// QR HTTP SERVER (for Railway / cloud envs)
+// Serves the current QR at GET /qr as an HTML page with a scannable image
+// ============================================
+let latestQRDataUrl = null; // set each time a QR is generated
+
+const QR_PORT = parseInt(process.env.QR_PORT || '3000', 10);
+const qrServer = http.createServer(async (req, res) => {
+    if (req.url === '/qr' || req.url === '/') {
+        if (!latestQRDataUrl) {
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px">
+                <h2>WhatsApp QR Code</h2>
+                <p>No QR code available yet. The service may already be connected, or is still initializing.</p>
+                <p><a href="/qr">Refresh</a></p>
+            </body></html>`);
+            return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(`<html><body style="font-family:sans-serif;text-align:center;padding:40px">
+            <h2>Scan this QR to connect WhatsApp</h2>
+            <p style="color:#888">Generated at: ${new Date().toISOString()}</p>
+            <img src="${latestQRDataUrl}" alt="WhatsApp QR" style="width:300px;height:300px" />
+            <p><a href="/qr">Refresh</a></p>
+        </body></html>`);
+    } else if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'running', qrAvailable: !!latestQRDataUrl }));
+    } else {
+        res.writeHead(404);
+        res.end('Not found');
+    }
+});
+qrServer.listen(QR_PORT, '0.0.0.0', () => {
+    logger.info(`🌐 QR HTTP server listening on port ${QR_PORT} — visit /qr to scan`);
+});
 
 
 // ============================================
@@ -132,50 +170,86 @@ if (!fs.existsSync(AUTH_DIR)) {
 async function startBaileys() {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
+    // ── FIX 1: Always fetch the latest WA Web version.
+    // Using an outdated/bundled version causes WhatsApp to reject the WS
+    // upgrade with HTTP 405. Fetching the live version solves this.
+    let waVersion;
+    try {
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        waVersion = version;
+        logger.info(`✅ WA version fetched: ${version.join('.')} (isLatest: ${isLatest})`);
+    } catch (e) {
+        logger.warn(`⚠️ Could not fetch latest WA version (${e.message}). Using bundled fallback.`);
+    }
+
     const sock = makeWASocket({
+        version: waVersion,           // ← FIX 1: use real WA version
         auth: state,
-        logger: logger,
-        printQRInTerminal: false,
-        syncFullHistory: false, // Prevent history sync crash
+        // ── FIX 2: Pass a silent pino logger to Baileys internals.
+        // Passing the verbose app logger causes Baileys to flood stdout
+        // and can interfere with QR display. Silent keeps noise out.
+        logger: pino({ level: 'silent' }),
+        printQRInTerminal: true,      // always print QR to stdout as fallback
+        syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         generateHighQualityLinkPreview: false,
-        browser: ["K24 Agent", "Chrome", "1.0.0"],
-        // fetchLatestBaileysVersion: false, // Let it fetch latest
+        // ── FIX 3: Use a realistic browser string.
+        // Non-standard version strings (like "1.0.0") cause 405 ws rejections.
+        browser: ["K24 Agent", "Chrome", "120.0.0"],
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 10000,
     });
 
     // QR Code Handler (shows once on first run)
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
+        // ── Verbose connection logging for Railway logs
+        logger.info(`[connection.update] connection=${connection ?? 'n/a'} | qr=${qr ? 'PRESENT' : 'absent'} | statusCode=${lastDisconnect?.error?.output?.statusCode ?? 'n/a'}`);
+
         if (qr) {
-            logger.info('📱 Scan this QR code with WhatsApp:');
-            // Save QR as ASCII
-            console.log('\n');
-            const qrAscii = await QRCode.toString(qr, { type: 'terminal', small: true });
-            console.log(qrAscii);
-            console.log('\n');
+            logger.info('📱 QR CODE GENERATED — scan with WhatsApp now!');
+            // Print ASCII QR to stdout (visible in Railway logs)
+            try {
+                console.log('\n');
+                const qrAscii = await QRCode.toString(qr, { type: 'terminal', small: true });
+                console.log(qrAscii);
+                console.log('\n');
+            } catch (e) {
+                logger.warn('Could not render ASCII QR: ' + e.message);
+            }
+            // Also create a data URL QR so the /qr HTTP endpoint can serve it
+            try {
+                latestQRDataUrl = await QRCode.toDataURL(qr);
+                logger.info(`🌐 QR also available at: http://<your-railway-url>/qr`);
+            } catch (e) {
+                logger.warn('Could not generate QR data URL: ' + e.message);
+            }
         }
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.connectionReplaced;
 
-            logger.error(
-                `Connection closed. Status: ${statusCode}, Reconnecting: ${shouldReconnect}`,
-                lastDisconnect?.error
-            );
+            logger.error(`Connection closed. Status: ${statusCode}, Reconnecting: ${shouldReconnect}`);
+            if (lastDisconnect?.error) {
+                logger.error('Disconnect error message: ' + lastDisconnect.error.message);
+            }
 
             if (statusCode === DisconnectReason.connectionReplaced) {
-                logger.error("⚠️ Connection Replaced: Another session (or terminal) opened this WhatsApp account. Stopping to avoid conflict loop.");
-                process.exit(0); // Exit cleanly so we don't spam
+                logger.error('⚠️ Connection Replaced: Another session opened this WhatsApp account. Stopping.');
+                process.exit(0);
             }
 
             if (shouldReconnect) {
-                startBaileys();
+                // Small delay before reconnecting to avoid hammering WA servers
+                logger.info('⏳ Reconnecting in 5 seconds...');
+                setTimeout(() => startBaileys(), 5000);
             }
         } else if (connection === 'open') {
+            latestQRDataUrl = null; // Clear QR — we're connected
             logger.info('✅ WhatsApp Connected Successfully');
-            logger.info(`Bot Number: ${sock.user.id}`);
+            logger.info(`Bot Number: ${sock.user?.id}`);
 
             // Initialize the message batcher with socket and download function
             batcher.init(sock, downloadMediaMessage);
