@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import or_, func
 from typing import Dict, List, Optional, Any
 import sqlite3
 import logging
@@ -6,8 +8,76 @@ from datetime import datetime
 import os
 import sys
 
+from backend.database import get_db, StockItem
+from backend.dependencies import get_api_key
+
 router = APIRouter()
 logger = logging.getLogger("items")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ITEM SEARCH  (for autocomplete in voucher creation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/items/search", dependencies=[Depends(get_api_key)])
+async def search_items(
+    q: str = Query(..., min_length=1, description="Search query"),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """
+    🔍 Item autocomplete search for voucher creation.
+
+    Searches the local `items` table (synced from Tally) by name / alias.
+    Returns enough info for the frontend to:
+      - display the suggestion list
+      - auto-fill Rate from selling_price
+      - auto-fill GST rate
+    """
+    try:
+        items = (
+            db.query(StockItem)
+            .filter(
+                StockItem.is_active == True,
+                or_(
+                    StockItem.name.ilike(f"%{q}%"),
+                    StockItem.alias.ilike(f"%{q}%"),
+                    StockItem.part_number.ilike(f"%{q}%"),
+                    StockItem.hsn_code.ilike(f"%{q}%"),
+                ),
+            )
+            .order_by(
+                # Exact-start matches first, then alphabetical
+                func.lower(StockItem.name).asc()
+            )
+            .limit(limit)
+            .all()
+        )
+
+        return {
+            "query": q,
+            "count": len(items),
+            "items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "alias": item.alias,
+                    "unit": item.units or "Nos",
+                    "selling_price": item.selling_price or 0.0,
+                    "cost_price": item.cost_price or 0.0,
+                    "mrp": item.mrp,
+                    "gst_rate": item.gst_rate or 0.0,
+                    "hsn_code": item.hsn_code,
+                    "stock": item.closing_balance or 0.0,
+                    "stock_group": item.stock_group or item.parent,
+                }
+                for item in items
+            ],
+        }
+    except Exception as e:
+        logger.error(f"Item search error: {e}")
+        # Return empty gracefully — don't crash the voucher form
+        return {"query": q, "count": 0, "items": []}
 
 def get_db_path():
     """Returns safe DB path for both Dev and Frozen (Desktop) modes"""

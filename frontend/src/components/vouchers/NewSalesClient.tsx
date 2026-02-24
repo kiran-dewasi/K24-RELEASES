@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import { apiClient } from "@/lib/api-config";
 import { LedgerAutocomplete } from "@/components/ui/ledger-autocomplete";
+import { ItemAutocomplete, StockItem } from "@/components/ui/item-autocomplete";
 
 interface LineItem {
     id: string;
@@ -257,13 +258,24 @@ export default function NewSalesClient() {
                                 {lineItems.map((item, index) => (
                                     <div key={item.id} className="grid grid-cols-12 gap-4 items-center">
                                         <div className="col-span-5">
-                                            <input
-                                                type="text"
-                                                placeholder="Item description"
+                                            <ItemAutocomplete
                                                 value={item.description}
-                                                onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
-                                                required
-                                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                onChange={(val) => updateLineItem(item.id, 'description', val)}
+                                                onSelect={(stockItem: StockItem | null) => {
+                                                    if (!stockItem) return;
+                                                    // Auto-fill rate from selling price
+                                                    updateLineItem(item.id, 'rate', stockItem.selling_price);
+                                                    // Also auto-fill GST if item has one configured
+                                                    if (stockItem.gst_rate > 0) {
+                                                        const validGstRates = [0, 5, 12, 18, 28];
+                                                        const closest = validGstRates.reduce((prev, curr) =>
+                                                            Math.abs(curr - stockItem.gst_rate) < Math.abs(prev - stockItem.gst_rate) ? curr : prev
+                                                        );
+                                                        setGstRate(closest);
+                                                    }
+                                                }}
+                                                placeholder="Type to search items…"
+                                                showStock={true}
                                             />
                                         </div>
                                         <div className="col-span-2">
