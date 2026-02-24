@@ -11,9 +11,10 @@ interface Voucher {
     voucher_type: string;
     voucher_number: string;
     party_name: string;
-    amount: number;
+    amount: number | string;
     narration: string;
     guid?: string;
+    ledger_id?: number | string;
 }
 
 interface VoucherDrawerProps {

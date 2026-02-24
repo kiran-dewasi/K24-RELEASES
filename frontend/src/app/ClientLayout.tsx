@@ -3,39 +3,65 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
-
 import { Toaster } from "@/components/ui/toaster";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { UserProvider } from "@/contexts/UserContext";
+import { SidebarProvider, useSidebar } from "@/contexts/SidebarContext";
+import { ChatProvider } from "@/contexts/ChatContext";
 import AuthGuard from "@/components/AuthGuard";
+
+function InnerLayout({ children }: { children: React.ReactNode }) {
+    const pathname = usePathname();
+    const { collapsed } = useSidebar();
+
+    // Chat page: full-height workbench — no navbar, no padding, no max-width
+    const isFullWorkbench = pathname.startsWith("/chat");
+
+    return (
+        <div className="flex bg-[#F8F9FC] min-h-screen">
+            <Sidebar />
+            <div
+                className="flex flex-col h-screen overflow-hidden transition-[margin-left] duration-300 ease-in-out flex-1"
+                style={{ marginLeft: collapsed ? "60px" : "260px" }}
+            >
+                {/* Navbar is hidden for the full-workbench chat page */}
+                {!isFullWorkbench && <Navbar />}
+
+                {isFullWorkbench ? (
+                    // Full workbench — takes full height, no navbar overhead
+                    <div className="flex-1 overflow-hidden">
+                        {children}
+                    </div>
+                ) : (
+                    <main className="flex-1 p-8 overflow-y-auto">
+                        <div className="max-w-7xl mx-auto">
+                            {children}
+                        </div>
+                    </main>
+                )}
+            </div>
+            <Toaster />
+            <UpdateNotification />
+        </div>
+    );
+}
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const isPublicPage = ["/login", "/signup", "/onboarding", "/forgot-password", "/reset-password", "/auth"].some(path => pathname.startsWith(path));
+    const isPublicPage = ["/login", "/signup", "/onboarding", "/forgot-password", "/reset-password", "/auth"]
+        .some(p => pathname.startsWith(p));
 
-    // Public pages: no auth required, no sidebar
-    if (isPublicPage) {
-        return <>{children}<Toaster /></>;
-    }
+    if (isPublicPage) return <>{children}<Toaster /></>;
 
-    // Authenticated pages: UserProvider → AuthGuard → Layout
     return (
         <UserProvider>
-            <AuthGuard>
-                <div className="flex bg-gray-50 min-h-screen">
-                    <Sidebar />
-                    <div className="flex-1 ml-64 flex flex-col h-screen">
-                        <Navbar />
-                        <main className="flex-1 p-8 overflow-y-auto">
-                            <div className="max-w-7xl mx-auto">
-                                {children}
-                            </div>
-                        </main>
-                    </div>
-                    <Toaster />
-                    <UpdateNotification />
-                </div>
-            </AuthGuard>
+            <SidebarProvider>
+                <ChatProvider>
+                    <AuthGuard>
+                        <InnerLayout>{children}</InnerLayout>
+                    </AuthGuard>
+                </ChatProvider>
+            </SidebarProvider>
         </UserProvider>
     );
 }
