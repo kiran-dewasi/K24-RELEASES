@@ -28,6 +28,7 @@ target/
 .env
 .env.local
 frontend/.env.local
+backend/.env
 
 # Frontend build outputs
 frontend/out/

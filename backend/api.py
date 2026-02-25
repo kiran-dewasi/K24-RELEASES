@@ -101,6 +101,14 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Tally Sync Service Auto-Started")
     except Exception as e:
         logger.error(f"❌ Failed to start Tally Sync Service: {e}")
+
+    # Start WhatsApp Poller Service
+    try:
+        from backend.services.whatsapp_poller import start_whatsapp_poller
+        asyncio.create_task(start_whatsapp_poller())
+        logger.info("✅ WhatsApp Poller Auto-Started")
+    except Exception as e:
+        logger.error(f"❌ Failed to start WhatsApp Poller: {e}")
     
     yield
     
@@ -111,6 +119,13 @@ async def lifespan(app: FastAPI):
         logger.info("🛑 Tally Sync Service Stopped")
     except Exception as e:
         logger.error(f"Error stopping Tally Sync Service: {e}")
+
+    try:
+        from backend.services.whatsapp_poller import stop_whatsapp_poller
+        await stop_whatsapp_poller()
+        logger.info("🛑 WhatsApp Poller Stopped")
+    except Exception as e:
+        logger.error(f"Error stopping WhatsApp Poller: {e}")
 
 app = FastAPI(title="K24 API", description="Financial Intelligence Engine", lifespan=lifespan)
 
