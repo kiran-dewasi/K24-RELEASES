@@ -102,33 +102,50 @@ def perform_sync_task(db: Session):
         vouchers = reader.get_transactions(start_str, end_str) # Requires get_transactions in TallyReader
         
         count = 0
+        updated = 0
         for v in vouchers:
             v_num = v["number"]
-            # Check exist
-            exists = db.query(Voucher).filter(Voucher.voucher_number == v_num).first()
-            if not exists:
-                try:
-                    v_date = datetime.strptime(v["date"], "%Y%m%d")
-                except:
-                    v_date = datetime.now()
+            if not v_num:
+                continue
+            try:
+                v_date = datetime.strptime(v["date"], "%Y%m%d")
+            except:
+                v_date = datetime.now()
 
+            # Wrap items/ledgers as JSON-serialisable lists
+            inv_entries = v.get("items") or []
+            led_entries = v.get("ledgers") or []
+
+            exists = db.query(Voucher).filter(Voucher.voucher_number == v_num).first()
+            if exists:
+                # Always refresh line items on re-sync so existing rows get enriched
+                exists.inventory_entries = inv_entries
+                exists.ledger_entries = led_entries
+                exists.party_name = v.get("party") or exists.party_name
+                exists.amount = float(v.get("amount") or exists.amount or 0)
+                exists.narration = v.get("narration") or exists.narration
+                exists.guid = v.get("guid") or exists.guid
+                updated += 1
+            else:
                 new_voucher = Voucher(
                     tenant_id=tenant_id,
                     voucher_number=v_num,
                     date=v_date,
                     voucher_type=v["type"],
                     party_name=v["party"],
-                    amount=float(v["amount"] or 0),
-                    narration=v["narration"],
+                    amount=float(v.get("amount") or 0),
+                    narration=v.get("narration"),
                     sync_status="SYNCED",
                     source="tally_sync",
-                    guid=v.get("guid") or f"SYNC-{v_num}"
+                    guid=v.get("guid") or f"SYNC-{v_num}",
+                    inventory_entries=inv_entries,
+                    ledger_entries=led_entries,
                 )
                 db.add(new_voucher)
                 count += 1
         
         db.commit()
-        logger.info(f"✅ Synced {count} new Vouchers.")
+        logger.info(f"✅ Synced {count} new Vouchers, refreshed line items on {updated} existing.")
 
         # 3. RECALCULATE PROPER CLOSING BALANCES FROM VOUCHERS
         # (This fixes the issue where Tally doesn't export closing balances correctly for some ledgers)

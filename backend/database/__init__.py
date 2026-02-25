@@ -163,6 +163,12 @@ class Voucher(TenantMixin, Base):
     # Linked Ledger Reference
     ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=True)
 
+    # ── Line Items (populated during Tally sync, used by drawer/WhatsApp) ──
+    # inventory_entries: [{name, quantity, rate, amount, godown}]
+    # ledger_entries:    [{name, amount, is_tax}]
+    inventory_entries = Column(JSON, nullable=True)
+    ledger_entries = Column(JSON, nullable=True)
+
 class AuditLog(TenantMixin, Base):
     """Immutable Audit Trail for MCA Compliance"""
     __tablename__ = "audit_logs"

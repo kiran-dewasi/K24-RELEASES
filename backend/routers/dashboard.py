@@ -22,10 +22,12 @@ except Exception:
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 logger = logging.getLogger("dashboard")
 
+import os
+
 # Helper to get tenant_id without requiring JWT (uses default for API key auth)
 def get_tenant_id_or_default() -> str:
-    """Returns default tenant_id for API key authenticated requests."""
-    return "default"
+    """Returns official tenant_id from environment or default."""
+    return os.getenv("TENANT_ID", "default")
 
 
 def is_tally_online() -> bool:

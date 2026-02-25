@@ -10,8 +10,13 @@ import io
 from backend.database import get_db, Voucher, Ledger, Bill
 from backend.dependencies import get_api_key
 from backend.utils.pdf_generator import generate_report_pdf
+import os
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+def get_tenant_id_request() -> str:
+    """Helper to get tenant_id from environment for report requests."""
+    return os.getenv("TENANT_ID", "default")
 
 
 def _parse_date(date_str: Optional[str]) -> Optional[date]:
@@ -36,8 +41,10 @@ def _build_voucher_filters(
     date_to: Optional[str],
     voucher_types: List[str],
     party_name: Optional[str],
+    tenant_id: str,
 ):
     """Apply common filter conditions to a Voucher query."""
+    db_query = db_query.filter(Voucher.tenant_id == tenant_id)
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
 
@@ -116,12 +123,13 @@ def get_sales_register(
     voucher_types: Optional[str] = Query(None, description="Comma-separated e.g. Sales,Credit Note"),
     party_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id_request),
 ):
     vtype_list = [v.strip() for v in voucher_types.split(",")] if voucher_types else ["Sales", "Credit Note"]
 
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
-    q = _build_voucher_filters(db.query(Voucher), date_from, date_to, vtype_list, party_name)
+    q = _build_voucher_filters(db.query(Voucher), date_from, date_to, vtype_list, party_name, tenant_id)
     vouchers = q.order_by(Voucher.date.desc()).all()
 
     total_amount = sum(v.amount or 0 for v in vouchers)
@@ -147,11 +155,12 @@ def get_purchase_register(
     voucher_types: Optional[str] = Query(None),
     party_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id_request),
 ):
     vtype_list = [v.strip() for v in voucher_types.split(",")] if voucher_types else ["Purchase", "Debit Note"]
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
-    q = _build_voucher_filters(db.query(Voucher), date_from, date_to, vtype_list, party_name)
+    q = _build_voucher_filters(db.query(Voucher), date_from, date_to, vtype_list, party_name, tenant_id)
     vouchers = q.order_by(Voucher.date.desc()).all()
 
     total_amount = sum(v.amount or 0 for v in vouchers)
@@ -173,12 +182,13 @@ def get_cash_flow(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id_request),
 ):
     inflow_q = _build_voucher_filters(
-        db.query(Voucher), date_from, date_to, ["Receipt", "Sales"], None
+        db.query(Voucher), date_from, date_to, ["Receipt", "Sales"], None, tenant_id
     )
     outflow_q = _build_voucher_filters(
-        db.query(Voucher), date_from, date_to, ["Payment", "Purchase"], None
+        db.query(Voucher), date_from, date_to, ["Payment", "Purchase"], None, tenant_id
     )
 
     inflows = inflow_q.order_by(Voucher.date.desc()).all()
@@ -215,8 +225,11 @@ def get_cash_flow(
 #  Balance Sheet
 # ─────────────────────────────────────────────
 @router.get("/balance-sheet", dependencies=[Depends(get_api_key)])
-def get_balance_sheet(db: Session = Depends(get_db)):
-    ledgers = db.query(Ledger).all()
+def get_balance_sheet(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id_request)
+):
+    ledgers = db.query(Ledger).filter(Ledger.tenant_id == tenant_id).all()
 
     assets, liabilities = [], []
     total_assets, total_liabilities = 0.0, 0.0
@@ -257,9 +270,10 @@ def get_profit_loss(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id_request),
 ):
-    sales_q = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Sales"], None)
-    purchase_q = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Purchase"], None)
+    sales_q = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Sales"], None, tenant_id)
+    purchase_q = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Purchase"], None, tenant_id)
 
     sales_vouchers = sales_q.all()
     purchase_vouchers = purchase_q.all()
@@ -318,6 +332,7 @@ def export_report_pdf(
     voucher_types: Optional[str] = Query(None),
     party_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id_request),
 ):
     """Universal PDF export for any report slug. Streams a PDF file."""
     title = _REPORT_TITLES.get(slug, slug.replace("-", " ").title())
@@ -350,7 +365,7 @@ def export_report_pdf(
             if voucher_types else default_types
         )
         q = _build_voucher_filters(
-            db.query(Voucher), date_from, date_to, vtype_list, party_name
+            db.query(Voucher), date_from, date_to, vtype_list, party_name, tenant_id
         )
         vouchers = q.order_by(Voucher.date.desc()).all()
         total = sum(v.amount or 0 for v in vouchers)
@@ -363,10 +378,10 @@ def export_report_pdf(
 
     elif slug == "cash-flow":
         inflows  = _build_voucher_filters(
-            db.query(Voucher), date_from, date_to, ["Receipt", "Sales"], None
+            db.query(Voucher), date_from, date_to, ["Receipt", "Sales"], None, tenant_id
         ).order_by(Voucher.date.desc()).all()
         outflows = _build_voucher_filters(
-            db.query(Voucher), date_from, date_to, ["Payment", "Purchase"], None
+            db.query(Voucher), date_from, date_to, ["Payment", "Purchase"], None, tenant_id
         ).order_by(Voucher.date.desc()).all()
         ti = sum(v.amount or 0 for v in inflows)
         to = sum(v.amount or 0 for v in outflows)
@@ -384,7 +399,7 @@ def export_report_pdf(
         }
 
     elif slug == "balance-sheet":
-        ledgers = db.query(Ledger).all()
+        ledgers = db.query(Ledger).filter(Ledger.tenant_id == tenant_id).all()
         assets, liabilities = [], []
         ta, tl = 0.0, 0.0
         for l in ledgers:
@@ -412,8 +427,8 @@ def export_report_pdf(
         }
 
     elif slug == "profit-loss":
-        sales_v    = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Sales"], None).all()
-        purchase_v = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Purchase"], None).all()
+        sales_v    = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Sales"], None, tenant_id).all()
+        purchase_v = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Purchase"], None, tenant_id).all()
         ts = sum(v.amount or 0 for v in sales_v)
         tp = sum(v.amount or 0 for v in purchase_v)
         data = {

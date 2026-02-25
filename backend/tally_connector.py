@@ -584,131 +584,130 @@ class TallyConnector:
         voucher_number: str,
         voucher_type: str = None,
         guid: str = None,
+        voucher_date: str = None,      # YYYYMMDD – narrows Day Book to 1 day for speed + precision
         company_name: Optional[str] = None,
     ) -> Dict:
         """
         Fetch a single voucher with ALL line items (inventory + ledger entries).
 
         Strategy:
-        1. Use a TDL Collection filtered by GUID (exact match, no ambiguity).
-        2. If no GUID, use a TDL Collection filtered by VoucherNumber + optional VoucherType.
-        3. Parse ALL <VOUCHER> nodes returned and pick the one that matches
-           voucher_number AND voucher_type (case-insensitive) as final guard.
+        1. Ask Tally's Day Book for a 1-day window (the voucher's date).
+           Day Book returns complete VOUCHER XML with all entries natively.
+        2. Iterate ALL returned <VOUCHER> nodes and pick the one matching:
+           – GUID (exact, highest priority)
+           – VoucherNumber + VoucherType (fallback)
+        3. If the day-window returns nothing, widen to ±30 days around that date.
 
-        Returns:
-            Complete voucher dict with items[], ledgers[], tax_breakdown[], total_amount
+        NOTE: No custom TDL FORM/PART/LINE is used – those caused Tally to
+              throw "Part:DB Body No PARTS or LINES or BUTTONS" and return 0 results.
         """
         cname = company_name or self.company_name
 
-        # ── Build the TDL filter expression ─────────────────────────────────────
-        # GUID is the most precise: one voucher per GUID in Tally.
-        # If not available, combine VoucherNumber + VoucherType.
-        if guid:
-            filter_formula = f'$GUID = "{escape(guid)}"'
-            filter_name = "ByGUID"
-        elif voucher_type:
-            filter_formula = (
-                f'$VoucherNumber = "{escape(voucher_number)}" AND '
-                f'$VoucherTypeName = "{escape(voucher_type)}"'
-            )
-            filter_name = "ByNumType"
-        else:
-            filter_formula = f'$VoucherNumber = "{escape(voucher_number)}"'
-            filter_name = "ByNum"
+        # ── Build date window ────────────────────────────────────────────────
+        # Prefer the exact voucher date for a 1-day window.
+        # Tally date format: YYYYMMDD
+        from datetime import datetime as _dt, timedelta as _td
 
-        xml = f"""<ENVELOPE>
-  <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
-  </HEADER>
+        if voucher_date and len(voucher_date) == 8:
+            try:
+                _parsed = _dt.strptime(voucher_date, "%Y%m%d")
+                from_date = voucher_date
+                to_date = voucher_date
+            except ValueError:
+                _parsed = None
+                from_date = None
+                to_date = None
+        else:
+            from_date = None
+            to_date = None
+
+        # If no specific date, use a rolling 2-year window so we don't miss anything
+        if not from_date:
+            _now = _dt.now()
+            from_date = (_now - _td(days=730)).strftime("%Y%m%d")
+            to_date = _now.strftime("%Y%m%d")
+
+        def _build_daybook_xml(fd: str, td: str) -> str:
+            return f"""<ENVELOPE>
+  <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
   <BODY>
     <EXPORTDATA>
       <REQUESTDESC>
-        <REPORTNAME>List of Vouchers</REPORTNAME>
+        <REPORTNAME>Day Book</REPORTNAME>
         <STATICVARIABLES>
           <SVCURRENTCOMPANY>{escape(cname)}</SVCURRENTCOMPANY>
+          <SVFROMDATE>{fd}</SVFROMDATE>
+          <SVTODATE>{td}</SVTODATE>
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         </STATICVARIABLES>
-        <TDL>
-          <TDLMESSAGE>
-            <COLLECTION ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="FilteredVoucher">
-              <TYPE>Voucher</TYPE>
-              <FETCH>Date, VoucherNumber, VoucherTypeName, PartyLedgerName, Narration, GUID,
-                     AllLedgerEntries, LedgerEntries,
-                     AllInventoryEntries, InventoryEntries,
-                     InventoryEntriesIn, InventoryEntriesOut</FETCH>
-              <FILTER>{filter_name}</FILTER>
-            </COLLECTION>
-            <SYSTEM TYPE="Formulae" NAME="{filter_name}">{filter_formula}</SYSTEM>
-            <REPORT ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="List of Vouchers">
-              <FORMS>ListVouchers</FORMS>
-            </REPORT>
-            <FORM ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="ListVouchers">
-              <TOPPARTS>VoucherPart</TOPPARTS>
-              <XMLTAG>FilteredVouchers</XMLTAG>
-            </FORM>
-            <PART ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="VoucherPart">
-              <LINES>VoucherLine</LINES>
-              <REPEAT>VoucherLine : FilteredVoucher</REPEAT>
-              <SCROLLED>Vertical</SCROLLED>
-            </PART>
-            <LINE ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="VoucherLine">
-              <LEFTFIELDS>VoucherTag</LEFTFIELDS>
-              <XMLTAG>VOUCHER</XMLTAG>
-            </LINE>
-            <FIELD ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="VoucherTag">
-              <SET>$$XMLString:$VoucherNumber</SET>
-              <XMLTAG>VOUCHERNUMBER</XMLTAG>
-            </FIELD>
-          </TDLMESSAGE>
-        </TDL>
       </REQUESTDESC>
     </EXPORTDATA>
   </BODY>
 </ENVELOPE>"""
 
-        try:
-            xml_response = self.send_request(xml)
-            xml_response = self._sanitize_xml(xml_response)
-            root = ET.fromstring(xml_response)
+        def _find_voucher_in_xml(xml_text: str) -> Optional[ET.Element]:
+            """Parse xml_text and return the matching VOUCHER element or None."""
+            try:
+                sanitized = self._sanitize_xml(xml_text)
+                root = ET.fromstring(sanitized)
+            except Exception as parse_err:
+                logger.warning(f"XML parse error in Day Book response: {parse_err}")
+                return None
 
-            all_vouchers = root.findall(".//VOUCHER")
+            all_nodes = root.findall(".//VOUCHER")
             logger.info(
-                f"🔍 Detail fetch for #{voucher_number} ({voucher_type}): "
-                f"{len(all_vouchers)} voucher(s) returned by Tally"
+                f"🔍 Day Book [{from_date}→{to_date}] for "
+                f"#{voucher_number} ({voucher_type}): {len(all_nodes)} voucher(s)"
             )
 
-            # ── Pick the correct VOUCHER node ────────────────────────────────
-            voucher_node = None
-
+            # Priority 1: GUID match
             if guid:
-                # GUID match is authoritative
-                for v in all_vouchers:
+                for v in all_nodes:
                     if (v.findtext("GUID") or "").strip() == guid.strip():
-                        voucher_node = v
-                        break
+                        return v
 
-            if not voucher_node:
-                # Match by number (and type if given)
-                for v in all_vouchers:
-                    v_num = (v.findtext("VOUCHERNUMBER") or "").strip()
-                    v_type = (v.findtext("VOUCHERTYPENAME") or v.get("VCHTYPE", "")).strip().lower()
-                    req_type = (voucher_type or "").strip().lower()
+            # Priority 2: VoucherNumber + VoucherType
+            req_type = (voucher_type or "").strip().lower()
+            for v in all_nodes:
+                v_num  = (v.findtext("VOUCHERNUMBER") or "").strip()
+                v_type = (
+                    v.findtext("VOUCHERTYPENAME")
+                    or v.get("VCHTYPE", "")
+                ).strip().lower()
 
-                    num_match = v_num == voucher_number.strip()
-                    type_match = (not req_type) or (req_type in v_type) or (v_type in req_type)
+                num_ok  = (v_num == voucher_number.strip())
+                type_ok = (not req_type) or (req_type in v_type) or (v_type in req_type)
 
-                    if num_match and type_match:
-                        voucher_node = v
-                        break
+                if num_ok and type_ok:
+                    return v
 
-            # Last resort: take the only result if there is one
-            if not voucher_node and len(all_vouchers) == 1:
-                voucher_node = all_vouchers[0]
+            # Last resort: only result
+            if len(all_nodes) == 1:
+                return all_nodes[0]
 
-            if not voucher_node:
+            return None
+
+        try:
+            # ── Attempt 1: narrow window ─────────────────────────────────────
+            xml_response = self.send_request(_build_daybook_xml(from_date, to_date))
+            voucher_node = _find_voucher_in_xml(xml_response)
+
+            # ── Attempt 2: widen to ±30 days if narrow gave nothing ──────────
+            if voucher_node is None and voucher_date:
+                try:
+                    _parsed = _dt.strptime(voucher_date, "%Y%m%d")
+                    wide_from = (_parsed - _td(days=30)).strftime("%Y%m%d")
+                    wide_to   = (_parsed + _td(days=30)).strftime("%Y%m%d")
+                    logger.info(f"Widening Day Book window to {wide_from}→{wide_to}")
+                    xml_response = self.send_request(_build_daybook_xml(wide_from, wide_to))
+                    voucher_node = _find_voucher_in_xml(xml_response)
+                except Exception:
+                    pass
+
+            if voucher_node is None:
                 logger.warning(
                     f"Voucher #{voucher_number} (type={voucher_type}) not found "
-                    f"in {len(all_vouchers)} results"
+                    f"in Day Book [{from_date}→{to_date}]"
                 )
                 return {}
 

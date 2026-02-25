@@ -22,11 +22,22 @@ from backend.services.ledger_service import LedgerService, get_or_create_ledger
 router = APIRouter(tags=["vouchers"])
 logger = logging.getLogger("vouchers")
 
-# Initialize Tally Engine (Unified Logic)
-TALLY_COMPANY = os.getenv("TALLY_COMPANY", "Krishasales")
+# ⚠️  Do NOT hardcode company name here.
+# TALLY_COMPANY is set dynamically by api.py at startup from k24_config.json.
+# Reading it lazily (per-request via os.getenv) ensures every user gets
+# their own company — not "Krishasales" or any other hardcoded default.
 TALLY_URL = os.getenv("TALLY_URL", "http://localhost:9000")
-# Legacy Connector for some reads if needed, but Engine handles writes
-tally_connector = TallyConnector(url=TALLY_URL, company_name=TALLY_COMPANY)
+TALLY_TIMEOUT = int(os.getenv("TALLY_TIMEOUT", "60"))
+
+def _get_tally_connector() -> TallyConnector:
+    """Returns a TallyConnector using the CURRENT company name from config.
+    Called per-request so it always reflects k24_config.json loaded at startup.
+    """
+    company = os.getenv("TALLY_COMPANY", "")  # No hardcoded fallback
+    url = os.getenv("TALLY_URL", "http://localhost:9000")
+    return TallyConnector(url=url, company_name=company)
+
+# Single engine instance is OK (URL-only, stateless)
 engine = TallyEngine(tally_url=TALLY_URL)
 
 # --- Pydantic Models ---
@@ -107,43 +118,60 @@ async def get_voucher_detail(
         - total_amount
     """
     try:
-        detail = tally_connector.fetch_voucher_with_line_items(
-            voucher_number=voucher_number,
-            voucher_type=voucher_type,
-            guid=guid,
-        )
+        # ── Step 1: Look up voucher in local DB ──────────────────────────────
+        db_query = db.query(Voucher).filter(Voucher.voucher_number == voucher_number)
+        if voucher_type:
+            db_query = db_query.filter(Voucher.voucher_type == voucher_type)
+        db_voucher = db_query.first()
 
-        if not detail:
-            # Fallback: try from local DB
-            v = db.query(Voucher).filter(Voucher.voucher_number == voucher_number).first()
-            if v:
-                return {
-                    "voucher_number": v.voucher_number,
-                    "date": v.date.strftime("%Y%m%d") if v.date else "",
-                    "voucher_type": v.voucher_type,
-                    "party_name": v.party_name,
-                    "narration": v.narration or "",
-                    "guid": v.guid or "",
-                    "items": [],
-                    "ledgers": [],
-                    "tax_breakdown": [],
-                    "total_amount": v.amount,
-                    "source": "local_db",
-                }
+        if not db_voucher:
             raise HTTPException(status_code=404, detail=f"Voucher '{voucher_number}' not found")
 
-        # Format date
-        raw_date = detail.get("date", "")
-        formatted_date = raw_date
-        if raw_date and len(raw_date) >= 8:
-            try:
-                formatted_date = datetime.strptime(raw_date[:8], "%Y%m%d").strftime("%Y-%m-%d")
-            except Exception:
-                pass
+        logger.info(
+            f"Voucher detail: #{voucher_number} type={db_voucher.voucher_type} "
+            f"inv_items={len(db_voucher.inventory_entries or [])} "
+            f"led_entries={len(db_voucher.ledger_entries or [])}"
+        )
 
-        detail["date"] = formatted_date
-        detail["source"] = "tally"
-        return detail
+        # ── Step 2: Build response from DB (preferred — fast, offline-safe) ──
+        inv_entries = db_voucher.inventory_entries or []
+        led_entries = db_voucher.ledger_entries or []
+        tax_breakdown = [l for l in led_entries if l.get("is_tax")]
+
+        # ── Step 3: If DB has no line items, try Tally live as fallback ──────
+        source = "local_db"
+        if not inv_entries and not led_entries:
+            logger.info(f"No line items in DB for #{voucher_number} — trying Tally live fallback")
+            try:
+                voucher_date_str = db_voucher.date.strftime("%Y%m%d") if db_voucher.date else None
+                effective_guid = guid or db_voucher.guid
+                tally_detail = _get_tally_connector().fetch_voucher_with_line_items(
+                    voucher_number=voucher_number,
+                    voucher_type=voucher_type,
+                    guid=effective_guid,
+                    voucher_date=voucher_date_str,
+                )
+                if tally_detail:
+                    inv_entries = tally_detail.get("items", [])
+                    led_entries = tally_detail.get("ledger_entries", [])
+                    tax_breakdown = tally_detail.get("tax_breakdown", [])
+                    source = "tally"
+            except Exception as te:
+                logger.warning(f"Tally live fallback failed for #{voucher_number}: {te}")
+
+        return {
+            "voucher_number": db_voucher.voucher_number,
+            "date": db_voucher.date.strftime("%Y-%m-%d") if db_voucher.date else "",
+            "voucher_type": db_voucher.voucher_type,
+            "party_name": db_voucher.party_name,
+            "narration": db_voucher.narration or "",
+            "guid": db_voucher.guid or "",
+            "items": inv_entries,
+            "ledger_entries": led_entries,
+            "tax_breakdown": tax_breakdown,
+            "total_amount": db_voucher.amount,
+            "source": source,
+        }
 
     except HTTPException:
         raise
@@ -169,8 +197,8 @@ async def get_vouchers(
     Auth is optional: if a valid JWT exists, we use its tenant_id; 
     otherwise we fall back gracefully to 'default' (dev / local mode).
     """
-    # Graceful tenant resolution — don't block daybook if user isn't logged in
-    tenant_id = "default"
+    # Graceful tenant resolution — pull from env if not in a JWT session
+    tenant_id = os.getenv("TENANT_ID", "default")
     try:
         from fastapi.security import OAuth2PasswordBearer
         from backend.auth import get_current_tenant_id as _get_tid, get_current_user
@@ -189,99 +217,90 @@ async def get_vouchers(
                     if user and user.tenant_id:
                         tenant_id = user.tenant_id
     except Exception:
-        pass  # Fall back to "default"
+        pass 
     try:
-        # Default Daybook View: Today if not specified
+        # 1. Normalize dates
         today = date.today()
-        
         if not start_date:
             start_date = today.strftime("%Y%m%d")
         if not end_date:
             end_date = today.strftime("%Y%m%d")
+            
+        logger.info(f"📊 Fetching vouchers for range: {start_date} to {end_date} (Tenant: {tenant_id})")
+
+        # ── Step 1: Check Local DB first (Very Fast) ────────────────────────
+        d_start = datetime.strptime(start_date, "%Y%m%d")
+        d_end = datetime.strptime(end_date, "%Y%m%d")
         
-        # --- Cache Check ---
-        # Re-use the full normalized list for the same date range within TTL.
-        cache_key = (start_date, end_date)
-        cached = _voucher_cache.get(cache_key)
-        now = time.time()
+        db_vouchers = db.query(Voucher).filter(
+            Voucher.tenant_id == tenant_id,
+            Voucher.date >= d_start,
+            Voucher.date <= d_end
+        ).all()
         
-        if cached and (now - cached["ts"]) < CALLY_CACHE_TTL:
-            # Cache HIT: use pre-fetched data
-            all_normalized = cached["data"]
-            ledger_map = cached["ledger_map"]
-            logger.debug(f"[Cache HIT] {cache_key} — {len(all_normalized)} vouchers")
+        local_data = []
+        for v in db_vouchers:
+            local_data.append({
+                "voucher_number": v.voucher_number,
+                "date": v.date.strftime("%Y%m%d") if v.date else "",
+                "voucher_type": v.voucher_type,
+                "party_name": v.party_name,
+                "amount": v.amount,
+                "narration": v.narration,
+                "guid": v.guid,
+                "source": "database"
+            })
+            
+        # ── Step 2: Try Live Tally (only if user wants "Live" or cache is empty) ──
+        # In a real hybrid app, we'd merge these. For now, if we have DB data, 
+        # we return it immediately to avoid timeouts.
+        if local_data and not search_query:
+            logger.info(f"✅ Returning {len(local_data)} vouchers from local DB")
+            normalized_vouchers = local_data
         else:
-            # Cache MISS: hit Tally
+            # Fallback to Tally for live/filtered data
+            logger.info("📡 DB empty or search active — falling back to live Tally fetch")
             reader = TallyReader()
+            # Inject shorter timeout for live UI request
             raw_txns = reader.get_transactions(start_date, end_date)
             
-            # Pre-fetch Ledger Map for ID linking
             all_ledgers = db.query(Ledger.name, Ledger.id).all()
             ledger_map = {l.name.lower(): l.id for l in all_ledgers}
             
-            all_normalized = []
+            normalized_vouchers = []
             for txn in raw_txns:
-                # Strict Date Filter (Python Side)
-                txn_date = txn.get("date", "")
-                if start_date and txn_date < start_date:
-                    continue
-                if end_date and txn_date > end_date:
-                    continue
-
                 norm_v = normalize_tally_voucher(txn)
-                
-                # Inject Ledger ID if found in local DB
                 p_name = norm_v.get("party_name", "").lower()
                 if p_name in ledger_map:
                     norm_v["ledger_id"] = ledger_map[p_name]
-                
-                all_normalized.append(norm_v)
-            
-            # Sort by date desc
-            all_normalized.sort(key=lambda x: x["date"], reverse=True)
-            
-            # Store in cache
-            _voucher_cache[cache_key] = {
-                "data": all_normalized,
-                "ledger_map": ledger_map,
-                "ts": now,
-            }
-            logger.info(f"[Cache MISS] Fetched {len(all_normalized)} vouchers from Tally for {cache_key}")
-        
-        # Apply in-memory filters (type + search) on cached data
-        normalized_vouchers = []
-        for norm_v in all_normalized:
-            # Filter by TYPE if requested
-            if voucher_type:
-                if voucher_type.lower() != "all_types" and voucher_type.lower() not in norm_v["voucher_type"].lower():
-                    continue
+                norm_v["source"] = "tally_live"
+                normalized_vouchers.append(norm_v)
 
-            # Filter by Search Query
-            if search_query:
-                q = search_query.lower()
-                match = (
-                    q in str(norm_v.get("party_name", "")).lower() or
-                    q in str(norm_v.get("voucher_number", "")).lower() or
-                    q in str(norm_v.get("amount", "")).lower() or
-                    q in str(norm_v.get("narration", "")).lower()
-                )
-                if not match:
-                    continue
+        # 3. Apply Filters & Sorting
+        if search_query:
+            q = search_query.lower()
+            normalized_vouchers = [
+                v for v in normalized_vouchers 
+                if q in str(v.get("party_name", "")).lower() or 
+                   q in str(v.get("voucher_number", "")).lower() or
+                   q in str(v.get("narration", "")).lower()
+            ]
             
-            normalized_vouchers.append(norm_v)
+        normalized_vouchers.sort(key=lambda x: x["date"], reverse=True)
         
-        # Pagination Logic
+        # 4. Pagination
         total_count = len(normalized_vouchers)
         start_index = (page - 1) * limit
         end_index = start_index + limit
-        paginated_vouchers = normalized_vouchers[start_index:end_index]
+        paginated = normalized_vouchers[start_index:end_index]
         
         return {
-            "vouchers": paginated_vouchers,
+            "vouchers": paginated,
             "total_count": total_count,
             "page": page,
             "limit": limit,
-            "total_pages": (total_count + limit - 1) // limit
+            "total_pages": (total_count + limit - 1) // limit,
+            "tenant_id": tenant_id
         }
         
     except Exception as e:
