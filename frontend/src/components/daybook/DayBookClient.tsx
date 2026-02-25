@@ -195,10 +195,30 @@ export default function DayBookClient() {
         }
     };
 
-    const handleViewDetails = (v: Voucher) => {
+    // State for the detail fetch
+    const [detailData, setDetailData] = useState<Record<string, unknown> | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+
+    const handleViewDetails = async (v: Voucher) => {
         setSelectedVoucher(v);
+        setDetailData(null);
         setDrawerOpen(true);
+        setDetailLoading(true);
+        try {
+            const params = new URLSearchParams({ voucher_number: v.voucher_number });
+            if (v.voucher_type) params.append("voucher_type", v.voucher_type);
+            const res = await apiClient(`/api/vouchers/detail?${params.toString()}`);
+            if (res.ok) {
+                const data = await res.json();
+                setDetailData(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch voucher detail", err);
+        } finally {
+            setDetailLoading(false);
+        }
     };
+
 
     const getHeaderText = () => {
         if (!activeRange) return "";
@@ -253,6 +273,8 @@ export default function DayBookClient() {
                 open={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
                 voucher={selectedVoucher}
+                detailData={detailData}
+                detailLoading={detailLoading}
             />
         </div>
     );

@@ -1083,7 +1083,8 @@ class TallyReader:
                 # --- Line Items (Inventory) ---
                 items = []
                 # Check for standard Inventory Entries or In/Out variations
-                inv_entries = (v_node.findall("INVENTORYENTRIES.LIST") or []) + \
+                inv_entries = (v_node.findall("ALLINVENTORYENTRIES.LIST") or []) + \
+                              (v_node.findall("INVENTORYENTRIES.LIST") or []) + \
                               (v_node.findall("INVENTORYENTRIESIN.LIST") or []) + \
                               (v_node.findall("INVENTORYENTRIESOUT.LIST") or [])
                               
