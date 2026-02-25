@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Edit2, Phone, User, Hash, FileText, Search, Loader2 } from "lucide-react";
+import { Plus, Trash2, Phone, User, Hash, FileText, Search, Loader2, Bot, CheckCircle, AlertCircle, Save } from "lucide-react";
 import { apiClient } from "@/lib/api-config";
 
 interface CustomerMapping {
@@ -118,7 +118,7 @@ function AddCustomerForm({ onSubmit, onCancel, isLoading }: AddCustomerFormProps
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 shadowed-button"
+                            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
                         >
                             {isLoading ? <Loader2 className="animate-spin" size={18} /> : null}
                             {isLoading ? "Saving..." : "Save Mapping"}
@@ -129,6 +129,150 @@ function AddCustomerForm({ onSubmit, onCancel, isLoading }: AddCustomerFormProps
         </div>
     );
 }
+
+// ─── Bot Number Card ─────────────────────────────────────────────
+function BotNumberCard() {
+    const [botNumber, setBotNumber] = useState("");
+    const [savedNumber, setSavedNumber] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+    const [errorMsg, setErrorMsg] = useState("");
+
+    useEffect(() => {
+        fetchBotNumber();
+    }, []);
+
+    const fetchBotNumber = async () => {
+        setLoading(true);
+        try {
+            const res = await apiClient("/api/whatsapp/bot-number");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.whatsapp_number) {
+                    setBotNumber(data.whatsapp_number);
+                    setSavedNumber(data.whatsapp_number);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch bot number:", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!botNumber.trim()) return;
+        setSaving(true);
+        setStatus("idle");
+        setErrorMsg("");
+        try {
+            const res = await apiClient("/api/whatsapp/bot-number", {
+                method: "PUT",
+                body: JSON.stringify({ whatsapp_number: botNumber.trim() })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSavedNumber(data.whatsapp_number);
+                setBotNumber(data.whatsapp_number);
+                setStatus("success");
+                setTimeout(() => setStatus("idle"), 3000);
+            } else {
+                const err = await res.json();
+                setErrorMsg(err.detail || "Failed to save");
+                setStatus("error");
+            }
+        } catch (e) {
+            setErrorMsg("Network error. Please try again.");
+            setStatus("error");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const isDirty = botNumber !== savedNumber;
+
+    return (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4">
+                <div className="flex items-center gap-3 text-white">
+                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                        <Bot size={22} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold">Your WhatsApp Bot Number</h2>
+                        <p className="text-green-100 text-sm">
+                            The number customers message to reach your AI assistant.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="p-6">
+                {loading ? (
+                    <div className="flex items-center gap-3 text-gray-400">
+                        <Loader2 className="animate-spin" size={18} />
+                        <span className="text-sm">Loading current number...</span>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                Bot Phone Number
+                            </label>
+                            <div className="flex gap-3">
+                                <div className="relative flex-1">
+                                    <Phone className="absolute left-3 top-3 text-gray-400" size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder="+91XXXXXXXXXX"
+                                        value={botNumber}
+                                        onChange={(e) => { setBotNumber(e.target.value); setStatus("idle"); }}
+                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleSave}
+                                    disabled={saving || !isDirty || !botNumber.trim()}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium text-sm"
+                                >
+                                    {saving
+                                        ? <><Loader2 className="animate-spin" size={16} /> Saving...</>
+                                        : <><Save size={16} /> Save</>
+                                    }
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1.5">
+                                Format: +91XXXXXXXXXX — Changes apply immediately in the cloud.
+                            </p>
+                        </div>
+
+                        {status === "success" && (
+                            <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 border border-green-200 rounded-lg px-4 py-2.5">
+                                <CheckCircle size={16} />
+                                <span>Bot number updated successfully! Cloud routing is live.</span>
+                            </div>
+                        )}
+                        {status === "error" && (
+                            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+                                <AlertCircle size={16} />
+                                <span>{errorMsg}</span>
+                            </div>
+                        )}
+
+                        {savedNumber && status === "idle" && (
+                            <div className="flex items-center gap-2 text-gray-500 text-xs">
+                                <CheckCircle size={13} className="text-green-500" />
+                                <span>Currently registered: <span className="font-mono font-medium text-gray-700">{savedNumber}</span></span>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+// ─────────────────────────────────────────────────────────────────
 
 export default function WhatsAppSettingsPage() {
     const [mappings, setMappings] = useState<CustomerMapping[]>([]);
@@ -180,17 +324,15 @@ export default function WhatsAppSettingsPage() {
     const handleDelete = async (id: string) => {
         if (!confirm('Are you sure you want to remove this customer mapping?')) return;
 
-        // Optimistic update
         setMappings(prev => prev.filter(m => m.id !== id));
 
         try {
             await apiClient(`/api/whatsapp/customers/${id}`, {
                 method: 'DELETE'
             });
-            // fetchMappings(); // No need if optimistic worked, but good to ensure sync on error?
         } catch (error) {
             alert("Failed to delete");
-            fetchMappings(); // Revert
+            fetchMappings();
         }
     };
 
@@ -201,8 +343,11 @@ export default function WhatsAppSettingsPage() {
 
     return (
         <div className="p-6 max-w-6xl mx-auto space-y-6">
+            {/* Bot Number Card — register your bot number here */}
+            <BotNumberCard />
+
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 tracking-tight">WhatsApp Customers</h1>
                     <p className="text-gray-500 mt-1">

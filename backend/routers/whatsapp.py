@@ -512,6 +512,97 @@ async def delete_customer_mapping(
 
     return {"message": "Mapping deleted successfully"}
 
+# ============================================
+# BOT NUMBER CONFIGURATION
+# ============================================
+
+class BotNumberUpdate(BaseModel):
+    whatsapp_number: str
+
+@router.get("/api/whatsapp/bot-number")
+async def get_bot_number(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get the tenant's registered bot WhatsApp number from Supabase tenant_config.
+    This is the number the cloud backend routes incoming messages TO.
+    """
+    import httpx, os
+
+    tenant_id = current_user.get("tenant_id") if isinstance(current_user, dict) else getattr(current_user, "tenant_id", None)
+    if not tenant_id:
+        return {"whatsapp_number": None, "configured": False}
+
+    supa_url = os.getenv("SUPABASE_URL", "https://gxukvnoiyzizienswgni.supabase.co")
+    supa_key = os.getenv("SUPABASE_SERVICE_KEY", "sb_secret_qJuJk2q0_hO144oQLmSYxA_6WB_qtkR")
+    headers = {"apikey": supa_key, "Authorization": f"Bearer {supa_key}"}
+
+    try:
+        resp = httpx.get(
+            f"{supa_url}/rest/v1/tenant_config",
+            params={"tenant_id": f"eq.{tenant_id}", "select": "whatsapp_number"},
+            headers=headers,
+            timeout=10
+        )
+        data = resp.json()
+        if data and len(data) > 0 and data[0].get("whatsapp_number"):
+            return {"whatsapp_number": data[0]["whatsapp_number"], "configured": True}
+        return {"whatsapp_number": None, "configured": False}
+    except Exception as e:
+        print(f"[bot-number] fetch error: {e}")
+        return {"whatsapp_number": None, "configured": False}
+
+
+@router.put("/api/whatsapp/bot-number")
+async def update_bot_number(
+    body: BotNumberUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Save / update the bot WhatsApp number in Supabase tenant_config (upsert).
+    This is the CRITICAL step that registers the tenant with the Cloud routing engine.
+    When changed, the cloud will immediately start routing to the new number.
+    """
+    import httpx, os
+
+    tenant_id = current_user.get("tenant_id") if isinstance(current_user, dict) else getattr(current_user, "tenant_id", None)
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="No tenant_id found for this user. Please log in again.")
+
+    # Normalize to E.164 format
+    phone = body.whatsapp_number.strip().replace(" ", "").replace("-", "")
+    if not phone.startswith("+"):
+        phone = f"+91{phone}"
+    if len(phone) < 10 or len(phone) > 16:
+        raise HTTPException(status_code=400, detail="Invalid phone number. Use format: +91XXXXXXXXXX")
+
+    supa_url = os.getenv("SUPABASE_URL", "https://gxukvnoiyzizienswgni.supabase.co")
+    supa_key = os.getenv("SUPABASE_SERVICE_KEY", "sb_secret_qJuJk2q0_hO144oQLmSYxA_6WB_qtkR")
+    headers = {
+        "apikey": supa_key,
+        "Authorization": f"Bearer {supa_key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=minimal"
+    }
+
+    try:
+        resp = httpx.post(
+            f"{supa_url}/rest/v1/tenant_config",
+            headers=headers,
+            json={"tenant_id": tenant_id, "whatsapp_number": phone},
+            timeout=10
+        )
+        if resp.status_code in (200, 201, 204):
+            print(f"[bot-number] Updated Supabase tenant_config for {tenant_id}: {phone}")
+            return {"status": "success", "whatsapp_number": phone}
+        else:
+            print(f"[bot-number] Supabase error {resp.status_code}: {resp.text}")
+            raise HTTPException(status_code=500, detail=f"Supabase error: {resp.text[:200]}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
+
 
 # ============================================
 # MESSAGE STATS
