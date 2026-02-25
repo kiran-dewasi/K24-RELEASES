@@ -9,7 +9,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='K24 Backend Desktop Mode')
     parser.add_argument('--port', type=int, default=8001)
     parser.add_argument('--token', type=str, required=True)
-    parser.add_argument('--desktop-mode', type=str, default='true')
+    parser.add_argument('--desktop-mode', type=str, default='false')  # Only true in packaged Tauri builds
     return parser.parse_args()
 
 # Set environment for PyInstaller

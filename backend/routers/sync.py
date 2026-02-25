@@ -3,7 +3,7 @@ from backend.dependencies import get_api_key
 from backend.tally_reader import TallyReader
 from backend.database import get_db, Ledger, Voucher, StockItem
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import Optional, Literal
