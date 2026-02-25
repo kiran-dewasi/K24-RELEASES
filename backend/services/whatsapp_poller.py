@@ -42,11 +42,7 @@ logger = logging.getLogger("whatsapp_poller")
 # Env vars override these (useful for dev/staging).
 # ──────────────────────────────────────────────
 _PROD_SUPABASE_URL        = "https://gxukvnoiyzizienswgni.supabase.co"
-_PROD_SUPABASE_SERVICE_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4dWt2bm9peXppemllbnN3Z25pIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTc1MzE5OCwiZXhwIjoyMDg1MTEzMTk4fQ"
-    ".QXK3psAWhGl-cdYqfSnqdjJBiREZIrVlt9a7HLH0WU4"
-)
+_PROD_SUPABASE_SERVICE_KEY = "sb_secret_qJuJk2q0_hO144oQLmSYxA_6WB_qtkR"
 _PROD_BAILEYS_URL          = "https://artistic-healing-production.up.railway.app"
 _PROD_BAILEYS_SECRET       = "k24_baileys_secret"
 
