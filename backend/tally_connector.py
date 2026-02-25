@@ -579,86 +579,186 @@ class TallyConnector:
             logger.error(f"Failed to fetch ledger details: {e}")
             return {}
 
-    def fetch_voucher_with_line_items(self, voucher_number: str, voucher_type: str = None, company_name: Optional[str] = None) -> Dict:
+    def fetch_voucher_with_line_items(
+        self,
+        voucher_number: str,
+        voucher_type: str = None,
+        guid: str = None,
+        company_name: Optional[str] = None,
+    ) -> Dict:
         """
-        Fetch a voucher with ALL line items (inventory entries, ledger entries).
-        
+        Fetch a single voucher with ALL line items (inventory + ledger entries).
+
+        Strategy:
+        1. Use a TDL Collection filtered by GUID (exact match, no ambiguity).
+        2. If no GUID, use a TDL Collection filtered by VoucherNumber + optional VoucherType.
+        3. Parse ALL <VOUCHER> nodes returned and pick the one that matches
+           voucher_number AND voucher_type (case-insensitive) as final guard.
+
         Returns:
-            Complete voucher dict with items[], ledgers[], tax_breakdown[]
+            Complete voucher dict with items[], ledgers[], tax_breakdown[], total_amount
         """
         cname = company_name or self.company_name
-        
-        voucher_type_xml = f"<VOUCHERTYPENAME>{escape(voucher_type)}</VOUCHERTYPENAME>" if voucher_type else ""
-        
-        xml = f"""
-        <ENVELOPE>
-            <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
-            <BODY>
-                <EXPORTDATA>
-                    <REQUESTDESC>
-                        <REPORTNAME>Voucher Register</REPORTNAME>
-                        <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{escape(cname)}</SVCURRENTCOMPANY>
-                            <VOUCHERNUMBER>{escape(voucher_number)}</VOUCHERNUMBER>
-                            {voucher_type_xml}
-                            <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                        </STATICVARIABLES>
-                    </REQUESTDESC>
-                </EXPORTDATA>
-            </BODY>
-        </ENVELOPE>
-        """
-        
+
+        # ── Build the TDL filter expression ─────────────────────────────────────
+        # GUID is the most precise: one voucher per GUID in Tally.
+        # If not available, combine VoucherNumber + VoucherType.
+        if guid:
+            filter_formula = f'$GUID = "{escape(guid)}"'
+            filter_name = "ByGUID"
+        elif voucher_type:
+            filter_formula = (
+                f'$VoucherNumber = "{escape(voucher_number)}" AND '
+                f'$VoucherTypeName = "{escape(voucher_type)}"'
+            )
+            filter_name = "ByNumType"
+        else:
+            filter_formula = f'$VoucherNumber = "{escape(voucher_number)}"'
+            filter_name = "ByNum"
+
+        xml = f"""<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Export Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <EXPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>List of Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>{escape(cname)}</SVCURRENTCOMPANY>
+          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+        <TDL>
+          <TDLMESSAGE>
+            <COLLECTION ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="FilteredVoucher">
+              <TYPE>Voucher</TYPE>
+              <FETCH>Date, VoucherNumber, VoucherTypeName, PartyLedgerName, Narration, GUID,
+                     AllLedgerEntries, LedgerEntries,
+                     AllInventoryEntries, InventoryEntries,
+                     InventoryEntriesIn, InventoryEntriesOut</FETCH>
+              <FILTER>{filter_name}</FILTER>
+            </COLLECTION>
+            <SYSTEM TYPE="Formulae" NAME="{filter_name}">{filter_formula}</SYSTEM>
+            <REPORT ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="List of Vouchers">
+              <FORMS>ListVouchers</FORMS>
+            </REPORT>
+            <FORM ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="ListVouchers">
+              <TOPPARTS>VoucherPart</TOPPARTS>
+              <XMLTAG>FilteredVouchers</XMLTAG>
+            </FORM>
+            <PART ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="VoucherPart">
+              <LINES>VoucherLine</LINES>
+              <REPEAT>VoucherLine : FilteredVoucher</REPEAT>
+              <SCROLLED>Vertical</SCROLLED>
+            </PART>
+            <LINE ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="VoucherLine">
+              <LEFTFIELDS>VoucherTag</LEFTFIELDS>
+              <XMLTAG>VOUCHER</XMLTAG>
+            </LINE>
+            <FIELD ISMODIFY="No" ISFIXED="No" ISINITIALIZE="No" ISOPTION="No" NAME="VoucherTag">
+              <SET>$$XMLString:$VoucherNumber</SET>
+              <XMLTAG>VOUCHERNUMBER</XMLTAG>
+            </FIELD>
+          </TDLMESSAGE>
+        </TDL>
+      </REQUESTDESC>
+    </EXPORTDATA>
+  </BODY>
+</ENVELOPE>"""
+
         try:
             xml_response = self.send_request(xml)
             xml_response = self._sanitize_xml(xml_response)
             root = ET.fromstring(xml_response)
-            
-            voucher = root.find(".//VOUCHER")
-            if not voucher:
-                logger.warning(f"Voucher '{voucher_number}' not found")
+
+            all_vouchers = root.findall(".//VOUCHER")
+            logger.info(
+                f"🔍 Detail fetch for #{voucher_number} ({voucher_type}): "
+                f"{len(all_vouchers)} voucher(s) returned by Tally"
+            )
+
+            # ── Pick the correct VOUCHER node ────────────────────────────────
+            voucher_node = None
+
+            if guid:
+                # GUID match is authoritative
+                for v in all_vouchers:
+                    if (v.findtext("GUID") or "").strip() == guid.strip():
+                        voucher_node = v
+                        break
+
+            if not voucher_node:
+                # Match by number (and type if given)
+                for v in all_vouchers:
+                    v_num = (v.findtext("VOUCHERNUMBER") or "").strip()
+                    v_type = (v.findtext("VOUCHERTYPENAME") or v.get("VCHTYPE", "")).strip().lower()
+                    req_type = (voucher_type or "").strip().lower()
+
+                    num_match = v_num == voucher_number.strip()
+                    type_match = (not req_type) or (req_type in v_type) or (v_type in req_type)
+
+                    if num_match and type_match:
+                        voucher_node = v
+                        break
+
+            # Last resort: take the only result if there is one
+            if not voucher_node and len(all_vouchers) == 1:
+                voucher_node = all_vouchers[0]
+
+            if not voucher_node:
+                logger.warning(
+                    f"Voucher #{voucher_number} (type={voucher_type}) not found "
+                    f"in {len(all_vouchers)} results"
+                )
                 return {}
-            
+
+            # ── Parse the matched voucher ────────────────────────────────────
             result = {
-                "voucher_number": voucher.findtext("VOUCHERNUMBER") or voucher_number,
-                "date": voucher.findtext("DATE") or "",
-                "voucher_type": voucher.findtext("VOUCHERTYPENAME") or voucher.get("VCHTYPE", ""),
-                "party_name": voucher.findtext("PARTYLEDGERNAME") or "",
-                "narration": voucher.findtext("NARRATION") or "",
-                "guid": voucher.findtext("GUID") or "",
+                "voucher_number": voucher_node.findtext("VOUCHERNUMBER") or voucher_number,
+                "date": voucher_node.findtext("DATE") or "",
+                "voucher_type": (
+                    voucher_node.findtext("VOUCHERTYPENAME")
+                    or voucher_node.get("VCHTYPE", "")
+                    or voucher_type
+                    or ""
+                ),
+                "party_name": voucher_node.findtext("PARTYLEDGERNAME") or "",
+                "narration": voucher_node.findtext("NARRATION") or "",
+                "guid": voucher_node.findtext("GUID") or guid or "",
                 "items": [],
                 "ledgers": [],
                 "tax_breakdown": [],
-                "total_amount": 0.0
+                "total_amount": 0.0,
             }
-            
-            # Parse inventory entries
-            for inv_tag in ["ALLINVENTORYENTRIES.LIST", "INVENTORYENTRIES.LIST", 
-                           "INVENTORYENTRIESIN.LIST", "INVENTORYENTRIESOUT.LIST"]:
-                for inv in voucher.findall(inv_tag):
+
+            # Inventory entries
+            for inv_tag in [
+                "ALLINVENTORYENTRIES.LIST",
+                "INVENTORYENTRIES.LIST",
+                "INVENTORYENTRIESIN.LIST",
+                "INVENTORYENTRIESOUT.LIST",
+            ]:
+                for inv in voucher_node.findall(inv_tag):
                     item_name = inv.findtext("STOCKITEMNAME") or ""
                     qty_str = inv.findtext("ACTUALQTY") or inv.findtext("BILLEDQTY") or "0"
                     rate_str = inv.findtext("RATE") or "0"
                     amt_str = inv.findtext("AMOUNT") or "0"
-                    
-                    # Parse quantity
+
                     try:
                         qty = abs(float(qty_str.split()[0].replace(",", "")))
-                    except:
+                    except Exception:
                         qty = 0.0
-                    
-                    # Parse rate
+
                     try:
                         rate = abs(float(rate_str.split("/")[0].replace(",", "")))
-                    except:
+                    except Exception:
                         rate = 0.0
-                    
-                    # Parse amount
+
                     try:
                         amount = abs(float(amt_str.replace(",", "")))
-                    except:
+                    except Exception:
                         amount = 0.0
-                    
+
                     if item_name:
                         result["items"].append({
                             "name": item_name,
@@ -666,49 +766,47 @@ class TallyConnector:
                             "rate": rate,
                             "amount": amount,
                             "godown": inv.findtext("GODOWNNAME") or "Main Location",
-                            "batch": inv.findtext("BATCHNAME") or ""
+                            "batch": inv.findtext("BATCHNAME") or "",
                         })
-            
-            # Parse ledger entries
+
+            # Ledger entries
             total_dr = 0.0
             total_cr = 0.0
-            
+
             for led_tag in ["ALLLEDGERENTRIES.LIST", "LEDGERENTRIES.LIST"]:
-                for led in voucher.findall(led_tag):
+                for led in voucher_node.findall(led_tag):
                     led_name = led.findtext("LEDGERNAME") or ""
                     led_amt_str = led.findtext("AMOUNT") or "0"
-                    
+
                     try:
                         led_amt = float(led_amt_str.replace(",", ""))
-                    except:
+                    except Exception:
                         led_amt = 0.0
-                    
+
                     if led_amt < 0:
                         total_cr += abs(led_amt)
                     else:
                         total_dr += led_amt
-                    
-                    # Check if tax ledger
-                    is_tax = any(x in (led_name or "").upper() for x in ["GST", "TAX", "CESS", "DUTY", "CGST", "SGST", "IGST"])
-                    
-                    ledger_entry = {
-                        "name": led_name,
-                        "amount": led_amt,
-                        "is_tax": is_tax
-                    }
-                    
-                    result["ledgers"].append(ledger_entry)
-                    
+
+                    is_tax = any(
+                        x in led_name.upper()
+                        for x in ["GST", "TAX", "CESS", "DUTY", "CGST", "SGST", "IGST"]
+                    )
+                    entry = {"name": led_name, "amount": led_amt, "is_tax": is_tax}
+                    result["ledgers"].append(entry)
                     if is_tax:
-                        result["tax_breakdown"].append(ledger_entry)
-            
+                        result["tax_breakdown"].append(entry)
+
             result["total_amount"] = max(total_dr, total_cr)
-            
-            logger.info(f"📋 Fetched voucher {voucher_number}: {len(result['items'])} items, {len(result['ledgers'])} ledgers")
+            logger.info(
+                f"✅ Matched voucher #{result['voucher_number']} "
+                f"type={result['voucher_type']} amount={result['total_amount']:.2f} "
+                f"items={len(result['items'])} ledgers={len(result['ledgers'])}"
+            )
             return result
-            
+
         except Exception as e:
-            logger.error(f"Failed to fetch voucher: {e}")
+            logger.error(f"Failed to fetch voucher detail: {e}")
             return {}
 
     def fetch_stock_items_complete(self, company_name: Optional[str] = None) -> List[Dict]:

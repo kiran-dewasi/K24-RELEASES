@@ -174,15 +174,17 @@ async def get_customer_360(
         "credit_limit": ledger.credit_limit,
         "credit_days": ledger.credit_days,
         "gst_registration_type": ledger.gst_registration_type,
+        "balance_type": ledger.balance_type,
         "created_at": ledger.created_at.isoformat() if ledger.created_at else None,
         "last_synced": ledger.last_synced.isoformat() if ledger.last_synced else None,
     }
     
-    # Date range for queries
+    # Date range for monthly trend only (chart)
     start_date = datetime.now() - timedelta(days=months * 30)
-    
-    # 2. Transaction Summary
-    transaction_summary = get_transaction_summary(db, ledger.name, tenant_id, start_date)
+
+    # 2. Transaction Summary — ALL TIME (not just 12 months)
+    # We use all-time so the Summary cards match what was shown in the old party view
+    transaction_summary = get_transaction_summary(db, ledger.name, tenant_id, start_date=None)
     
     # 3. Outstanding Bills
     outstanding_bills = get_outstanding_bills(db, ledger.name, tenant_id)
@@ -244,14 +246,16 @@ async def get_customer_360(
 
 # --- Helper Functions ---
 
-def get_transaction_summary(db: Session, party_name: str, tenant_id: str, start_date: datetime) -> Dict:
-    """Get aggregated transaction statistics"""
-    
-    vouchers = db.query(Voucher).filter(
+def get_transaction_summary(db: Session, party_name: str, tenant_id: str, start_date=None) -> Dict:
+    """Get aggregated transaction statistics — all-time by default"""
+
+    query = db.query(Voucher).filter(
         Voucher.party_name == party_name,
         Voucher.tenant_id == tenant_id,
-        Voucher.date >= start_date
-    ).all()
+    )
+    if start_date:
+        query = query.filter(Voucher.date >= start_date)
+    vouchers = query.all()
     
     summary = {
         "transaction_count": len(vouchers),
@@ -503,16 +507,23 @@ def calculate_customer_insights(
             promptness = ((total_bills - overdue_count) / total_bills) * 100
             insights["payment_score"] = round(promptness)
     
-    # 3. Customer Tier (based on total sales)
-    total_sales = txn_summary.get("total_sales", 0)
-    if total_sales >= 1000000:  # 10 Lakh+
-        insights["customer_tier"] = "platinum"
-    elif total_sales >= 500000:  # 5 Lakh+
-        insights["customer_tier"] = "gold"
-    elif total_sales >= 100000:  # 1 Lakh+
-        insights["customer_tier"] = "silver"
+    # 3. Customer/Supplier Tier (based on relevant volume)
+    # For creditors (suppliers) use purchases+payments, for debtors use sales
+    is_creditor = 'creditor' in (customer.get('group') or '').lower() \
+                  or customer.get('balance_type') == 'Cr'
+    if is_creditor:
+        tier_volume = txn_summary.get('total_purchases', 0) + txn_summary.get('total_payments', 0)
     else:
-        insights["customer_tier"] = "bronze"
+        tier_volume = txn_summary.get('total_sales', 0)
+
+    if tier_volume >= 1000000:   # 10 Lakh+
+        insights['customer_tier'] = 'platinum'
+    elif tier_volume >= 500000:  # 5 Lakh+
+        insights['customer_tier'] = 'gold'
+    elif tier_volume >= 100000:  # 1 Lakh+
+        insights['customer_tier'] = 'silver'
+    else:
+        insights['customer_tier'] = 'bronze'
     
     # 4. Trend Analysis
     if len(monthly_trend) >= 3:

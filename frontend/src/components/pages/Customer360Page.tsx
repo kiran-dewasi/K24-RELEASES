@@ -214,6 +214,7 @@ interface Customer360Data {
         contact_person?: string;
         opening_balance?: number;
         closing_balance?: number;
+        balance_type?: string;
         credit_limit?: number;
         credit_days?: number;
         created_at?: string;
@@ -695,13 +696,30 @@ function Customer360Content() {
                         <MetricCard
                             title="Current Balance"
                             value={formatCurrency(summary.current_balance)}
-                            subtitle={summary.current_balance >= 0 ? 'Receivable' : 'Payable'}
+                            subtitle={
+                                // Use balance_type from Tally if available, else infer from group
+                                customer.balance_type === 'Cr' || (customer.group || '').toLowerCase().includes('creditor')
+                                    ? 'Payable (Cr)'
+                                    : 'Receivable (Dr)'
+                            }
                             icon={<CreditCard className="h-6 w-6" />}
-                            color={summary.current_balance >= 0 ? 'green' : 'red'}
+                            color={
+                                customer.balance_type === 'Cr' || (customer.group || '').toLowerCase().includes('creditor')
+                                    ? 'orange'
+                                    : 'green'
+                            }
                         />
                         <MetricCard
-                            title="Total Sales"
-                            value={formatCurrency(summary.total_sales)}
+                            title={
+                                (customer.group || '').toLowerCase().includes('creditor')
+                                    ? 'Total Purchases'
+                                    : 'Total Sales'
+                            }
+                            value={
+                                (customer.group || '').toLowerCase().includes('creditor')
+                                    ? formatCurrency(summary.total_purchases)
+                                    : formatCurrency(summary.total_sales)
+                            }
                             subtitle="Last 12 months"
                             icon="💰"
                             color="blue"
@@ -968,34 +986,49 @@ function Customer360Content() {
                                 <CardContent>
                                     {monthly_trend.length > 0 ? (
                                         <div className="space-y-2">
-                                            {monthly_trend.slice(-6).map((month, i) => (
-                                                <div key={i} className="flex items-center gap-4">
-                                                    <div className="w-16 text-sm text-gray-500">{month.label}</div>
-                                                    <div className="flex-1">
-                                                        <div className="flex gap-2 h-6">
-                                                            <div
-                                                                className="bg-blue-500 rounded"
-                                                                style={{
-                                                                    width: `${Math.min(100, (month.sales / Math.max(...monthly_trend.map(m => m.sales)) * 100) || 0)}%`,
-                                                                    minWidth: month.sales > 0 ? '4px' : '0'
-                                                                }}
-                                                                title={`Sales: ${formatCurrency(month.sales)}`}
-                                                            />
-                                                            <div
-                                                                className="bg-green-500 rounded"
-                                                                style={{
-                                                                    width: `${Math.min(100, (month.receipts / Math.max(...monthly_trend.map(m => m.receipts || 1)) * 100) || 0)}%`,
-                                                                    minWidth: month.receipts > 0 ? '4px' : '0'
-                                                                }}
-                                                                title={`Receipts: ${formatCurrency(month.receipts)}`}
-                                                            />
+                                            {monthly_trend.slice(-6).map((month, i) => {
+                                                // For creditors: show payments+purchases; for debtors: sales+receipts
+                                                const isCreditor = (customer.group || '').toLowerCase().includes('creditor');
+                                                const monthTotal = isCreditor
+                                                    ? (month.payments || 0) + (month.purchases || 0)
+                                                    : (month.sales || 0) + (month.receipts || 0);
+                                                return (
+                                                    <div key={i} className="flex items-center gap-4">
+                                                        <div className="w-16 text-sm text-gray-500">{month.label}</div>
+                                                        <div className="flex-1">
+                                                            <div className="flex gap-2 h-6">
+                                                                <div
+                                                                    className="bg-blue-500 rounded"
+                                                                    style={{
+                                                                        width: `${Math.min(100, (month.sales / Math.max(...monthly_trend.map(m => m.sales || 1)) * 100) || 0)}%`,
+                                                                        minWidth: month.sales > 0 ? '4px' : '0'
+                                                                    }}
+                                                                    title={`Sales: ${formatCurrency(month.sales)}`}
+                                                                />
+                                                                <div
+                                                                    className="bg-green-500 rounded"
+                                                                    style={{
+                                                                        width: `${Math.min(100, ((month.receipts || 0) / Math.max(...monthly_trend.map(m => m.receipts || 1)) * 100) || 0)}%`,
+                                                                        minWidth: (month.receipts || 0) > 0 ? '4px' : '0'
+                                                                    }}
+                                                                    title={`Receipts: ${formatCurrency(month.receipts)}`}
+                                                                />
+                                                                <div
+                                                                    className="bg-orange-400 rounded"
+                                                                    style={{
+                                                                        width: `${Math.min(100, ((month.payments || 0) / Math.max(...monthly_trend.map(m => m.payments || 1)) * 100) || 0)}%`,
+                                                                        minWidth: (month.payments || 0) > 0 ? '4px' : '0'
+                                                                    }}
+                                                                    title={`Payments: ${formatCurrency(month.payments)}`}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-28 text-right text-sm font-medium">
+                                                            {formatCurrency(monthTotal)}
                                                         </div>
                                                     </div>
-                                                    <div className="w-24 text-right text-sm font-medium">
-                                                        {formatCurrency(month.sales)}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                             <div className="flex gap-4 pt-4 text-sm">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-3 h-3 bg-blue-500 rounded"></div>
@@ -1004,6 +1037,10 @@ function Customer360Content() {
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-3 h-3 bg-green-500 rounded"></div>
                                                     <span>Receipts</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 bg-orange-400 rounded"></div>
+                                                    <span>Payments</span>
                                                 </div>
                                             </div>
                                         </div>

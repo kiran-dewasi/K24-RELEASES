@@ -92,6 +92,7 @@ _voucher_cache: dict = {}  # key -> {"data": [...], "ledger_map": {...}, "ts": f
 async def get_voucher_detail(
     voucher_number: str,
     voucher_type: Optional[str] = None,
+    guid: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -109,6 +110,7 @@ async def get_voucher_detail(
         detail = tally_connector.fetch_voucher_with_line_items(
             voucher_number=voucher_number,
             voucher_type=voucher_type,
+            guid=guid,
         )
 
         if not detail:

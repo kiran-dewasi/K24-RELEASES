@@ -20,6 +20,7 @@ interface Voucher {
     amount: number | string;
     narration: string;
     ledger_id?: number | string;
+    guid?: string;
 }
 
 export default function DayBookClient() {
@@ -207,6 +208,7 @@ export default function DayBookClient() {
         try {
             const params = new URLSearchParams({ voucher_number: v.voucher_number });
             if (v.voucher_type) params.append("voucher_type", v.voucher_type);
+            if (v.guid) params.append("guid", v.guid);
             const res = await apiClient(`/api/vouchers/detail?${params.toString()}`);
             if (res.ok) {
                 const data = await res.json();
