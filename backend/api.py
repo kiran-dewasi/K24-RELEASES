@@ -140,18 +140,20 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"error": "Internal server error"}
     )
 
-# Enable CORS for local development (allows chat_demo.html to talk to backend)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
 # Desktop Security Middleware (validates X-Desktop-Token in production)
+# IMPORTANT: Added BEFORE CORSMiddleware so in Starlette's reverse stack order,
+# CORS runs first (outermost), then security — ensuring CORS headers are ALWAYS present.
 from backend.middleware.desktop_security import DesktopSecurityMiddleware, is_desktop_mode
 app.add_middleware(DesktopSecurityMiddleware)
+
+# Enable CORS — must be added AFTER DesktopSecurityMiddleware so it wraps outside it
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 if is_desktop_mode():
     print("[SECURITY] Desktop security mode ENABLED - API protected with session token")
