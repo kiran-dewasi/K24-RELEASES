@@ -20,6 +20,23 @@ import Link from "next/link";
 // Tally Voucher Debit / Credit Classification
 // Rule: based on which side the PARTY ledger lands on.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Date formatter — handles both YYYYMMDD (Tally) and YYYY-MM-DD (DB) formats
+// ---------------------------------------------------------------------------
+function formatVoucherDate(raw: string): string {
+    if (!raw) return "—";
+    try {
+        const normalized = raw.length === 8
+            ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+            : raw.slice(0, 10);
+        const d = new Date(normalized + "T00:00:00");
+        if (isNaN(d.getTime())) return raw;
+        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+        return raw;
+    }
+}
+
 const CREDIT_VOUCHER_TYPES = new Set([
     // Supplier is CREDITED — we owe them / goods/cash coming in
     'Purchase',          // Dr Purchase A/c  | Cr Supplier
@@ -127,7 +144,7 @@ export function DaybookTable({
                                 onClick={() => onViewDetails(voucher)}
                             >
                                 <TableCell className="font-medium text-muted-foreground whitespace-nowrap">
-                                    {voucher.date}
+                                    {formatVoucherDate(voucher.date)}
                                 </TableCell>
                                 <TableCell className="text-xs font-mono text-muted-foreground">
                                     {voucher.voucher_number || "-"}

@@ -113,7 +113,7 @@ export default function Navbar() {
         setIsSyncing(true);
         setSyncError(null);
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/sync/tally`, {
+            const res = await apiClient(`/api/sync/tally`, {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
                 signal: AbortSignal.timeout(15000)
