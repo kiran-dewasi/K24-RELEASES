@@ -56,34 +56,44 @@ export default function DayBookClient() {
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
-    // Load from LocalStorage on Mount
+    // Load from LocalStorage on Mount — only restore non-today filters
     useEffect(() => {
-        const saved = localStorage.getItem('daybook_date_filter');
         const savedLimit = localStorage.getItem('daybook_limit');
-
         if (savedLimit) {
             const l = Number(savedLimit);
             if (l !== limit) updatePagination(1, l);
         }
 
+        // ✅ FIX: Always start with 'today' on fresh load.
+        // Only restore a saved filter if user HAD explicitly chosen a non-default range.
+        const saved = localStorage.getItem('daybook_date_filter');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                if (parsed.type) setFilterType(parsed.type as DateFilterType);
-                if (parsed.startDate && parsed.endDate) {
-                    setCustomRange({
-                        from: new Date(parsed.startDate),
-                        to: new Date(parsed.endDate)
-                    });
+                // Only restore if user had explicitly changed away from 'today'
+                if (parsed.type && parsed.type !== 'today') {
+                    setFilterType(parsed.type as DateFilterType);
+                    if (parsed.type === 'custom' && parsed.startDate && parsed.endDate) {
+                        setCustomRange({
+                            from: new Date(parsed.startDate),
+                            to: new Date(parsed.endDate)
+                        });
+                    }
                 }
+                // If saved type was 'today', do nothing — default state is already 'today'
             } catch (e) {
                 console.error("Failed to parse saved filter", e);
             }
         }
     }, []);
 
-    // Save filters to LocalStorage on Change
+    // Save filters to LocalStorage on Change — don't save 'today' (it's the default)
     useEffect(() => {
+        if (filterType === 'today') {
+            // Clear stale saved filter so next load starts clean
+            localStorage.removeItem('daybook_date_filter');
+            return;
+        }
         const data = {
             type: filterType,
             startDate: customRange?.from?.toISOString(),

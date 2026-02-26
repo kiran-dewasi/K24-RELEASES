@@ -229,14 +229,23 @@ async def get_vouchers(
         logger.info(f"📊 Fetching vouchers for range: {start_date} to {end_date} (Tenant: {tenant_id})")
 
         # ── Step 1: Check Local DB first (Very Fast) ────────────────────────
+        # ⚙️  FIX: d_end must be END-of-day (23:59:59) so the full end date is included.
+        # Without this, a query for "today" would miss all of today's entries because
+        # strptime gives midnight (00:00:00), and datetime comparisons are exclusive.
         d_start = datetime.strptime(start_date, "%Y%m%d")
-        d_end = datetime.strptime(end_date, "%Y%m%d")
+        d_end   = datetime.strptime(end_date, "%Y%m%d").replace(hour=23, minute=59, second=59)
         
-        db_vouchers = db.query(Voucher).filter(
+        db_query = db.query(Voucher).filter(
             Voucher.tenant_id == tenant_id,
             Voucher.date >= d_start,
             Voucher.date <= d_end
-        ).all()
+        )
+
+        # Apply voucher type filter at DB level
+        if voucher_type and voucher_type.lower() != "all_types":
+            db_query = db_query.filter(Voucher.voucher_type.ilike(f"%{voucher_type}%"))
+
+        db_vouchers = db_query.order_by(Voucher.date.desc()).all()
         
         local_data = []
         for v in db_vouchers:
@@ -251,32 +260,43 @@ async def get_vouchers(
                 "source": "database"
             })
             
-        # ── Step 2: Try Live Tally (only if user wants "Live" or cache is empty) ──
-        # In a real hybrid app, we'd merge these. For now, if we have DB data, 
-        # we return it immediately to avoid timeouts.
-        if local_data and not search_query:
-            logger.info(f"✅ Returning {len(local_data)} vouchers from local DB")
+        # ── Step 2: DB-first, Tally as fallback ────────────────────────────
+        # Return DB data immediately to avoid Tally timeouts.
+        # Only hit Tally if DB is completely empty for this range.
+        if local_data:
+            logger.info(f"✅ Returning {len(local_data)} vouchers from local DB (range: {start_date}→{end_date})")
             normalized_vouchers = local_data
         else:
             # Fallback to Tally for live/filtered data
-            logger.info("📡 DB empty or search active — falling back to live Tally fetch")
-            reader = TallyReader()
-            # Inject shorter timeout for live UI request
-            raw_txns = reader.get_transactions(start_date, end_date)
-            
-            all_ledgers = db.query(Ledger.name, Ledger.id).all()
-            ledger_map = {l.name.lower(): l.id for l in all_ledgers}
-            
-            normalized_vouchers = []
-            for txn in raw_txns:
-                norm_v = normalize_tally_voucher(txn)
-                p_name = norm_v.get("party_name", "").lower()
-                if p_name in ledger_map:
-                    norm_v["ledger_id"] = ledger_map[p_name]
-                norm_v["source"] = "tally_live"
-                normalized_vouchers.append(norm_v)
+            logger.info("📡 DB empty for this range — falling back to live Tally fetch")
+            try:
+                reader = TallyReader()
+                raw_txns = reader.get_transactions(start_date, end_date)
+                
+                all_ledgers = db.query(Ledger.name, Ledger.id).all()
+                ledger_map = {l.name.lower(): l.id for l in all_ledgers}
+                
+                normalized_vouchers = []
+                for txn in raw_txns:
+                    norm_v = normalize_tally_voucher(txn)
+                    p_name = norm_v.get("party_name", "").lower()
+                    if p_name in ledger_map:
+                        norm_v["ledger_id"] = ledger_map[p_name]
+                    norm_v["source"] = "tally_live"
+                    normalized_vouchers.append(norm_v)
+            except Exception as te:
+                logger.warning(f"Tally fallback failed: {te}")
+                normalized_vouchers = []
 
-        # 3. Apply Filters & Sorting
+        # 3. Mandatory date-range filter (applies to ALL sources — DB and Tally)
+        # ⚙️  ROOT CAUSE FIX: Tally returns ALL historical vouchers; we must filter
+        # explicitly here so only the requested date range reaches the frontend.
+        normalized_vouchers = [
+            v for v in normalized_vouchers
+            if start_date <= (v.get("date") or "") <= end_date
+        ]
+
+        # 4. Apply search filter
         if search_query:
             q = search_query.lower()
             normalized_vouchers = [
