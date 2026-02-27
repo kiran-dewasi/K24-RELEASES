@@ -8,15 +8,11 @@ import calendar
 import io
 
 from backend.database import get_db, Voucher, Ledger, Bill
-from backend.dependencies import get_api_key
+from backend.dependencies import get_api_key, get_tenant_id
 from backend.utils.pdf_generator import generate_report_pdf
 import os
 
 router = APIRouter(prefix="/reports", tags=["reports"])
-
-def get_tenant_id_request() -> str:
-    """Helper to get tenant_id from environment for report requests."""
-    return os.getenv("TENANT_ID", "default")
 
 
 def _parse_date(date_str: Optional[str]) -> Optional[date]:
@@ -123,7 +119,7 @@ def get_sales_register(
     voucher_types: Optional[str] = Query(None, description="Comma-separated e.g. Sales,Credit Note"),
     party_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_request),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     vtype_list = [v.strip() for v in voucher_types.split(",")] if voucher_types else ["Sales", "Credit Note"]
 
@@ -155,7 +151,7 @@ def get_purchase_register(
     voucher_types: Optional[str] = Query(None),
     party_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_request),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     vtype_list = [v.strip() for v in voucher_types.split(",")] if voucher_types else ["Purchase", "Debit Note"]
     d_from = _parse_date(date_from)
@@ -182,7 +178,7 @@ def get_cash_flow(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_request),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     inflow_q = _build_voucher_filters(
         db.query(Voucher), date_from, date_to, ["Receipt", "Sales"], None, tenant_id
@@ -227,7 +223,7 @@ def get_cash_flow(
 @router.get("/balance-sheet", dependencies=[Depends(get_api_key)])
 def get_balance_sheet(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_request)
+    tenant_id: str = Depends(get_tenant_id)
 ):
     ledgers = db.query(Ledger).filter(Ledger.tenant_id == tenant_id).all()
 
@@ -270,7 +266,7 @@ def get_profit_loss(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_request),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     sales_q = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Sales"], None, tenant_id)
     purchase_q = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Purchase"], None, tenant_id)
@@ -332,7 +328,7 @@ def export_report_pdf(
     voucher_types: Optional[str] = Query(None),
     party_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_request),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """Universal PDF export for any report slug. Streams a PDF file."""
     title = _REPORT_TITLES.get(slug, slug.replace("-", " ").title())

@@ -1,125 +1,58 @@
 """
 Dashboard API - Provides KPIs, Charts, and Summary Statistics
-Now with database fallback when Tally is offline.
+DB-ONLY: Reads exclusively from SQLite shadow DB.
+Tally sync runs in background — dashboard is always instant.
 """
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, case, desc
+from sqlalchemy import func, desc, or_
 from datetime import datetime, timedelta
 import logging
-from typing import Optional
+import os
 
-from backend.database import get_db, Ledger, Voucher, StockItem, Bill
-from backend.dependencies import get_api_key
-
-# Try to import TallyReader, but don't fail if it doesn't work
-try:
-    from backend.tally_reader import TallyReader
-    TALLY_AVAILABLE = True
-except Exception:
-    TALLY_AVAILABLE = False
+from backend.database import get_db, Ledger, Voucher, StockItem, Bill, SessionLocal
+from backend.dependencies import get_api_key, get_tenant_id
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 logger = logging.getLogger("dashboard")
 
-import os
-
-# Helper to get tenant_id without requiring JWT (uses default for API key auth)
-def get_tenant_id_or_default() -> str:
-    """Returns official tenant_id from environment or default."""
-    return os.getenv("TENANT_ID", "default")
-
-
-def is_tally_online() -> bool:
-    """Quick check if Tally is responding.
-    
-    Uses a GET request — Tally's HTTP server responds 200 to GET on port 9000.
-    POST with partial XML often times out or gets rejected by Tally.
-    """
-    if not TALLY_AVAILABLE:
-        return False
-    try:
-        import requests
-        response = requests.get(
-            "http://localhost:9000",
-            timeout=3
-        )
-        return response.status_code == 200
-    except:
-        return False
-
-
-# --- KPI Stats ---
+# ─────────────────────────────────────────────
+# /stats  — KPI Cards
+# ─────────────────────────────────────────────
 @router.get("/stats", dependencies=[Depends(get_api_key)])
 def get_dashboard_stats(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_or_default)
+    tenant_id: str = Depends(get_tenant_id)
 ):
     """
-    Returns KPI stats for the dashboard.
-    Tries Tally first, falls back to database.
+    KPI stats — reads from DB only.
+    Sales YTD, Total Receivables, Total Payables, Cash+Bank balance.
     """
-    # Try Tally first
-    if is_tally_online():
-        try:
-            reader = TallyReader()
-            now = datetime.now()
-            if now.month < 4:
-                start_date = f"{now.year-1}0401"
-            else:
-                start_date = f"{now.year}0401"
-            end_date = now.strftime("%Y%m%d")
-            
-            sales_data = reader.get_daybook_stats(start_date, end_date) 
-            receivables_list = reader.get_receivables() 
-            total_receivables = sum(x['amount'] for x in receivables_list)
-            payables_list = reader.get_payables()
-            total_payables = sum(x['amount'] for x in payables_list)
-            cash_bal = reader.get_cash_bank_balance()
-            
-            return {
-                "sales": sales_data.get("total_sales", 0),
-                "sales_change": 0, 
-                "receivables": total_receivables,
-                "receivables_change": 0,
-                "payables": total_payables,
-                "payables_change": 0,
-                "cash": cash_bal,
-                "last_updated": datetime.now().isoformat(),
-                "source": "tally"
-            }
-        except Exception as e:
-            logger.warning(f"Tally stats failed, using database: {e}")
-    
-    # Fallback: Use local database
     now = datetime.now()
-    if now.month < 4:
-        fy_start = datetime(now.year - 1, 4, 1)
-    else:
-        fy_start = datetime(now.year, 4, 1)
-    
-    # Sales (YTD) from vouchers
+    fy_start = datetime(now.year - 1 if now.month < 4 else now.year, 4, 1)
+
+    # Sales YTD
     sales_total = db.query(func.sum(Voucher.amount)).filter(
         Voucher.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%sales%"),
         Voucher.date >= fy_start
     ).scalar() or 0.0
-    
-    # Receivables: Sum of positive closing balances for Sundry Debtors
+
+    # Receivables: positive debtor balances
     receivables = db.query(func.sum(Ledger.closing_balance)).filter(
         Ledger.tenant_id == tenant_id,
         Ledger.parent.ilike("%debtor%"),
         Ledger.closing_balance > 0
     ).scalar() or 0.0
-    
-    # Payables: Sum of positive closing balances for Sundry Creditors (since we store Cr as positive)
+
+    # Payables: positive creditor balances (stored as positive)
     payables = db.query(func.sum(Ledger.closing_balance)).filter(
         Ledger.tenant_id == tenant_id,
         Ledger.parent.ilike("%creditor%"),
         Ledger.closing_balance > 0
     ).scalar() or 0.0
-    
-    # Cash/Bank: Sum of cash and bank ledger balances
+
+    # Cash + Bank (abs stored by sync_engine fix)
     cash = db.query(func.sum(Ledger.closing_balance)).filter(
         Ledger.tenant_id == tenant_id,
         or_(
@@ -127,43 +60,29 @@ def get_dashboard_stats(
             Ledger.parent.ilike("%bank%")
         )
     ).scalar() or 0.0
-    
+
     return {
-        "sales": sales_total,
-        "sales_change": 0, 
-        "receivables": receivables,
+        "sales": round(sales_total, 2),
+        "sales_change": 0,
+        "receivables": round(receivables, 2),
         "receivables_change": 0,
-        "payables": payables,
+        "payables": round(payables, 2),
         "payables_change": 0,
-        "cash": cash,
+        "cash": round(cash, 2),
         "last_updated": datetime.now().isoformat(),
         "source": "database"
     }
 
 
-# --- Top Receivables Chart ---
+# ─────────────────────────────────────────────
+# /receivables  — Top debtors bar chart
+# ─────────────────────────────────────────────
 @router.get("/receivables", dependencies=[Depends(get_api_key)])
 def get_top_receivables(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_or_default)
+    tenant_id: str = Depends(get_tenant_id)
 ):
-    """
-    Returns top 5 outstanding receivables for bar chart.
-    """
-    # Try Tally first
-    if is_tally_online():
-        try:
-            reader = TallyReader()
-            data = reader.get_receivables()
-            sorted_data = sorted(data, key=lambda x: x['amount'], reverse=True)
-            return [
-                {"name": x['party_name'][:15], "amount": x['amount']}
-                for x in sorted_data[:5]
-            ]
-        except Exception as e:
-            logger.warning(f"Tally receivables failed: {e}")
-    
-    # Fallback: Database
+    """Top 5 outstanding receivables for bar chart — DB only."""
     top_debtors = db.query(
         Ledger.name,
         Ledger.closing_balance
@@ -174,63 +93,25 @@ def get_top_receivables(
     ).order_by(
         desc(Ledger.closing_balance)
     ).limit(5).all()
-    
+
     return [
-        {"name": r.name[:15], "amount": r.closing_balance}
+        {"name": r.name[:20], "amount": round(r.closing_balance, 2)}
         for r in top_debtors
     ]
 
 
-# --- Cashflow Chart ---
+# ─────────────────────────────────────────────
+# /cashflow  — Daily net cashflow chart
+# ─────────────────────────────────────────────
 @router.get("/cashflow", dependencies=[Depends(get_api_key)])
 def get_cashflow(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_or_default)
+    tenant_id: str = Depends(get_tenant_id)
 ):
-    """
-    Returns daily net cashflow (Receipts - Payments) for last 90 days.
-    """
+    """Daily net cashflow (Receipts - Payments) for last 90 days — DB only."""
     end_dt = datetime.now()
     start_dt = end_dt - timedelta(days=90)
-    
-    # Try Tally first
-    if is_tally_online():
-        try:
-            reader = TallyReader()
-            txns = reader.get_transactions(start_dt.strftime("%Y%m%d"), end_dt.strftime("%Y%m%d"))
-            
-            daily_map = {}
-            for txn in txns:
-                d = txn.get("date")
-                if not d: continue
-                t = txn.get("type", "").lower()
-                try:
-                    a = float(txn.get("amount", 0))
-                except:
-                    a = 0.0
-                    
-                if d not in daily_map:
-                    daily_map[d] = 0.0
-                    
-                if "receipt" in t:
-                    daily_map[d] += a
-                elif "payment" in t:
-                    daily_map[d] -= a
-                     
-            sorted_keys = sorted(daily_map.keys())
-            result = []
-            for k in sorted_keys:
-                val = daily_map[k]
-                try:
-                    dt = datetime.strptime(k, "%Y%m%d")
-                    result.append({"date": dt.strftime("%b %d"), "value": val})
-                except:
-                    pass
-            return result
-        except Exception as e:
-            logger.warning(f"Tally cashflow failed: {e}")
-    
-    # Fallback: Database
+
     vouchers = db.query(Voucher).filter(
         Voucher.tenant_id == tenant_id,
         Voucher.date >= start_dt,
@@ -240,223 +121,100 @@ def get_cashflow(
             Voucher.voucher_type.ilike("%payment%")
         )
     ).order_by(Voucher.date.asc()).all()
-    
+
     daily_map = {}
     for v in vouchers:
         if not v.date:
             continue
         d_key = v.date.strftime("%Y%m%d")
-        if d_key not in daily_map:
-            daily_map[d_key] = 0.0
-            
+        daily_map.setdefault(d_key, 0.0)
         v_type = (v.voucher_type or "").lower()
+        amt = v.amount or 0
         if "receipt" in v_type:
-            daily_map[d_key] += v.amount or 0
+            daily_map[d_key] += amt
         elif "payment" in v_type:
-            daily_map[d_key] -= v.amount or 0
-    
-    sorted_keys = sorted(daily_map.keys())
+            daily_map[d_key] -= amt
+
     result = []
-    for k in sorted_keys:
+    for k in sorted(daily_map.keys()):
         try:
             dt = datetime.strptime(k, "%Y%m%d")
-            result.append({"date": dt.strftime("%b %d"), "value": daily_map[k]})
-        except:
+            result.append({"date": dt.strftime("%b %d"), "value": round(daily_map[k], 2)})
+        except Exception:
             pass
-    
-    # If no data, generate sample dates with 0 values for chart to render
+
+    # Ensure chart always has data to render
     if not result:
         result = [
             {"date": (end_dt - timedelta(days=i)).strftime("%b %d"), "value": 0}
             for i in range(7, 0, -1)
         ]
-    
+
     return result
 
 
-# --- Stock Summary ---
+# ─────────────────────────────────────────────
+# /stock-summary  — Inventory KPIs
+# ─────────────────────────────────────────────
 @router.get("/stock-summary", dependencies=[Depends(get_api_key)])
 def get_dashboard_stock(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_or_default)
+    tenant_id: str = Depends(get_tenant_id)
 ):
-    """Returns stock summary metrics. Always tries Tally first, falls back to DB."""
-    # Always attempt Tally (don't pre-check connectivity — just try and catch)
-    if TALLY_AVAILABLE:
-        try:
-            reader = TallyReader()
-            items = reader.get_stock_summary()
-            
-            if items:  # Only use Tally result if it actually returned data
-                total_value = 0.0
-                low_stock_count = 0
-                detailed_items = []
-                
-                for i in items:
-                    try:
-                        val = float(i.get("value", 0) or 0)
-                        qty = float(i.get("closing_balance", 0) or 0)
-                        rate = float(i.get("rate", 0) or 0)
-                    except:
-                        val, qty, rate = 0.0, 0.0, 0.0
-                        
-                    total_value += val
-                    
-                    status = "In Stock"
-                    if qty <= 0:
-                        status = "Out of Stock"
-                    elif qty < 10:
-                        status = "Low Stock"
-                        low_stock_count += 1
-                        
-                    detailed_items.append({
-                        "name": i.get("name", "Unknown"),
-                        "quantity": qty,
-                        "rate": rate,
-                        "value": val,
-                        "status": status
-                    })
-                         
-                detailed_items.sort(key=lambda x: x["value"], reverse=True)
-                         
-                return {
-                    "total_items": len(items),
-                    "low_stock_items": low_stock_count,
-                    "total_value": total_value,
-                    "items": detailed_items[:50],
-                    "source": "tally"
-                }
-        except Exception as e:
-            logger.warning(f"Tally stock summary failed, falling back to DB: {e}")
-    
-    # Fallback: Database
+    """Stock summary metrics — DB only (synced by background service)."""
     items = db.query(StockItem).filter(
         StockItem.tenant_id == tenant_id
     ).all()
-    
+
     total_value = 0.0
     low_stock_count = 0
     detailed_items = []
-    
+
     for item in items:
-        qty = item.closing_balance or 0
-        rate = item.rate or 0
-        val = qty * rate
-        
+        qty  = item.closing_balance or 0
+        rate = item.rate or item.cost_price or 0
+        val  = qty * rate
         total_value += val
-        
-        status = "In Stock"
+
         if qty <= 0:
             status = "Out of Stock"
         elif qty < 10:
             status = "Low Stock"
             low_stock_count += 1
-            
+        else:
+            status = "In Stock"
+
         detailed_items.append({
-            "name": item.name or "Unknown",
+            "name":     item.name or "Unknown",
             "quantity": qty,
-            "rate": rate,
-            "value": val,
-            "status": status
+            "rate":     rate,
+            "value":    round(val, 2),
+            "status":   status
         })
-    
+
     detailed_items.sort(key=lambda x: x["value"], reverse=True)
-    
+
     return {
-        "total_items": len(items),
+        "total_items":    len(items),
         "low_stock_items": low_stock_count,
-        "total_value": total_value,
-        "items": detailed_items[:50],
-        "source": "database"
+        "total_value":    round(total_value, 2),
+        "items":          detailed_items[:50],
+        "source":         "database"
     }
 
 
-    
-    # Fallback: Database
-    items = db.query(StockItem).filter(
-        StockItem.tenant_id == tenant_id
-    ).all()
-    
-    total_value = 0.0
-    low_stock_count = 0
-    detailed_items = []
-    
-    for item in items:
-        qty = item.closing_balance or 0
-        rate = item.rate or 0
-        val = qty * rate
-        
-        total_value += val
-        
-        status = "In Stock"
-        if qty <= 0:
-            status = "Out of Stock"
-        elif qty < 10:
-            status = "Low Stock"
-            low_stock_count += 1
-            
-        detailed_items.append({
-            "name": item.name or "Unknown",
-            "quantity": qty,
-            "rate": rate,
-            "value": val,
-            "status": status
-        })
-    
-    detailed_items.sort(key=lambda x: x["value"], reverse=True)
-    
-    return {
-        "total_items": len(items),
-        "low_stock_items": low_stock_count,
-        "total_value": total_value,
-        "items": detailed_items[:50]
-    }
-
-
-# --- GST Summary ---
+# ─────────────────────────────────────────────
+# /gst-summary  — GST placeholder
+# ─────────────────────────────────────────────
 @router.get("/gst-summary", dependencies=[Depends(get_api_key)])
 def get_dashboard_gst(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_or_default)
+    tenant_id: str = Depends(get_tenant_id)
 ):
-    """Returns GST tax summary for current month."""
-    now = datetime.now()
-    start_date = now.replace(day=1)
-    
-    # Try Tally first
-    if is_tally_online():
-        try:
-            reader = TallyReader()
-            return reader.get_tax_summary(
-                start_date.strftime("%Y%m%d"), 
-                now.strftime("%Y%m%d")
-            )
-        except Exception as e:
-            logger.warning(f"Tally GST summary failed: {e}")
-    
-    # Fallback: Calculate from vouchers
-    # This is a simplified calculation - real GST would need proper tax ledger analysis
-    sales_vouchers = db.query(func.sum(Voucher.amount)).filter(
-        Voucher.tenant_id == tenant_id,
-        Voucher.voucher_type.ilike("%sales%"),
-        Voucher.date >= start_date
-    ).scalar() or 0.0
-    
-    purchase_vouchers = db.query(func.sum(Voucher.amount)).filter(
-        Voucher.tenant_id == tenant_id,
-        Voucher.voucher_type.ilike("%purchase%"),
-        Voucher.date >= start_date
-    ).scalar() or 0.0
-    
-    # Estimate GST at 18% (simplified) -> COMMENTED OUT AS PER USER REQUEST
-    # est_gst_rate = 0.18
-    # output_gst = (sales_vouchers * est_gst_rate) / (1 + est_gst_rate)
-    # input_gst = (purchase_vouchers * est_gst_rate) / (1 + est_gst_rate)
-    
-    # Placeholder
-    output_gst = 0.0
-    input_gst = 0.0
-    
+    """
+    GST summary — placeholder until GST ledgers are synced.
+    Returns zeros for now; will be populated when GSTLedger sync is active.
+    """
     return {
         "cgst_collected": 0,
         "cgst_paid": 0,
@@ -468,32 +226,18 @@ def get_dashboard_gst(
     }
 
 
-# --- Party Analysis ---
+# ─────────────────────────────────────────────
+# /party-analysis  — Top customers & suppliers
+# ─────────────────────────────────────────────
 @router.get("/party-analysis", dependencies=[Depends(get_api_key)])
 def get_dashboard_party(
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_tenant_id_or_default)
+    tenant_id: str = Depends(get_tenant_id)
 ):
-    """Returns Top Customers and Suppliers for current FY."""
+    """Top customers and suppliers for current FY — DB only."""
     now = datetime.now()
-    if now.month < 4:
-        fy_start = datetime(now.year - 1, 4, 1)
-    else:
-        fy_start = datetime(now.year, 4, 1)
-    
-    # Try Tally first
-    if is_tally_online():
-        try:
-            reader = TallyReader()
-            return reader.get_party_metrics(
-                fy_start.strftime("%Y%m%d"), 
-                now.strftime("%Y%m%d")
-            )
-        except Exception as e:
-            logger.warning(f"Tally party analysis failed: {e}")
-    
-    # Fallback: Database - Aggregate from vouchers
-    # Top Customers (by Sales)
+    fy_start = datetime(now.year - 1 if now.month < 4 else now.year, 4, 1)
+
     top_customers = db.query(
         Voucher.party_name,
         func.sum(Voucher.amount).label("total")
@@ -502,13 +246,8 @@ def get_dashboard_party(
         Voucher.voucher_type.ilike("%sales%"),
         Voucher.date >= fy_start,
         Voucher.party_name != None
-    ).group_by(
-        Voucher.party_name
-    ).order_by(
-        desc("total")
-    ).limit(5).all()
-    
-    # Top Suppliers (by Purchases)
+    ).group_by(Voucher.party_name).order_by(desc("total")).limit(5).all()
+
     top_suppliers = db.query(
         Voucher.party_name,
         func.sum(Voucher.amount).label("total")
@@ -517,19 +256,15 @@ def get_dashboard_party(
         Voucher.voucher_type.ilike("%purchase%"),
         Voucher.date >= fy_start,
         Voucher.party_name != None
-    ).group_by(
-        Voucher.party_name
-    ).order_by(
-        desc("total")
-    ).limit(5).all()
-    
+    ).group_by(Voucher.party_name).order_by(desc("total")).limit(5).all()
+
     return {
         "top_customers": [
-            {"name": r.party_name, "value": r.total or 0}
+            {"name": r.party_name, "value": round(r.total or 0, 2)}
             for r in top_customers
         ],
         "top_suppliers": [
-            {"name": r.party_name, "value": r.total or 0}
+            {"name": r.party_name, "value": round(r.total or 0, 2)}
             for r in top_suppliers
         ]
     }

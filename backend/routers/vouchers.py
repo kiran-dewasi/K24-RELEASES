@@ -197,12 +197,10 @@ async def get_vouchers(
     Auth is optional: if a valid JWT exists, we use its tenant_id; 
     otherwise we fall back gracefully to 'default' (dev / local mode).
     """
-    # Graceful tenant resolution — pull from env if not in a JWT session
-    tenant_id = os.getenv("TENANT_ID", "default")
+    # Graceful tenant resolution — JWT takes priority, fall back to shared resolver
+    from backend.dependencies import get_tenant_id as _resolve_tenant_id
+    tenant_id = _resolve_tenant_id()  # Reads from User table (synced from Supabase at login)
     try:
-        from fastapi.security import OAuth2PasswordBearer
-        from backend.auth import get_current_tenant_id as _get_tid, get_current_user
-        from backend.database import get_db as _get_db
         if request:
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
@@ -214,10 +212,10 @@ async def get_vouchers(
                 if username:
                     from backend.database import User
                     user = db.query(User).filter(User.username == username).first()
-                    if user and user.tenant_id:
+                    if user and user.tenant_id and user.tenant_id != "default":
                         tenant_id = user.tenant_id
     except Exception:
-        pass 
+        pass
     try:
         # 1. Normalize dates
         today = date.today()

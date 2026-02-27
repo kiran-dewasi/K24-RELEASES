@@ -448,6 +448,7 @@ class SyncEngine:
         
         synced = 0
         errors = 0
+        tenant_id = self._get_tenant_id(db)
         
         try:
             items = self.tally.fetch_stock_items().to_dict('records')
@@ -489,6 +490,7 @@ class SyncEngine:
 
                     if existing:
                         # Map to actual model columns
+                        existing.tenant_id = tenant_id          # stamp tenant
                         existing.closing_balance = closing_qty   # qty stored in closing_balance
                         existing.rate = closing_rate             # rate = closing rate
                         existing.cost_price = closing_rate       # also update cost price
@@ -496,10 +498,11 @@ class SyncEngine:
                         existing.last_synced = datetime.now()
                     else:
                         new_item = StockItem(
+                            tenant_id=tenant_id,               # stamp tenant
                             name=name,
                             stock_group=item_data.get("group", item_data.get("PARENT", "Primary")),
                             units=item_data.get("unit", item_data.get("BASEUNITS", "Kgs")),
-                            closing_balance=closing_qty,   # qty
+                            closing_balance=closing_qty,
                             rate=closing_rate,
                             cost_price=closing_rate,
                             tally_guid=item_data.get("guid", f"TALLY-{name}"),
