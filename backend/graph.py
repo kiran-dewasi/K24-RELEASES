@@ -193,27 +193,35 @@ _app = None
 async def run_agent(message_text: str, thread_id: str = "default", user_id: str = "default", image_data: str = None):
     """
     Run the LangGraph Agent.
+    user_id = tenant_id of the currently authenticated user (resolved from WhatsApp mapping or JWT).
     """
     global _app
     if _app is None:
-        # For now using MemorySaver or no checkpointer if DB not available readily in this context
-        # But for MVP we can use MemorySaver
         from langgraph.checkpoint.memory import MemorySaver
         _app = build_graph(checkpointer=MemorySaver())
 
+    # ── Propagate tenant_id to tools via thread-local ────────────────────────
+    # _get_tenant() in tools/__init__.py reads _CURRENT_TENANT_ID first if set.
+    # This ensures the tenant from the WhatsApp resolution flows into every tool.
+    if user_id and user_id not in ("default", ""):
+        try:
+            import backend.tools as _tools_mod
+            _tools_mod._CURRENT_TENANT_ID = user_id
+        except Exception:
+            pass
+
     # Construct messages
     from langchain_core.messages import HumanMessage
-    
+
     # Handle Multimodal Input
     content = message_text
     if image_data:
-        # LangChain/Gemini format for Multimodal
         image_url = f"data:image/jpeg;base64,{image_data}"
         content = [
             {"type": "text", "text": message_text if message_text else "Analyze this image to extract transaction details."},
             {"type": "image_url", "image_url": image_url}
         ]
-    
+
     input_state = {
         "messages": [HumanMessage(content=content)],
         "source_pipeline": "WHATSAPP"
@@ -221,21 +229,14 @@ async def run_agent(message_text: str, thread_id: str = "default", user_id: str 
 
     config = {
         "configurable": {"thread_id": thread_id, "user_id": user_id},
-        "recursion_limit": 10 # CRITICAL: Stop agent from looping on errors to prevent token leakage
+        "recursion_limit": 10  # Prevent runaway loops
     }
-    
-    # Invoke
-    # stream returns an async generator. We need to gather the final response.
-    # invoke returns the final state.
-    
+
     try:
         final_state = await _app.ainvoke(input_state, config=config)
-        
-        # Extract the last AIMessage
         messages = final_state["messages"]
         if messages and isinstance(messages[-1], AIMessage):
             return messages[-1].content
-        
         return "No response from agent."
     except Exception as e:
         import traceback

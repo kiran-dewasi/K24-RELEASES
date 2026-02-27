@@ -23,12 +23,21 @@ class ItemEntry(BaseModel):
     amount: float = Field(..., description="Total Line Amount. Calculate as Qty * Rate if not explicitly stated.")
 
 
-import requests
-import xml.etree.ElementTree as ET
+# Module-level tenant override: set by run_agent() before each AI invocation
+# so that every tool call in that session uses the correct per-user tenant_id.
+_CURRENT_TENANT_ID: str = ""
 
 
 def _get_tenant() -> str:
-    """Resolve tenant_id from Supabase-synced local User table."""
+    """Resolve tenant_id with priority:
+    1. Module-level override set by run_agent() for the current AI session
+    2. Supabase-synced local User table
+    3. 'default' fallback (logged and warned)
+    """
+    # 1. Per-session override from run_agent()
+    if _CURRENT_TENANT_ID:
+        return _CURRENT_TENANT_ID
+    # 2. User table (synced from Supabase at login)
     from backend.dependencies import get_tenant_id
     return get_tenant_id()
 

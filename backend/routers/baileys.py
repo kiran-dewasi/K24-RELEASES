@@ -82,49 +82,30 @@ async def process_baileys_message(
         from backend.database import WhatsAppMapping
         
         user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
-        
+
         tenant_id = None
 
-        if user_binding:
+        if user_binding and user_binding.tenant_id:
             tenant_id = user_binding.tenant_id
             logger.info(f"✅ Authenticated Dashboard User: {user_binding.username} (Tenant: {tenant_id})")
-        
-        # --- HARDCODE OVERRIDE FOR 7339906200 & LID ---
-        elif "7339906200" in sender_phone or "185628738236618" in sender_phone:
-             logger.info(f"🔒 DEBUG OVERRIDE: Forcing {sender_phone} to TENANT-12345")
-             # Ensure mapping exists so we don't fall into onboarding next time if we remove this block
-             try:
-                 existing = db.query(WhatsAppMapping).filter(WhatsAppMapping.whatsapp_number == sender_phone).first()
-                 if not existing:
-                      logger.info(f"➕ Creating permanent mapping for {sender_phone}")
-                      new_map = WhatsAppMapping(whatsapp_number=sender_phone, tenant_id="TENANT-12345")
-                      db.add(new_map)
-                      db.commit()
-             except Exception as map_err:
-                 logger.error(f"Mapping creation failed: {map_err}")
-             
-             tenant_id = "TENANT-12345"
-        
         else:
-            # Priority 2: Check if it's a Customer/Vendor (External Onboarding)
+            # Priority 2: Check WhatsApp customer mapping (external parties linked to a tenant)
             mapping = db.query(WhatsAppMapping).filter(
                 WhatsAppMapping.whatsapp_number == sender_phone
             ).first()
-            
-            if mapping:
+
+            if mapping and mapping.tenant_id:
                 tenant_id = mapping.tenant_id
-                logger.info(f"✅ Tenant verified via Mapping: {tenant_id}")
+                logger.info(f"✅ Tenant resolved via WhatsApp mapping: {tenant_id}")
             else:
-                # Priority 3: Unknown -> Trigger Onboarding
+                # Priority 3: Unknown number — trigger onboarding
                 logger.info(f"🆕 Unmapped user: {sender_phone}. Triggering onboarding.")
                 from backend.routers.onboarding_utils import handle_onboarding
-                
                 response_text = await handle_onboarding(db, sender_phone, message_text)
                 return {
                     "status": "success",
                     "reply_message": response_text
                 }
-        
         # ============ STEP 2: PREPARE IMAGE DATA ============
         image_data = None
         if media and media.get('type') == 'image':
@@ -223,38 +204,28 @@ async def process_batch(
         user_binding = None
         tenant_id = None
         
-        # Try direct phone match first
+        # Try direct phone match first (Dashboard Users)
         user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
-        
-        if user_binding:
+
+        if user_binding and user_binding.tenant_id:
             tenant_id = user_binding.tenant_id
             logger.info(f"✅ Authenticated Dashboard User: {user_binding.username} (Tenant: {tenant_id})")
         else:
-            # Try partial match (for cases like 917339906200 vs 7339906200)
-            if "7339906200" in sender_phone:
-                # Known dev phone - use default tenant
-                tenant_id = "TENANT-12345"
-                logger.info(f"✅ Dev phone match: {sender_phone} -> TENANT-12345")
+            # Try WhatsApp mapping table (external customer/vendors)
+            mapping = db.query(WhatsAppMapping).filter(
+                WhatsAppMapping.whatsapp_number == sender_phone
+            ).first()
+
+            if mapping and mapping.tenant_id:
+                tenant_id = mapping.tenant_id
+                logger.info(f"✅ Found via WhatsApp mapping: {tenant_id}")
             else:
-                # Try WhatsApp mapping table
-                mapping = db.query(WhatsAppMapping).filter(
-                    WhatsAppMapping.whatsapp_number == sender_phone
-                ).first()
-                
-                if mapping:
-                    tenant_id = mapping.tenant_id
-                    logger.info(f"✅ Found via WhatsApp mapping: {tenant_id}")
-                elif is_lid_format:
-                    # LID format - try to find any tenant with matching LID
-                    # For now, use default tenant for LID messages (they should bind their phone)
-                    logger.warning(f"⚠️ LID format detected: {sender_phone}")
-                    
-                    # Check if there's a default tenant we can use
-                    from backend.database import Tenant
-                    default_tenant = db.query(Tenant).first()
-                    if default_tenant:
-                        tenant_id = default_tenant.id
-                        logger.info(f"✅ Using default tenant for LID user: {tenant_id}")
+                # LID or unknown format — try first available tenant as last resort for batch
+                logger.warning(f"⚠️ Unknown sender for batch: {sender_phone}")
+                first_tenant = db.query(Tenant).first()
+                if first_tenant:
+                    tenant_id = first_tenant.id
+                    logger.info(f"✅ Using first available tenant for batch: {tenant_id}")
         
         if not tenant_id:
             logger.error(f"❌ No tenant found for: {sender_phone}")

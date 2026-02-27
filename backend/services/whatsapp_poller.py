@@ -90,7 +90,12 @@ class WhatsAppPoller:
     def __init__(self):
         self._running: bool = False
         self._task: Optional[asyncio.Task] = None
-        self._http: Optional[httpx.AsyncClient] = None
+        # Separate clients for different timeout budgets
+        self._http_local: Optional[httpx.AsyncClient] = None   # fast: local AI pipeline
+        self._http_cloud: Optional[httpx.AsyncClient] = None   # lenient: Baileys/Supabase
+        # Simple circuit-breaker for Baileys connectivity
+        self._baileys_last_fail_time: float = 0.0
+        self._baileys_fail_count: int = 0
 
     # ── Lifecycle ──────────────────────────────
 
@@ -105,7 +110,11 @@ class WhatsAppPoller:
             return
 
         self._running = True
-        self._http = httpx.AsyncClient(timeout=20.0)
+        # Local calls (AI pipeline on 127.0.0.1) get a tight 30-second timeout.
+        # Cloud calls (Baileys Railway, Supabase REST) get a 15-second timeout —
+        # long enough to succeed but short enough to fail fast when offline.
+        self._http_local = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
+        self._http_cloud = httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0))
         self._task = asyncio.create_task(self._poll_loop())
         logger.info(
             f"🟢 WhatsApp Poller started "
@@ -122,8 +131,9 @@ class WhatsAppPoller:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        if self._http:
-            await self._http.aclose()
+        for client in [self._http_local, self._http_cloud]:
+            if client:
+                await client.aclose()
         logger.info("🔴 WhatsApp Poller stopped.")
 
     # ── Main Poll Loop ─────────────────────────
@@ -209,7 +219,7 @@ class WhatsAppPoller:
                 "limit": str(POLL_BATCH_SIZE),
                 "select": "id,tenant_id,customer_phone,message_text,message_type,raw_payload,created_at",
             }
-            resp = await self._http.get(url, headers=_supabase_headers(), params=params)
+            resp = await self._http_cloud.get(url, headers=_supabase_headers(), params=params)
 
             if resp.status_code == 200:
                 return resp.json()
@@ -218,6 +228,9 @@ class WhatsAppPoller:
                     f"Supabase fetch failed: {resp.status_code} — {resp.text[:200]}"
                 )
                 return []
+        except (httpx.ConnectTimeout, httpx.ConnectError) as e:
+            logger.warning(f"⏳ Supabase unreachable (will retry next cycle): {e}")
+            return []
         except Exception as e:
             logger.error(f"_fetch_pending_jobs error: {e}", exc_info=True)
             return []
@@ -238,7 +251,7 @@ class WhatsAppPoller:
                 "status": "processing",
                 "processed_at": datetime.now(timezone.utc).isoformat(),
             }
-            resp = await self._http.patch(url, headers=_supabase_headers(), params=params, json=body)
+            resp = await self._http_cloud.patch(url, headers=_supabase_headers(), params=params, json=body)
 
             # Supabase PATCH returns 200 with the updated row(s), or 200 with [] if no rows matched
             if resp.status_code == 200:
@@ -267,7 +280,7 @@ class WhatsAppPoller:
             if error_message:
                 body["error_message"] = error_message[:500]  # cap to prevent DB overflow
 
-            resp = await self._http.patch(url, headers=_supabase_headers(), params=params, json=body)
+            resp = await self._http_cloud.patch(url, headers=_supabase_headers(), params=params, json=body)
 
             if resp.status_code != 200:
                 logger.error(
@@ -306,7 +319,7 @@ class WhatsAppPoller:
         }
 
         logger.debug(f"🤖 Calling AI pipeline for {customer_phone}: {message_text[:60]}...")
-        resp = await self._http.post(local_url, headers=headers, json=payload)
+        resp = await self._http_local.post(local_url, headers=headers, json=payload)
 
         if resp.status_code == 200:
             data = resp.json()
@@ -341,12 +354,38 @@ class WhatsAppPoller:
             "X-Baileys-Secret": BAILEYS_SECRET,
         }
 
+        import time as _time
+        # Simple circuit-breaker: if Baileys has been failing repeatedly,
+        # skip the network call for 60s and just raise so the job is marked failed.
+        now = _time.monotonic()
+        if self._baileys_fail_count >= 3 and (now - self._baileys_last_fail_time) < 60:
+            raise RuntimeError(
+                f"Baileys listener offline (cooldown active, {self._baileys_fail_count} recent failures). "
+                f"Will retry after {60 - int(now - self._baileys_last_fail_time)}s."
+            )
+
         logger.info(f"📤 Sending reply to {to_phone} via Baileys ({BAILEYS_LISTENER_URL})...")
-        resp = await self._http.post(url, headers=headers, json=payload)
+        try:
+            resp = await self._http_cloud.post(url, headers=headers, json=payload)
+        except (httpx.ConnectTimeout, httpx.ConnectError) as e:
+            self._baileys_fail_count += 1
+            self._baileys_last_fail_time = _time.monotonic()
+            if self._baileys_fail_count == 1:
+                logger.warning(
+                    f"⚠️  Baileys listener unreachable at {BAILEYS_LISTENER_URL} — "
+                    f"Is the Railway service running? Error: {e}"
+                )
+            else:
+                logger.debug(f"Baileys still unreachable (failure #{self._baileys_fail_count})")
+            raise RuntimeError(f"Baileys connect error: {e}") from e
 
         if resp.status_code in (200, 201, 202):
+            # Reset circuit-breaker on success
+            self._baileys_fail_count = 0
             logger.info(f"✅ Reply sent to {to_phone}")
         else:
+            self._baileys_fail_count += 1
+            self._baileys_last_fail_time = _time.monotonic()
             raise RuntimeError(
                 f"Baileys /send-reply returned {resp.status_code}: {resp.text[:200]}"
             )
@@ -356,38 +395,19 @@ class WhatsAppPoller:
     def _get_tenant_id(self) -> Optional[str]:
         """
         Get the tenant_id for the currently logged-in user on this desktop.
-
-        Lookup order:
-          1. TENANT_ID env var (explicit override, useful for dev)
-          2. Local SQLite User table — active user's tenant_id
-          3. None (poller will skip this cycle and retry)
+        Delegates to the shared get_tenant_id() from dependencies.py which reads
+        the local User table (synced from Supabase at login).
+        Returns None if no user is logged in yet (poller skips that cycle).
         """
-        # 1. Explicit env var override (dev convenience)
-        env_tid = os.getenv("TENANT_ID")
-        if env_tid:
-            return env_tid
-
-        # 2. Query local SQLite
         try:
-            from backend.database import SessionLocal, User
-
-            db = SessionLocal()
-            try:
-                # Get the first active user with a tenant_id
-                user = (
-                    db.query(User)
-                    .filter(User.tenant_id.isnot(None))
-                    .order_by(User.id)
-                    .first()
-                )
-                if user and user.tenant_id:
-                    return str(user.tenant_id)
-            finally:
-                db.close()
+            from backend.dependencies import get_tenant_id
+            tid = get_tenant_id()
+            if tid and tid != "default":
+                return tid
         except Exception as e:
-            logger.debug(f"Could not resolve tenant_id from User table: {e}")
+            logger.debug(f"Could not resolve tenant_id: {e}")
 
-        logger.warning("⚠️  Could not resolve tenant_id — set TENANT_ID env var or log in first.")
+        logger.warning("⚠️  Could not resolve tenant_id — log in to the dashboard first.")
         return None
 
 
