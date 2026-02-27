@@ -794,23 +794,55 @@ class TallyEngine:
                 finally:
                     db.close()
 
-        # 4. BUILD XML
-        # MAPPING SWAP:
-        # In create_voucher_xml (Modified):
-        # party_name -> Total Side Ledger (Cash/Bank)
-        # main_ledger -> Base Side Ledger (Expense/Vendor)
-        
-        voucher_xml = TallyObjectFactory.create_voucher_xml(
-            payload={
-                "date": payload.get("date", "20250401"),
-                "voucher_type": v_type,
-                "party_name": confirmed_source, # Cash (Total)
-                "main_ledger": confirmed_target, # Expense (Base)
-                "amount": base_amount,
-                "items": None
-            },
-            tax_ledgers=tax_lines
-        )
+        # 4. BUILD XML using GoldenXMLBuilder (proven correct structure)
+        # GoldenXMLBuilder generates ALLLEDGERENTRIES.LIST with proper
+        # sign conventions — same builder that works for Sales vouchers.
+        from backend.tally_golden_xml import GoldenXMLBuilder
+
+        company_name = self.reader.get_company_name() or os.getenv("TALLY_COMPANY", "")
+        date_str = payload.get("date", "20250401")
+
+        if v_type == "Receipt":
+            # Receipt: money comes IN
+            # from_ledger = party paying us (Ramesh Traders)
+            # to_ledger   = Cash/Bank (where money lands)
+            voucher_xml = GoldenXMLBuilder.build_receipt_voucher(
+                company=company_name,
+                date=date_str,
+                from_ledger=confirmed_target,  # Party (Cr side)
+                to_ledger=confirmed_source,    # Cash/Bank (Dr side)
+                amount=base_amount,
+                narration=payload.get("narration", ""),
+                bill_ref=payload.get("bill_ref")
+            )
+        elif v_type == "Payment":
+            # Payment: money goes OUT
+            # from_ledger = Cash/Bank (source)
+            # to_ledger   = Party/Expense (destination)
+            voucher_xml = GoldenXMLBuilder.build_payment_voucher(
+                company=company_name,
+                date=date_str,
+                from_ledger=confirmed_source,  # Cash/Bank
+                to_ledger=confirmed_target,    # Party/Expense
+                amount=base_amount,
+                narration=payload.get("narration", ""),
+                bill_ref=payload.get("bill_ref")
+            )
+        else:
+            # Contra/Journal — fallback to old factory for now
+            voucher_xml = TallyObjectFactory.create_voucher_xml(
+                payload={
+                    "date": date_str,
+                    "voucher_type": v_type,
+                    "party_name": confirmed_source,
+                    "main_ledger": confirmed_target,
+                    "amount": base_amount,
+                    "items": None
+                },
+                tax_ledgers=tax_lines
+            )
+
+        logger.info(f"DEBUG: Built {v_type} XML via GoldenXMLBuilder")
         
         if self.client.send_request(voucher_xml):
             # 5. VERIFICATION
