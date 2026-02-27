@@ -4,11 +4,10 @@ These are functions the agent can call to take actions.
 """
 
 from langchain_core.tools import tool
-from langchain_core.tools import tool
-# from backend.tasks import create_ledger_async, create_voucher_async
 from backend.background_jobs import job_manager
 import json
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 # ============================================================================
 # CUSTOMER/LEDGER TOOLS
@@ -27,67 +26,109 @@ class ItemEntry(BaseModel):
 import requests
 import xml.etree.ElementTree as ET
 
+
+def _get_tenant() -> str:
+    """Resolve tenant_id from Supabase-synced local User table."""
+    from backend.dependencies import get_tenant_id
+    return get_tenant_id()
+
+
+def _today() -> str:
+    """Return today's date as YYYYMMDD."""
+    return datetime.now().strftime("%Y%m%d")
+
+
+def _is_duplicate_voucher(party_name: str, amount: float, voucher_type: str, window_seconds: int = 60) -> bool:
+    """
+    Idempotency guard: returns True if an identical voucher was created in the last `window_seconds`.
+    Prevents the AI from pushing the same transaction twice on retry.
+    """
+    try:
+        from backend.database import SessionLocal, Voucher
+        from datetime import timedelta
+        db = SessionLocal()
+        try:
+            cutoff = datetime.now() - timedelta(seconds=window_seconds)
+            existing = db.query(Voucher).filter(
+                Voucher.party_name == party_name,
+                Voucher.voucher_type.ilike(f"%{voucher_type}%"),
+                Voucher.amount.between(amount * 0.99, amount * 1.01),
+                Voucher.created_at >= cutoff
+            ).first()
+            return existing is not None
+        finally:
+            db.close()
+    except Exception:
+        return False  # On error, allow creation
+
 @tool
 def get_top_outstanding() -> str:
     """
     Get top outstanding receivables (customers who owe money).
     Call this IMMEDIATELY if user asks "Show receivables", "Pending payments", etc. with NO name.
+    Reads from local DB (instant) — no Tally required.
     """
     try:
-        # Direct TDL to fetch Sundry Debtors with balances
+        # DB-first: read from shadow DB
+        from backend.database import SessionLocal, Ledger
+        from sqlalchemy import desc
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            top = db.query(Ledger).filter(
+                Ledger.tenant_id == tenant_id,
+                Ledger.parent.ilike("%debtor%"),
+                Ledger.closing_balance > 0
+            ).order_by(desc(Ledger.closing_balance)).limit(5).all()
+
+            if top:
+                msg = "Here are the top pending receivables:\n"
+                for d in top:
+                    msg += f"- {d.name}: ₹{d.closing_balance:,.2f}\n"
+                msg += "\nDo you want to follow up with any specific customer?"
+                return msg
+        finally:
+            db.close()
+
+        # Fallback: query Tally directly
+        import requests, xml.etree.ElementTree as ET
         xml = """<ENVELOPE>
     <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
-    <BODY>
-        <EXPORTDATA>
-            <REQUESTDESC>
-                <REPORTNAME>DeepFetcher</REPORTNAME>
-                <STATICVARIABLES>
-                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                </STATICVARIABLES>
-                <TDL>
-                    <COLLECTION NAME="DebtorsList">
-                        <TYPE>Ledger</TYPE>
-                        <CHILDOF>Sundry Debtors</CHILDOF>
-                        <FETCH>Name,ClosingBalance</FETCH>
-                        <FILTERS>PositiveOnly</FILTERS>
-                    </COLLECTION>
-                    <SYSTEM TYPE="Formulae" NAME="PositiveOnly">$ClosingBalance != 0</SYSTEM>
-                </TDL>
-            </REQUESTDESC>
-        </EXPORTDATA>
-    </BODY>
-</ENVELOPE>"""
-        
-        resp = requests.post("http://localhost:9000", data=xml, headers={'Content-Type': 'text/xml'})
+    <BODY><EXPORTDATA><REQUESTDESC>
+        <REPORTNAME>DeepFetcher</REPORTNAME>
+        <STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES>
+        <TDL>
+            <COLLECTION NAME="DebtorsList">
+                <TYPE>Ledger</TYPE><CHILDOF>Sundry Debtors</CHILDOF>
+                <FETCH>Name,ClosingBalance</FETCH>
+                <FILTERS>PositiveOnly</FILTERS>
+            </COLLECTION>
+            <SYSTEM TYPE="Formulae" NAME="PositiveOnly">$ClosingBalance != 0</SYSTEM>
+        </TDL>
+    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>"""
+        resp = requests.post("http://localhost:9000", data=xml,
+                             headers={'Content-Type': 'text/xml'}, timeout=5)
         root = ET.fromstring(resp.text)
-        
         debtors = []
         for ledger in root.findall(".//LEDGER"):
             name = ledger.get("NAME") or ledger.findtext("NAME")
             bal_str = ledger.findtext("CLOSINGBALANCE")
-            
             if name and bal_str:
                 try:
-                     # TDL: Debit is Negative usually
-                     bal = float(bal_str)
-                     # Receivables = Debit Balance (Negative in TDL internals often)
-                     # Convert to absolute for display
-                     if bal != 0:
-                         debtors.append({"name": name, "amount": abs(bal)})
-                except: pass
-                
-        # Sort by amount desc
+                    bal = float(bal_str)
+                    if bal != 0:
+                        debtors.append({"name": name, "amount": abs(bal)})
+                except Exception:
+                    pass
         debtors.sort(key=lambda x: x["amount"], reverse=True)
-        
         top_5 = debtors[:5]
-        if not top_5: return "No outstanding receivables found."
-        
+        if not top_5:
+            return "No outstanding receivables found."
         msg = "Here are the top pending receivables:\n"
         for d in top_5:
             msg += f"- {d['name']}: ₹{d['amount']:,.2f}\n"
         msg += "\nDo you want to follow up with any specific customer?"
         return msg
-        
     except Exception as e:
         return f"Error fetching receivables: {e}"
 @tool
@@ -115,52 +156,38 @@ def create_customer(
         Confirmation message with task ID
     """
     try:
-        print(f"🔧 Tool called: create_customer (Sync Wrapper)")
-        print(f"   Name: {name}")
-        print(f"   GST: {gst_number}")
-        
+        print(f"\U0001f527 Tool called: create_customer")
+        tenant_id = _get_tenant()
         ledger_data = {
             'name': name,
             'gst': gst_number,
             'type': 'customer',
             'address': address,
             'phone': phone,
-            'email': email
+            'email': email,
+            'tenant_id': tenant_id
         }
-        
-        # Execute Async Task Synchronously via Job Manager
-        import asyncio
-        from backend.background_jobs import job_manager
-        
-        # Helper for running async in sync
+
+        import asyncio, nest_asyncio
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-
-        # Check if loop is running (e.g. inside uvicorn)
-        if loop.is_running():
-             # We can't block. But ToolNode runs in thread pool.
-             import nest_asyncio
-             nest_asyncio.apply(loop)
-             result = loop.run_until_complete(job_manager.enqueue_create_ledger(ledger_data=ledger_data, user_id="agent"))
-        else:
-             result = loop.run_until_complete(job_manager.enqueue_create_ledger(ledger_data=ledger_data, user_id="agent"))
+        nest_asyncio.apply(loop)
+        result = loop.run_until_complete(
+            job_manager.enqueue_create_ledger(ledger_data=ledger_data, user_id=tenant_id)
+        )
 
         if isinstance(result, str):
-             task_id = "queued"
+            task_id = "queued"
         else:
-             task_id = result.get('task_id', 'unknown')
-        
-        confirmation = f"✓ Created customer '{name}' (GST: {gst_number}). Task ID: {task_id}."
-        print(f"   ✓ Async Task Completed: {task_id}")
-        return confirmation
-        
+            task_id = result.get('task_id', 'unknown')
+
+        return f"\u2713 Created customer '{name}' (GST: {gst_number}). Task ID: {task_id}."
+
     except Exception as e:
-        error_msg = f"✗ Error creating customer: {str(e)}"
-        print(f"   {error_msg}")
-        return error_msg
+        return f"\u2717 Error creating customer: {str(e)}"
 
 @tool
 def create_vendor(
@@ -185,42 +212,39 @@ def create_vendor(
         Confirmation message
     """
     try:
-        print(f"🔧 Tool called: create_vendor (Sync Wrapper)")
-        print(f"   Name: {name}")
-        
+        print(f"\U0001f527 Tool called: create_vendor")
+        tenant_id = _get_tenant()
         ledger_data = {
             'name': name,
             'gst': gst_number,
             'type': 'vendor',
             'address': address,
             'phone': phone,
-            'email': email
+            'email': email,
+            'tenant_id': tenant_id
         }
-        
-        import asyncio
-        from backend.background_jobs import job_manager
-        import nest_asyncio
-        
+
+        import asyncio, nest_asyncio
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
         nest_asyncio.apply(loop)
-        result = loop.run_until_complete(job_manager.enqueue_create_ledger(ledger_data=ledger_data, user_id="agent"))
-        
+        result = loop.run_until_complete(
+            job_manager.enqueue_create_ledger(ledger_data=ledger_data, user_id=tenant_id)
+        )
+
         if isinstance(result, str):
-             task_id = "queued"
+            task_id = "queued"
         else:
-             task_id = result.get('task_id', 'unknown')
-        
-        confirmation = f"✓ Created vendor '{name}'. Task ID: {task_id}"
-        print(f"   ✓ Async Task Completed: {task_id}")
-        return confirmation
-        
+            task_id = result.get('task_id', 'unknown')
+
+        return f"\u2713 Created vendor '{name}'. Task ID: {task_id}"
+
     except Exception as e:
-        return f"✗ Error creating vendor: {str(e)}"
+        return f"\u2717 Error creating vendor: {str(e)}"
+
 
 # ============================================================================
 # INVOICE/VOUCHER TOOLS
@@ -232,42 +256,39 @@ def create_sales_invoice(
         default_factory=list,
         description="EXTRACT structured line items from the user's message. Example: 'Buy 10kg sugar at 40' -> [{'name': 'Sugar', 'qty': '10 kg', 'rate': '40/kg', 'amount': 400}]. DO NOT put item details in 'description'."
     ),
-    amount: float = 0.0, # Optional, calculated from items
-    user_id: str = "TENANT-12345",
+    amount: float = 0.0,
     narration: str = "Created via K24 AI"
 ) -> str:
     """
     Create a sales invoice in Tally.
     Use this when user asks to create an invoice, bill, or sale document.
     Auto-creates missing Parties/Items internally.
-    
+
     Args:
         party_name: Name of the customer/party (required)
         items: List of line items (Strict Schema)
         amount: Invoice amount (Optional, auto-calculated from items if 0)
-        user_id: Tenant ID
         narration: Narration
     """
     try:
-        print(f"🔧 Tool called: create_sales_invoice (Sync Wrapper)")
-        print(f"   Party: {party_name}")
-        
+        print(f"🔧 Tool called: create_sales_invoice")
+        tenant_id = _get_tenant()
+
         # Auto-Calculate Total Amount if missing
         if amount == 0 and items:
-             amount = sum(item.amount for item in items)
-             print(f"   Auto-Calculated Amount: {amount}")
-        
-        print(f"   Amount: {amount}")
-        
-        # Convert Pydantic models to dicts
+            amount = sum(item.amount for item in items)
+            print(f"   Auto-Calculated Amount: {amount}")
+
+        # Idempotency guard — prevent duplicate if AI retries
+        if _is_duplicate_voucher(party_name, amount, "Sales"):
+            return f"⚠️ A Sales invoice for '{party_name}' of ₹{amount} was already created just now. Skipping duplicate."
+
         items_dicts = [item.model_dump() for item in items]
-        
-        # Unified Action Engine
+
         from .invoice_tool import invoice_tool
         from backend.database import SessionLocal
-        import asyncio
-        import nest_asyncio
-        
+        import asyncio, nest_asyncio
+
         db = SessionLocal()
         try:
             try:
@@ -275,26 +296,22 @@ def create_sales_invoice(
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
             nest_asyncio.apply(loop)
-            
             result = loop.run_until_complete(invoice_tool.create_sales_invoice(
-                tenant_id=user_id,
+                tenant_id=tenant_id,
                 party_name=party_name,
                 amount=amount,
                 items=items_dicts,
-                source='web', # Or 'agent'?
+                source='agent',
                 db=db
             ))
-            
             if result['status'] == 'success':
                 return f"✅ Invoice created! ID: {result.get('voucher_id')} | Tally ID: {result.get('tally_voucher_id')}"
             else:
                 return f"❌ Failed to create invoice: {result.get('error')}"
-                
         finally:
             db.close()
-        
+
     except Exception as e:
         return f"❌ Error creating invoice: {str(e)}"
 
@@ -399,47 +416,44 @@ def create_receipt(
         party_name: Customer/party name
         amount: Receipt amount
         payment_method: How payment was made (Cash, Check, Bank Transfer, etc.)
-        date: Receipt date
+        date: Receipt date (YYYYMMDD)
         description: Receipt notes
-
-    Returns:
-        Confirmation message
     """
     try:
-        print(f"🔧 Tool called: create_receipt (Sync Wrapper)")
-        
+        print(f"🔧 Tool called: create_receipt")
+
+        # Idempotency guard
+        if _is_duplicate_voucher(party_name, amount, "Receipt"):
+            return f"⚠️ A Receipt for '{party_name}' of ₹{amount} was already created just now. Skipping duplicate."
+
         voucher_data = {
             'type': 'Receipt',
             'party': party_name,
             'amount': amount,
             'payment_method': payment_method,
-            'date': date or "",
-            'description': description
+            'date': date or _today(),
+            'description': description,
+            'tenant_id': _get_tenant()
         }
-        
-        import asyncio
-        from backend.background_jobs import job_manager
-        import nest_asyncio
-        
+
+        import asyncio, nest_asyncio
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
         nest_asyncio.apply(loop)
-        result = loop.run_until_complete(job_manager.enqueue_create_voucher(voucher_data=voucher_data, user_id="agent"))
-        
-        # In JobManager inline mode, result is the dict. In Celery mode, it's "queued_celery"
+        result = loop.run_until_complete(
+            job_manager.enqueue_create_voucher(voucher_data=voucher_data, user_id=_get_tenant())
+        )
+
         if isinstance(result, str):
-             task_id = "queued"
+            task_id = "queued"
         else:
-             task_id = result.get('task_id', 'unknown')
-        
-        confirmation = f"✓ Created receipt for '{party_name}' (₹{amount} via {payment_method}). Task ID: {task_id}"
-        print(f"   ✓ Async Task Completed: {task_id}")
-        return confirmation
-        
+            task_id = result.get('task_id', 'unknown')
+
+        return f"✓ Receipt created for '{party_name}' (₹{amount} via {payment_method}). Task ID: {task_id}"
+
     except Exception as e:
         return f"✗ Error creating receipt: {str(e)}"
 
@@ -450,28 +464,37 @@ def create_receipt(
 @tool
 def get_customer_balance(customer_name: str) -> str:
     """
-    Get outstanding balance for a customer using the robust TallyReader.
+    Get outstanding balance for a customer.
+    Reads from local DB first (instant) — falls back to Tally if not found.
     Args:
         customer_name: Name of the customer
     """
     try:
+        # DB-first
+        from backend.database import SessionLocal, Ledger
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            ledger = db.query(Ledger).filter(
+                Ledger.tenant_id == tenant_id,
+                Ledger.name.ilike(f"%{customer_name}%")
+            ).first()
+            if ledger:
+                return f"Outstanding Balance for '{ledger.name}': ₹{ledger.closing_balance:,.2f}"
+        finally:
+            db.close()
+
+        # Fallback: Tally
         from backend.tally_reader import TallyReader
         reader = TallyReader()
-        
-        # 1. Find Ledger
         check = reader.get_ledger_details(customer_name)
         if not check["exists"]:
             if check.get("candidates"):
                 return f"Customer '{customer_name}' not found. Did you mean: {', '.join(check['candidates'])}?"
             return f"Customer '{customer_name}' not found in Tally."
-            
         tally_name = check["name"]
-        
-        # 2. Get Balance
         balance = reader.get_closing_balance(tally_name)
-        
         return f"Outstanding Balance for '{tally_name}': ₹{balance}"
-        
     except Exception as e:
         return f"Error fetching balance: {str(e)}"
 
@@ -671,9 +694,30 @@ def create_purchase_voucher_verified(
 def check_stock_levels() -> str:
     """
     Get current stock summary (Items, Quantity, Value).
+    Reads from local DB — instant, no Tally required.
     Returns JSON string for table rendering.
     """
     try:
+        from backend.database import SessionLocal, StockItem
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            items = db.query(StockItem).filter(StockItem.tenant_id == tenant_id).all()
+            if items:
+                data = [
+                    {
+                        "name": i.name,
+                        "closing_balance": i.closing_balance or 0,
+                        "rate": i.rate or 0,
+                        "value": (i.closing_balance or 0) * (i.rate or 0)
+                    }
+                    for i in items
+                ]
+                return json.dumps(data)
+        finally:
+            db.close()
+
+        # Fallback: Tally
         from backend.tally_reader import TallyReader
         reader = TallyReader()
         data = reader.get_stock_summary()
@@ -681,13 +725,35 @@ def check_stock_levels() -> str:
     except Exception as e:
         return json.dumps({"error": str(e)})
 
+
 @tool
 def check_outstanding_payments() -> str:
     """
     Get list of customers with outstanding payments (Receivables).
+    Reads from local DB — instant, no Tally required.
     Returns JSON string for table rendering.
     """
     try:
+        from backend.database import SessionLocal, Ledger
+        from sqlalchemy import desc
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            debtors = db.query(Ledger).filter(
+                Ledger.tenant_id == tenant_id,
+                Ledger.parent.ilike("%debtor%"),
+                Ledger.closing_balance > 0
+            ).order_by(desc(Ledger.closing_balance)).all()
+            if debtors:
+                data = [
+                    {"party_name": d.name, "amount": d.closing_balance}
+                    for d in debtors
+                ]
+                return json.dumps(data)
+        finally:
+            db.close()
+
+        # Fallback: Tally
         from backend.tally_reader import TallyReader
         reader = TallyReader()
         data = reader.get_receivables()
@@ -708,7 +774,7 @@ def create_tally_voucher(
     """
     Universal Tally Voucher Creator (Sales, Purchase, Payment, Receipt).
     Use this for ANY financial transaction request.
-    
+
     Args:
         voucher_type: One of ['Sales', 'Purchase', 'Payment', 'Receipt', 'Contra'].
         party_name: The main party or expense ledger (e.g., "Raj Traders", "Office Rent").
@@ -717,34 +783,37 @@ def create_tally_voucher(
         amount: Total amount. Auto-calculated if items provided.
         items: List of items (Only for Sales/Purchase).
         description: Narration.
+        date: Date in YYYYMMDD or YYYY-MM-DD. Defaults to today.
     """
     try:
         from backend.tally_engine import TallyEngine
-        voucher_type = voucher_type.title() # Normalize
+        voucher_type = voucher_type.title()
         print(f"🔧 Tool called: create_tally_voucher ({voucher_type})")
-        
-        # Dispatch
+
+        # Idempotency guard for financial vouchers
+        if voucher_type in ["Receipt", "Payment"] and amount > 0:
+            if _is_duplicate_voucher(party_name, amount, voucher_type):
+                return f"⚠️ A {voucher_type} for '{party_name}' of ₹{amount} was already created just now. Skipping duplicate."
+
+        # Default to today if no date
+        txn_date = (date.replace("-", "") if date else _today())
+
         engine = TallyEngine()
-        
-        # ITEMS Check
+
+        # Parse items
         items_payload = []
         if items:
             import re
             for item in items:
-                # Parse Unit/Qty
                 raw_qty = item.qty.lower()
                 qty_match = re.match(r"([\d\.]+)\s*(\w+)?", raw_qty)
-                qty_val = 1.0
-                unit_val = "kg" # Default changed to kg? or let engine handle it
+                qty_val, unit_val = 1.0, "kg"
                 if qty_match:
                     qty_val = float(qty_match.group(1))
                     if qty_match.group(2):
                         unit_val = qty_match.group(2)
-                
-                raw_rate = str(item.rate)
-                rate_match = re.match(r"([\d\.]+)", raw_rate)
+                rate_match = re.match(r"([\d\.]+)", str(item.rate))
                 rate_val = float(rate_match.group(1)) if rate_match else 0.0
-                
                 items_payload.append({
                     "name": item.name,
                     "quantity": qty_val,
@@ -752,37 +821,33 @@ def create_tally_voucher(
                     "rate": rate_val,
                     "taxable_amount": item.amount
                 })
-        
-        # 1. SALES/PURCHASE (Item Invoice Mode)
+
         if voucher_type in ["Sales", "Purchase"]:
-             payload = {
-                 "voucher_type": voucher_type,
-                 "party_name": party_name,
-                 "items": items_payload,
-                 "date": date.replace("-", "") if date else "20250401"
-             }
-             if voucher_type == "Sales":
-                 res = engine.process_sales_request(payload)
-             else:
-                 res = engine.process_purchase_request(payload)
-                 
-        # 2. PAYMENT/RECEIPT (Accounting Mode)
+            payload = {
+                "voucher_type": voucher_type,
+                "party_name": party_name,
+                "items": items_payload,
+                "date": txn_date
+            }
+            if voucher_type == "Sales":
+                res = engine.process_sales_request(payload)
+            else:
+                res = engine.process_purchase_request(payload)
         else:
-             # Financial Voucher
-             payload = {
-                 "voucher_type": voucher_type,
-                 "party_name": party_name,
-                 "amount_ledger": ledger_name,
-                 "amount": amount,
-                 "date": date.replace("-", "") if date else "20250401"
-             }
-             res = engine.process_financial_voucher(payload)
-             
+            payload = {
+                "voucher_type": voucher_type,
+                "party_name": party_name,
+                "amount_ledger": ledger_name,
+                "amount": amount,
+                "date": txn_date
+            }
+            res = engine.process_financial_voucher(payload)
+
         if res.get("status") == "success":
             return f"✅ {voucher_type} Voucher Created! {res.get('message')}"
         else:
-             return f"❌ Failed: {res.get('message')}"
-             
+            return f"❌ Failed: {res.get('message')}"
+
     except Exception as e:
         return f"Error creating voucher: {str(e)}"
 
