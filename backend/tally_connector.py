@@ -264,34 +264,69 @@ class TallyConnector:
         xml_response = self.send_request(xml)
         return self._parse_ledger_xml(xml_response)
 
-    def fetch_stock_items(self, company_name: Optional[str] = None, from_date: Optional[str] = None, to_date: Optional[str] = None) -> pd.DataFrame:
-        cname = company_name or self.company_name
-        
-        date_range_xml = ""
-        if from_date and to_date:
-            date_range_xml = f"""
-            <SVFROMDATE>{escape(from_date)}</SVFROMDATE>
-            <SVTODATE>{escape(to_date)}</SVTODATE>
-            """
-
-        xml = f"""
-        <ENVELOPE>
-            <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
-            <BODY>
-                <EXPORTDATA>
-                    <REQUESTDESC>
-                        <REPORTNAME>List of StockItems</REPORTNAME>
-                        <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{escape(cname)}</SVCURRENTCOMPANY>
-                            {date_range_xml}
-                        </STATICVARIABLES>
-                    </REQUESTDESC>
-                </EXPORTDATA>
-            </BODY>
-        </ENVELOPE>
+    def fetch_stock_items(self, company_name=None, from_date=None, to_date=None):
         """
+        Fetch stock items from Tally Stock Summary report.
+        Parses DSPDISPNAME/DSPCL* tags (actual Tally XML response format).
+        No SVCURRENTCOMPANY - Tally uses active company automatically.
+        """
+        import re as _re
+        xml = """<ENVELOPE>
+    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+    <BODY><EXPORTDATA><REQUESTDESC>
+        <REPORTNAME>Stock Summary</REPORTNAME>
+        <STATICVARIABLES>
+            <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        </STATICVARIABLES>
+    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>"""
+
         xml_response = self.send_request(xml)
-        return self._parse_generic_xml(xml_response, "STOCKITEM")
+        if not xml_response:
+            logger.warning("Stock Summary: empty response from Tally")
+            return pd.DataFrame()
+
+        try:
+            clean = self._sanitize_xml(xml_response)
+            root = ET.fromstring(clean)
+
+            records = []
+            names = root.findall(".//DSPDISPNAME")
+            infos = root.findall(".//DSPSTKINFO")
+
+            for name_el, info_el in zip(names, infos):
+                name = (name_el.text or "").strip()
+                if not name:
+                    continue
+
+                qty_el  = info_el.find(".//DSPCLQTY")
+                rate_el = info_el.find(".//DSPCLRATE")
+                amt_el  = info_el.find(".//DSPCLAMTA")
+
+                qty_str  = (qty_el.text  or "0").strip() if qty_el  is not None else "0"
+                rate_str = (rate_el.text or "0").strip() if rate_el is not None else "0"
+                amt_str  = (amt_el.text  or "0").strip() if amt_el  is not None else "0"
+
+                qty_match    = _re.match(r"([\d.,]+)\s*(\w+)?", qty_str)
+                closing_qty  = float(qty_match.group(1).replace(",", "")) if qty_match else 0.0
+                unit         = (qty_match.group(2) or "Nos").upper() if qty_match else "Nos"
+                closing_rate = float(rate_str.replace(",", "")) if rate_str else 0.0
+                closing_val  = abs(float(amt_str.replace(",", "")) if amt_str else 0.0)
+
+                records.append({
+                    "name":          name,
+                    "unit":          unit,
+                    "closing_qty":   closing_qty,
+                    "rate":          closing_rate,
+                    "closing_value": closing_val,
+                    "guid":          f"TALLY-STOCK-{name}"
+                })
+
+            logger.info(f"Stock Summary: parsed {len(records)} items")
+            return pd.DataFrame(records) if records else pd.DataFrame()
+
+        except Exception as e:
+            logger.error(f"fetch_stock_items parse error: {e}. Raw: {xml_response[:200]}")
+            return pd.DataFrame()
 
     def fetch_outstanding_bills(self, company_name: Optional[str] = None) -> pd.DataFrame:
         cname = company_name or self.company_name
@@ -1177,6 +1212,7 @@ class TallyConnector:
                     <REQUESTDESC>
                         <REPORTNAME>Voucher Register</REPORTNAME>
                         <STATICVARIABLES>
+                            <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
                             <SVCURRENTCOMPANY>{escape(cname)}</SVCURRENTCOMPANY>
                             {voucher_type_xml}
                             {date_range_xml}
@@ -1672,32 +1708,44 @@ class TallyConnector:
         narration = voucher_elem.find('NARRATION')
         data['narration'] = narration.text if narration is not None and narration.text else ''
         
-        # Extract ledger entries
-        ledger_entries = voucher_elem.findall('.//ALLLEDGERENTRIES.LIST')
-        
-        # For simplicity, we'll extract the first party ledger and total amount
-        party_name = ''
+        # Extract ledger entries — Tally uses different tag names depending on version/report:
+        #   ALLLEDGERENTRIES.LIST  → TallyPrime "all ledger entries" (most common in Day Book)
+        #   LEDGERENTRIES.LIST     → Older Tally 9 / Voucher Register exports
+        #   LEDGERENTRIESIN.LIST   → Some receipt/payment vouchers
+        #   LEDGERENTRIESOUT.LIST  → Some payment vouchers
+        # We must check ALL of them to reliably get amounts.
+        _LEDGER_TAGS = [
+            'ALLLEDGERENTRIES.LIST',
+            'LEDGERENTRIES.LIST',
+            'LEDGERENTRIESIN.LIST',
+            'LEDGERENTRIESOUT.LIST',
+        ]
+
+        # Prefer PARTYLEDGERNAME from the voucher element itself (fastest & most reliable)
+        party_name = voucher_elem.findtext('PARTYLEDGERNAME', '').strip()
         total_amount = 0.0
-        
-        for ledger in ledger_entries:
-            ledger_name_elem = ledger.find('LEDGERNAME')
-            amount_elem = ledger.find('AMOUNT')
-            
-            if ledger_name_elem is not None and ledger_name_elem.text:
-                ledger_name = ledger_name_elem.text
-                
-                # Get amount
-                if amount_elem is not None and amount_elem.text:
-                    try:
-                        amount = float(amount_elem.text)
-                        # Use the positive amount as the voucher amount
-                        if abs(amount) > abs(total_amount):
-                            total_amount = abs(amount)
-                            # Set party name to the ledger with the larger amount
-                            party_name = ledger_name
-                    except ValueError:
-                        pass
-        
+
+        for tag in _LEDGER_TAGS:
+            for ledger in voucher_elem.findall(f'.//{tag}'):
+                ledger_name_elem = ledger.find('LEDGERNAME')
+                amount_elem = ledger.find('AMOUNT')
+
+                if ledger_name_elem is not None and ledger_name_elem.text:
+                    ledger_name = ledger_name_elem.text.strip()
+
+                    # Get amount
+                    if amount_elem is not None and amount_elem.text:
+                        try:
+                            amount = float(amount_elem.text.replace(',', ''))
+                            if abs(amount) > abs(total_amount):
+                                total_amount = abs(amount)
+                                # Only overwrite party_name from ledger if we didn't
+                                # get it from PARTYLEDGERNAME directly
+                                if not party_name:
+                                    party_name = ledger_name
+                        except ValueError:
+                            pass
+
         data['party_name'] = party_name
         data['amount'] = total_amount
         

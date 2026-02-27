@@ -379,30 +379,62 @@ class SyncEngine:
         
         for group in groups:
             try:
-                # Use Bills reports for Debtors/Creditors to ensure completeness (fixes missing ledgers in Group Summary)
+                # For Debtors/Creditors: use Bills report (open bills only)
+                # For Cash/Bank: use Group Summary directly
                 if group == "Sundry Debtors":
                     summary = self.tally.fetch_closing_balances_from_bills("Bills Receivable")
                 elif group == "Sundry Creditors":
-                    # For Creditors, use "Bills Payable"
                     summary = self.tally.fetch_closing_balances_from_bills("Bills Payable")
                 else:
                     summary = self.tally.fetch_group_summary(group)
 
-                if not summary: continue
-                
+                if not summary:
+                    continue
+
+                # Cash-in-hand / Bank Accounts: Tally returns Cr balance as negative.
+                # We store absolute value (Dr = positive = money in hand).
+                is_cash_bank = group in ("Cash-in-hand", "Bank Accounts")
+
                 updates = 0
+                updated_names = set()
                 for item in summary:
                     name = item.get("name")
+                    if not name:
+                        continue
                     bal = float(item.get("closing_balance", 0))
-                    
-                    # Update DB (Bulk update would be faster but this is safe)
+                    if is_cash_bank:
+                        bal = abs(bal)  # Always positive for Cash/Bank
                     ledger = db.query(Ledger).filter(Ledger.name == name).first()
                     if ledger:
                         ledger.closing_balance = bal
+                        updated_names.add(name)
                         updates += 1
-                
+
                 if updates > 0:
                     logger.info(f"✅ Updated balances for {updates} ledgers in {group}")
+
+                # Fix 2B: Fallback for Debtors/Creditors not found in Bills
+                # (settled accounts or no open bills) — use Group Summary as fallback
+                if group in ("Sundry Debtors", "Sundry Creditors"):
+                    try:
+                        grp_key = "Sundry Debtors" if group == "Sundry Debtors" else "Sundry Creditors"
+                        grp_summary = self.tally.fetch_group_summary(grp_key)
+                        if grp_summary:
+                            fallback_updates = 0
+                            for item in grp_summary:
+                                name = item.get("name")
+                                if not name or name in updated_names:
+                                    continue  # Already updated from Bills
+                                bal = float(item.get("closing_balance", 0))
+                                ledger = db.query(Ledger).filter(Ledger.name == name).first()
+                                if ledger and ledger.closing_balance == 0.0:
+                                    ledger.closing_balance = bal
+                                    fallback_updates += 1
+                            if fallback_updates > 0:
+                                logger.info(f"✅ [Fallback] Updated {fallback_updates} more ledgers in {group} via Group Summary")
+                    except Exception as fe:
+                        logger.debug(f"Group Summary fallback for {group}: {fe}")
+
             except Exception as e:
                 logger.warning(f"Failed to sync balances for group {group}: {e}")
 
@@ -430,37 +462,47 @@ class SyncEngine:
                     existing = db.query(StockItem).filter(StockItem.name == name).first()
                     
                     # Parse quantity and rate
-                    closing_qty = 0
-                    closing_rate = 0
-                    closing_value = float(item_data.get("closing_value", item_data.get("CLOSINGVALUE", 0)) or 0)
-                    
+                    # NOTE: StockItem model uses closing_balance (qty), rate (price)
+                    # NOT closing_qty/closing_rate/closing_value
+                    closing_qty = 0.0
+                    closing_val = 0.0
+                    closing_rate = 0.0
+
                     qty_str = item_data.get("closing_qty", item_data.get("CLOSINGQTY", ""))
                     if qty_str:
                         import re
                         qty_match = re.search(r'([\d.]+)', str(qty_str))
                         if qty_match:
                             closing_qty = float(qty_match.group(1))
-                    
-                    if closing_qty > 0 and closing_value > 0:
-                        closing_rate = closing_value / closing_qty
-                    
+
+                    # Try to get value directly from Tally data
+                    val_raw = item_data.get("closing_value", item_data.get("CLOSINGVALUE",
+                              item_data.get("CLOSINGBALANCE", 0)))
+                    closing_val = float(val_raw or 0)
+
+                    # Tally reports rate directly in some fields
+                    rate_raw = item_data.get("rate", item_data.get("STANDARDCOST", 0))
+                    if rate_raw:
+                        closing_rate = float(str(rate_raw).split('/')[0].replace(',', '').strip() or 0)
+                    elif closing_qty > 0 and closing_val > 0:
+                        closing_rate = closing_val / closing_qty
+
                     if existing:
-                        existing.closing_qty = closing_qty
-                        existing.closing_rate = closing_rate
-                        existing.closing_value = closing_value
-                        existing.unit = item_data.get("unit", item_data.get("BASEUNITS", existing.unit))
+                        # Map to actual model columns
+                        existing.closing_balance = closing_qty   # qty stored in closing_balance
+                        existing.rate = closing_rate             # rate = closing rate
+                        existing.cost_price = closing_rate       # also update cost price
+                        existing.unit = item_data.get("unit", item_data.get("BASEUNITS", existing.units or "Kgs"))
                         existing.last_synced = datetime.now()
-                        existing.sync_status = "SYNCED"
                     else:
                         new_item = StockItem(
                             name=name,
-                            parent_group=item_data.get("group", item_data.get("PARENT", "Primary")),
-                            unit=item_data.get("unit", item_data.get("BASEUNITS", "Kgs")),
-                            closing_qty=closing_qty,
-                            closing_rate=closing_rate,
-                            closing_value=closing_value,
-                            guid=item_data.get("guid", f"TALLY-{name}"),
-                            sync_status="SYNCED",
+                            stock_group=item_data.get("group", item_data.get("PARENT", "Primary")),
+                            units=item_data.get("unit", item_data.get("BASEUNITS", "Kgs")),
+                            closing_balance=closing_qty,   # qty
+                            rate=closing_rate,
+                            cost_price=closing_rate,
+                            tally_guid=item_data.get("guid", f"TALLY-{name}"),
                             last_synced=datetime.now()
                         )
                         db.add(new_item)
