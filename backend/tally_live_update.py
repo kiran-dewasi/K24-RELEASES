@@ -286,11 +286,13 @@ def parse_tally_response(xml_response: str) -> TallyResponse:
                  raw_response=xml_response
              )
         
-        if created > 0 or root.find(".//ALTERED").text == '1':
+        altered_elem = root.find(".//ALTERED")
+        altered = int(altered_elem.text) if altered_elem is not None and altered_elem.text is not None else 0
+        if created > 0 or altered > 0:
             return TallyResponse(
                 success=True,
                 tally_status="Success",
-                tally_response={"created": created, "errors": errors, "altered": 1 if root.find(".//ALTERED").text == '1' else 0},
+                tally_response={"created": created, "errors": errors, "altered": altered},
                 raw_response=xml_response
             )
             
@@ -309,6 +311,8 @@ def parse_tally_response(xml_response: str) -> TallyResponse:
 
     except ET.ParseError as e:
         return TallyResponse(success=False, error_details=f"XML Parsing Error: {str(e)}", raw_response=xml_response)
+    except AttributeError as e:
+        return TallyResponse(success=False, error_details=f"XML Attribute Error (missing tag): {str(e)}", raw_response=xml_response)
     except Exception as e:
         return TallyResponse(success=False, error_details=f"General Error: {str(e)}", raw_response=xml_response)
 

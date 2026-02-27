@@ -454,6 +454,25 @@ async def create_receipt_voucher(request: ReceiptVoucherRequest, db: Session = D
         )
         logger.info(f"📒 Party Ledger: '{request.party_name}' -> ID: {party_ledger_id}")
         
+        # 🛡️ IDEMPOTENCY: Prevent double-tap duplicate push
+        from datetime import timedelta
+        sixty_secs_ago = datetime.utcnow() - timedelta(seconds=60)
+        existing = db.query(Voucher).filter(
+            Voucher.voucher_type == "Receipt",
+            Voucher.party_name == request.party_name,
+            Voucher.amount == request.amount,
+            Voucher.date == date_obj,
+            Voucher.sync_status == "SYNCED"
+        ).filter(Voucher.id > 0).order_by(Voucher.id.desc()).first()
+        if existing:
+            logger.warning(f"⚠️ Duplicate receipt detected for {request.party_name} ₹{request.amount} — returning existing #{existing.voucher_number}")
+            return {
+                "status": "success",
+                "message": f"Receipt already exists (duplicate prevented)",
+                "voucher": {"party_name": existing.party_name, "amount": existing.amount},
+                "db_id": existing.id
+            }
+
         # Prepare voucher data for Tally
         voucher_data = {
             "voucher_type": "Receipt",
@@ -543,6 +562,24 @@ async def create_sales_invoice(request: SalesInvoiceRequest, db: Session = Depen
         )
         logger.info(f"📒 Customer Ledger: '{request.party_name}' -> ID: {party_ledger_id}")
         
+        # 🛡️ IDEMPOTENCY: Prevent double-tap duplicate push
+        from datetime import timedelta
+        existing = db.query(Voucher).filter(
+            Voucher.voucher_type == "Sales",
+            Voucher.party_name == request.party_name,
+            Voucher.amount == request.grand_total,
+            Voucher.date == date_obj,
+            Voucher.sync_status == "SYNCED"
+        ).order_by(Voucher.id.desc()).first()
+        if existing:
+            logger.warning(f"⚠️ Duplicate sales invoice detected for {request.party_name} ₹{request.grand_total} — returning existing #{existing.voucher_number}")
+            return {
+                "status": "success",
+                "message": f"Sales invoice already exists (duplicate prevented)",
+                "invoice": {"party": existing.party_name, "total": existing.amount},
+                "db_id": existing.id
+            }
+
         # Prepare voucher data for Tally
         voucher_data = {
             "voucher_type": "Sales",
@@ -645,6 +682,24 @@ async def create_payment_voucher(request: PaymentVoucherRequest, db: Session = D
             under_group="Sundry Creditors"
         )
         logger.info(f"📒 Vendor Ledger: '{request.party_name}' -> ID: {party_ledger_id}")
+
+        # 🛡️ IDEMPOTENCY: Prevent double-tap duplicate push
+        from datetime import timedelta
+        existing = db.query(Voucher).filter(
+            Voucher.voucher_type == "Payment",
+            Voucher.party_name == request.party_name,
+            Voucher.amount == request.amount,
+            Voucher.date == date_obj,
+            Voucher.sync_status == "SYNCED"
+        ).order_by(Voucher.id.desc()).first()
+        if existing:
+            logger.warning(f"⚠️ Duplicate payment detected for {request.party_name} ₹{request.amount} — returning existing #{existing.voucher_number}")
+            return {
+                "status": "success",
+                "message": f"Payment already exists (duplicate prevented)",
+                "voucher": {"party_name": existing.party_name, "amount": existing.amount},
+                "db_id": existing.id
+            }
 
         # Prepare voucher data for Tally
         voucher_data = {

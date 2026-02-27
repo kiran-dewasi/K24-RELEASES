@@ -36,14 +36,19 @@ class TallySyncService:
     Runs every 5 seconds when active, 5 minutes when idle
     """
     
-    def __init__(self, interval_active: int = 5, interval_idle: int = 300):
-        self.interval_active = interval_active  # 5 seconds
-        self.interval_idle = interval_idle      # 5 minutes
+    def __init__(self, interval_active: int = 300, interval_idle: int = 600):
+        # interval_active: 5 min — Tally HTTP server cannot handle sub-minute polling
+        #                          (returns empty 716-byte response under rapid fire)
+        # interval_idle:  10 min — when no user interaction for 5+ min
+        self.interval_active = interval_active
+        self.interval_idle = interval_idle
         self.is_running = False
         self.last_activity = time.time()
         self.connector = TallyConnector()
         self.last_sync_time = None
-        self.last_backup = 0
+        # Set last_backup to NOW so we don't immediately attempt a cloud backup
+        # on every backend restart. First backup fires 6 hours after startup.
+        self.last_backup = time.time()
         self.sync_stats = {
             "total_syncs": 0,
             "successful_syncs": 0,
@@ -113,26 +118,20 @@ class TallySyncService:
                         include_movements=False
                     )
                 else:
-                    # Incremental sync (last 24 hours)
-                    tasks = [
-                        self.sync_ledgers(),
-                        self.sync_vouchers_incremental(),
-                        self.sync_stock_items(),
-                        self.sync_bills(),
-                    ]
-                    
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    # Check for exceptions to trigger rollback
-                    for r in results:
-                        if isinstance(r, Exception):
-                            raise r
-                            
+                    # Incremental sync — run SEQUENTIALLY, not in parallel.
+                    # Tally has a single-connection HTTP server (pool_maxsize=1).
+                    # Parallel requests overflow the pool: extras are discarded
+                    # and Tally returns empty 716-byte responses for all of them.
+                    ledger_result = await self.sync_ledgers()
+                    voucher_result = await self.sync_vouchers_incremental()
+                    stock_result = await self.sync_stock_items()
+                    bill_result = await self.sync_bills()
+
                     result = {
-                        "ledgers": results[0] if len(results) > 0 else {},
-                        "vouchers": results[1] if len(results) > 1 else {},
-                        "stock_items": results[2] if len(results) > 2 else {},
-                        "bills": results[3] if len(results) > 3 else {}
+                        "ledgers": ledger_result,
+                        "vouchers": voucher_result,
+                        "stock_items": stock_result,
+                        "bills": bill_result,
                     }
             
             elapsed = time.time() - start
