@@ -24,6 +24,7 @@ class CloudBackupService:
         if not self.enabled:
             return False
 
+        zip_path = None # Initialize zip_path for outer cleanup
         try:
             # 1. Locate DB
             db_path_str = get_db_path()
@@ -41,6 +42,20 @@ class CloudBackupService:
             import zipfile
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 zipf.write(db_path, arcname="k24_shadow.db")
+
+            # 2.1 Local backup rotation (keep last 5)
+            backup_dir = db_path.parent
+            local_backups = sorted(
+                [f for f in backup_dir.iterdir() if f.name.startswith(f"backup_{user_id}_") and f.suffix == ".zip"],
+                key=os.path.getmtime,
+                reverse=True
+            )
+            for old_backup in local_backups[5:]:
+                try:
+                    os.remove(old_backup)
+                    logger.info(f"Removed old local backup: {old_backup.name}")
+                except Exception as e:
+                    logger.error(f"Failed to remove old local backup {old_backup.name}: {e}")
 
             # 3. Encrypt
             with open(zip_path, "rb") as f:
@@ -61,27 +76,20 @@ class CloudBackupService:
                 "x-upsert": "true"
             }
             
-            response = requests.post(url, data=encrypted_data, headers=headers)
-            
-            if response.status_code not in [200, 201]:
-                logger.error(f"Upload failed: {response.status_code} {response.text}")
-                # Fallback: maybe bucket doesn't exist?
-                return False
-            
-            # 5. Cleanup
-            if zip_path.exists():
-                os.remove(zip_path)
+            try:
+                response = requests.post(url, data=encrypted_data, headers=headers)
                 
-            logger.info(f"Cloud backup successful: {file_path}")
-            return True
+                if response.status_code not in [200, 201]:
+                    logger.error(f"Upload failed: {response.status_code} {response.text}")
+                    return False
+                
+                logger.info(f"Cloud backup successful: {file_path}")
+                return True
+            finally:
+                # 5. Cleanup: Always delete the temporary zip file after upload attempt
+                if zip_path.exists():
+                    os.remove(zip_path)
 
         except Exception as e:
             logger.error(f"Cloud backup failed: {e}")
-            try:
-                if 'zip_path' in locals() and zip_path.exists():
-                    os.remove(zip_path)
-            except:
-                pass
-            return False
-
 backup_service = CloudBackupService()
