@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tally_connector")
 
 TALLY_API_URL = os.getenv("TALLY_URL", "http://localhost:9000")
-DEFAULT_COMPANY = os.getenv("TALLY_COMPANY", "Krishasales")
+DEFAULT_COMPANY = os.getenv("TALLY_COMPANY", "")  # Empty = auto-detect from Tally
 
 # Try loading from config file
 try:
@@ -87,8 +87,37 @@ class TallyConnector:
     def __init__(self, url: str = TALLY_API_URL, timeout: int = 300, company_name: Optional[str] = None):
         self.url = url
         self.timeout = timeout
-        self.company_name = company_name or DEFAULT_COMPANY
+        self.company_name = company_name or DEFAULT_COMPANY or self._fetch_active_company(url, timeout)
         self.session = self._create_session()
+
+    def _fetch_active_company(self, url: str, timeout: int) -> str:
+        """Auto-detect the currently open company from Tally. Called once at init."""
+        xml = (
+            "<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>"
+            "<BODY><EXPORTDATA><REQUESTDESC>"
+            "<REPORTNAME>List of Companies</REPORTNAME>"
+            "<STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES>"
+            "</REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>"
+        )
+        try:
+            resp = requests.post(url, data=xml,
+                                 headers={'Content-Type': 'text/xml'}, timeout=5)
+            import re as _re
+            import xml.etree.ElementTree as _ET
+            cleaned = _re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', resp.text)
+            root = _ET.fromstring(cleaned)
+            for node in root.findall('.//COMPANY'):
+                name = node.findtext('NAME') or node.get('NAME', '')
+                if name and name.strip():
+                    logger.info(f"[TallyConnector] Auto-detected company: '{name.strip()}'")
+                    return name.strip()
+            for node in root.findall('.//NAME'):
+                if node.text and node.text.strip():
+                    logger.info(f"[TallyConnector] Auto-detected company (fallback): '{node.text.strip()}'")
+                    return node.text.strip()
+        except Exception as e:
+            logger.warning(f"[TallyConnector] Could not auto-detect company name: {e}")
+        return ""
 
     def _create_session(self):
         """Create session with custom timeout and retry strategy"""
@@ -1361,7 +1390,7 @@ class TallyConnector:
           - rate: float
           - amount: float
         """
-        cname = self.company_name or "Krishasales" # Fallback
+        cname = self.company_name or DEFAULT_COMPANY  # Auto-detected at init
         
         # AUTO-CREATE LEDGERS IF MISSING
         party_name = voucher_data.get("party_name")

@@ -1179,9 +1179,9 @@ class TallyReader:
 
                 results.append({
                     "date": v_date,           # YYYYMMDD
-                    "number": v_num,
-                    "type": v_type,
-                    "party": v_party or (ledgers[0]["name"] if ledgers else "Unknown"),
+                    "voucher_number": v_num,
+                    "voucher_type": v_type,
+                    "party_name": v_party or (ledgers[0]["name"] if ledgers else "Unknown"),
                     "amount": f"{abs(total_amount):.2f}",
                     "narration": v_narration,
                     "guid": v_guid,

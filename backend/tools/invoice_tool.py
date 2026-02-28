@@ -6,6 +6,7 @@ from backend.database import Voucher, Ledger, Tenant
 from backend.socket_manager import socket_manager
 # from backend.xml_generator import generate_tally_sales_xml # Deprecated
 from backend.tally_xml_builder import build_sales_voucher_xml, InventoryEntry
+from backend.tally_connector import TallyConnector as _TC
 import logging
 
 logger = logging.getLogger("invoice_tool")
@@ -106,7 +107,7 @@ class InvoiceTool:
                 # ITEM INVOICE
                 logger.info(f"📄 Building Item Invoice XML with {len(inventory_entries)} items.")
                 xml_payload = build_sales_voucher_xml(
-                    company_name="krishasales", # Agent handles company matching context usually
+                    company_name=_TC().company_name,  # Auto-detected from active Tally company
                     voucher_fields={
                         "DATE": date_str,
                         "VOUCHERTYPENAME": "Sales",

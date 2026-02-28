@@ -63,30 +63,41 @@ export default function DashboardStats() {
     const [partyStats, setPartyStats] = useState<PartyStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [refreshKey, setRefreshKey] = useState(0);
     const router = useRouter();
 
-    useEffect(() => {
-        const fetchAll = async () => {
-            setLoading(true);
-            try {
-                const [sRes, stRes, pRes] = await Promise.all([
-                    apiClient("/api/dashboard/stats"),
-                    apiClient("/api/dashboard/stock-summary"),
-                    apiClient("/api/dashboard/party-analysis"),
-                ]);
+    const fetchAll = async () => {
+        setLoading(true);
+        setError("");
+        try {
+            const [sRes, stRes, pRes] = await Promise.all([
+                apiClient("/api/dashboard/stats"),
+                apiClient("/api/dashboard/stock-summary"),
+                apiClient("/api/dashboard/party-analysis"),
+            ]);
 
-                if (sRes.ok) setStats(await sRes.json());
-                if (stRes.ok) setStockStats(await stRes.json());
-                if (pRes.ok) setPartyStats(await pRes.json());
-            } catch (err) {
-                console.error(err);
-                setError("Failed to load dashboard data");
-            } finally {
-                setLoading(false);
+            if (sRes.ok) {
+                const data = await sRes.json();
+                setStats(data);
+                // Auto-retry once if all financial values are 0 (backend still warming up / Tally not synced yet)
+                if (data.cash === 0 && data.receivables === 0 && data.payables === 0) {
+                    setTimeout(() => setRefreshKey(k => k + 1), 4000);
+                }
             }
-        };
+            if (stRes.ok) setStockStats(await stRes.json());
+            if (pRes.ok) setPartyStats(await pRes.json());
+        } catch (err) {
+            console.error(err);
+            setError("Failed to load dashboard data");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchAll();
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [refreshKey]);
 
     const getCards = (data: KPIStats) => [
         {
@@ -114,12 +125,12 @@ export default function DashboardStats() {
             description: "Pending to pay",
         },
         {
-            title: "Total Sales (this month)",
+            title: "Total Sales (FY 2025-26)",
             value: data.sales,
             icon: PiggyBank,
             change: data.sales_change,
             color: "violet",
-            description: "vs last month",
+            description: "Apr 2025 – today",
         },
     ];
 
@@ -296,10 +307,10 @@ export default function DashboardStats() {
                                         <TableCell className="text-right text-sm font-semibold text-slate-700">₹{item.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={`text-[10px] font-medium py-0.5 ${item.status === "Out of Stock"
-                                                    ? "bg-red-50 text-red-600 border-red-200"
-                                                    : item.status === "Low Stock"
-                                                        ? "bg-amber-50 text-amber-700 border-amber-200"
-                                                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                ? "bg-red-50 text-red-600 border-red-200"
+                                                : item.status === "Low Stock"
+                                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
                                                 }`}>
                                                 {item.status}
                                             </Badge>

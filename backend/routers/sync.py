@@ -104,11 +104,11 @@ def perform_sync_task(db: Session):
         count = 0
         updated = 0
         for v in vouchers:
-            v_num = v["number"]
-            if not v_num:
-                continue
+            v_num = v.get("voucher_number") or ""
+            v_guid = v.get("guid") or ""
+            # Don't skip blank-numbered vouchers — they are valid accounting entries
             try:
-                v_date = datetime.strptime(v["date"], "%Y%m%d")
+                v_date = datetime.strptime(v.get("date", ""), "%Y%m%d")
             except:
                 v_date = datetime.now()
 
@@ -116,12 +116,26 @@ def perform_sync_task(db: Session):
             inv_entries = v.get("items") or []
             led_entries = v.get("ledgers") or []
 
-            exists = db.query(Voucher).filter(Voucher.voucher_number == v_num).first()
+            # Dedup: GUID first, then voucher_number, then fingerprint
+            exists = None
+            if v_guid:
+                exists = db.query(Voucher).filter(Voucher.guid == v_guid).first()
+            if not exists and v_num:
+                exists = db.query(Voucher).filter(Voucher.voucher_number == v_num).first()
+            if not exists and v.get("party_name") and v.get("amount"):
+                exists = db.query(Voucher).filter(
+                    Voucher.tenant_id == tenant_id,
+                    Voucher.voucher_type == v.get("voucher_type"),
+                    Voucher.party_name == v.get("party_name"),
+                    Voucher.amount == abs(float(v.get("amount") or 0)),
+                    Voucher.date == v_date,
+                ).first()
+
             if exists:
                 # Always refresh line items on re-sync so existing rows get enriched
                 exists.inventory_entries = inv_entries
                 exists.ledger_entries = led_entries
-                exists.party_name = v.get("party") or exists.party_name
+                exists.party_name = v.get("party_name") or exists.party_name
                 exists.amount = float(v.get("amount") or exists.amount or 0)
                 exists.narration = v.get("narration") or exists.narration
                 exists.guid = v.get("guid") or exists.guid
@@ -131,8 +145,8 @@ def perform_sync_task(db: Session):
                     tenant_id=tenant_id,
                     voucher_number=v_num,
                     date=v_date,
-                    voucher_type=v["type"],
-                    party_name=v["party"],
+                    voucher_type=v.get("voucher_type"),
+                    party_name=v.get("party_name"),
                     amount=float(v.get("amount") or 0),
                     narration=v.get("narration"),
                     sync_status="SYNCED",

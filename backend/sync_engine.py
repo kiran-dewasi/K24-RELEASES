@@ -547,11 +547,28 @@ class SyncEngine:
 
             for vch_data in vouchers:
                 try:
-                    guid = vch_data.get("guid", vch_data.get("GUID", ""))
-                    if not guid:
-                        continue
+                    guid          = vch_data.get("guid", vch_data.get("GUID", "")) or ""
+                    vch_number    = vch_data.get("voucher_number", vch_data.get("VOUCHERNUMBER", "")) or ""
+                    vch_type      = vch_data.get("voucher_type", vch_data.get("VOUCHERTYPENAME", "Unknown")) or "Unknown"
+                    party         = vch_data.get("party_name", vch_data.get("PARTYLEDGERNAME", "")) or ""
+                    amount_raw    = float(vch_data.get("amount", vch_data.get("AMOUNT", 0)) or 0)
+                    amount        = abs(amount_raw)
+                    narration     = vch_data.get("narration", vch_data.get("NARRATION", "")) or ""
 
-                    existing = db.query(Voucher).filter(Voucher.guid == guid).first()
+                    # ── Line Items: inventory (stock items) and ledger entries (tax/accounting) ──
+                    # fetch_vouchers() returns flattened rows — items come as sub-dicts if parsed
+                    inv_entries = vch_data.get("items") or vch_data.get("inventory_entries") or []
+                    led_entries = vch_data.get("ledgers") or vch_data.get("ledger_entries") or []
+
+                    # If inv_entries is empty but raw fields exist (flat parse from Voucher Register)
+                    # build a single-item entry from the top-level fields as best-effort
+                    if not inv_entries and vch_data.get("STOCKITEMNAME"):
+                        inv_entries = [{
+                            "name":     vch_data.get("STOCKITEMNAME", ""),
+                            "quantity": float(vch_data.get("BILLEDQTY", 0) or 0),
+                            "rate":     float(vch_data.get("RATE", 0) or 0),
+                            "amount":   float(vch_data.get("AMOUNT", 0) or 0),
+                        }]
 
                     date_str = vch_data.get("date", vch_data.get("DATE", ""))
                     try:
@@ -559,26 +576,63 @@ class SyncEngine:
                     except Exception:
                         vch_date = datetime.now()
 
+                    # ── LAYER 1: Match by GUID (most reliable, Tally's own unique key) ──
+                    existing = None
+                    if guid:
+                        existing = db.query(Voucher).filter(Voucher.guid == guid).first()
+
+                    # ── LAYER 2: Match by (date + voucher_number + type) ──
+                    # Handles cases where GUID changes across syncs but voucher number is stable
+                    if not existing and vch_number:
+                        existing = db.query(Voucher).filter(
+                            Voucher.tenant_id == tenant_id,
+                            Voucher.voucher_number == vch_number,
+                            Voucher.voucher_type == vch_type,
+                            Voucher.date == vch_date,
+                        ).first()
+
+                    # ── LAYER 3: Fingerprint match (date + party + amount + type) ──
+                    # Prevents duplicate blank-numbered vouchers from being inserted twice
+                    if not existing and party and amount > 0:
+                        existing = db.query(Voucher).filter(
+                            Voucher.tenant_id == tenant_id,
+                            Voucher.voucher_type == vch_type,
+                            Voucher.party_name == party,
+                            Voucher.amount == amount,
+                            Voucher.date == vch_date,
+                        ).first()
+
                     if existing:
-                        # Update and correct tenant_id if it was previously wrong
-                        existing.tenant_id = tenant_id
-                        existing.voucher_type = vch_data.get("voucher_type", vch_data.get("VOUCHERTYPENAME", existing.voucher_type))
-                        existing.party_name = vch_data.get("party_name", vch_data.get("PARTYLEDGERNAME", existing.party_name))
-                        existing.amount = float(vch_data.get("amount", vch_data.get("AMOUNT", existing.amount or 0)) or 0)
-                        existing.last_synced = datetime.now()
-                        existing.sync_status = "SYNCED"
+                        existing.tenant_id         = tenant_id
+                        existing.voucher_type      = vch_type
+                        existing.party_name        = party
+                        existing.amount            = amount
+                        existing.narration         = narration
+                        existing.last_synced       = datetime.now()
+                        existing.sync_status       = "SYNCED"
+                        if guid and not existing.guid:
+                            existing.guid = guid
+                        if vch_number and not existing.voucher_number:
+                            existing.voucher_number = vch_number
+                        # Always refresh line items so existing rows get enriched
+                        if inv_entries:
+                            existing.inventory_entries = inv_entries
+                        if led_entries:
+                            existing.ledger_entries = led_entries
                     else:
                         new_voucher = Voucher(
-                            tenant_id=tenant_id,
-                            voucher_number=vch_data.get("voucher_number", vch_data.get("VOUCHERNUMBER", "")),
-                            date=vch_date,
-                            voucher_type=vch_data.get("voucher_type", vch_data.get("VOUCHERTYPENAME", "Unknown")),
-                            party_name=vch_data.get("party_name", vch_data.get("PARTYLEDGERNAME", "")),
-                            amount=abs(float(vch_data.get("amount", vch_data.get("AMOUNT", 0)) or 0)),
-                            narration=vch_data.get("narration", vch_data.get("NARRATION", "")),
-                            guid=guid,
-                            sync_status="SYNCED",
-                            last_synced=datetime.now()
+                            tenant_id          = tenant_id,
+                            voucher_number     = vch_number,
+                            date               = vch_date,
+                            voucher_type       = vch_type,
+                            party_name         = party,
+                            amount             = amount,
+                            narration          = narration,
+                            guid               = guid or None,
+                            sync_status        = "SYNCED",
+                            last_synced        = datetime.now(),
+                            inventory_entries  = inv_entries or None,
+                            ledger_entries     = led_entries or None,
                         )
                         db.add(new_voucher)
 
@@ -596,6 +650,7 @@ class SyncEngine:
             errors += 1
 
         return {"synced": synced, "errors": errors}
+
     
     def replay_offline_queue(self) -> dict:
         """Replay all pending vouchers to Tally"""
