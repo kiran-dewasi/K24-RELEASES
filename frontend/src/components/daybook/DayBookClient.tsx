@@ -21,6 +21,7 @@ interface Voucher {
     narration: string;
     ledger_id?: number | string;
     guid?: string;
+    id?: number;
 }
 
 export default function DayBookClient() {
@@ -216,18 +217,56 @@ export default function DayBookClient() {
         setDrawerOpen(true);
         setDetailLoading(true);
         try {
-            const params = new URLSearchParams({ voucher_number: v.voucher_number });
+            const params = new URLSearchParams();
+            if (v.voucher_number) params.append("voucher_number", v.voucher_number);
             if (v.voucher_type) params.append("voucher_type", v.voucher_type);
             if (v.guid) params.append("guid", v.guid);
+
+            // Critical fix: API requires at least one of these now
+            if (!v.voucher_number && !v.guid) {
+                console.warn("Voucher missing both number and guid", v);
+                return;
+            }
+
             const res = await apiClient(`/api/vouchers/detail?${params.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 setDetailData(data);
+            } else {
+                console.error("Failed to fetch. Status:", res.status);
             }
         } catch (err) {
             console.error("Failed to fetch voucher detail", err);
         } finally {
             setDetailLoading(false);
+        }
+    };
+
+    const handleDelete = async (v: Voucher) => {
+        if (!v.id) {
+            alert("Cannot delete this voucher (missing ID)");
+            return;
+        }
+        if (!confirm(`Are you sure you want to delete ${v.voucher_type} voucher for ${v.party_name}?`)) {
+            return;
+        }
+
+        try {
+            const res = await apiClient(`/api/vouchers/${v.id}/undo`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok) {
+                // Remove from state
+                setVouchers(prev => prev.filter(item => item.id !== v.id));
+                setTotalCount(prev => prev - 1);
+                setDrawerOpen(false);
+            } else {
+                alert(`Failed to delete: ${data.detail || data.message || "Unknown error"}`);
+            }
+        } catch (err) {
+            console.error("Delete failed", err);
+            alert("Failed to connect to server to delete voucher.");
         }
     };
 
@@ -273,6 +312,7 @@ export default function DayBookClient() {
                 vouchers={vouchers}
                 loading={loading}
                 onViewDetails={handleViewDetails}
+                onDelete={handleDelete}
                 page={page}
                 limit={limit}
                 totalCount={totalCount}
@@ -287,6 +327,7 @@ export default function DayBookClient() {
                 voucher={selectedVoucher}
                 detailData={detailData}
                 detailLoading={detailLoading}
+                onDelete={handleDelete}
             />
         </div>
     );

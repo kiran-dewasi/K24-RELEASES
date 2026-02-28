@@ -61,8 +61,6 @@ def get_gemini_llm() -> ChatGoogleGenerativeAI:
         _gemini_llm = ChatGoogleGenerativeAI(
             model="gemini-2.0-flash",
             google_api_key=api_key,
-            transport="rest",  # Use REST API instead of gRPC
-            convert_system_message_to_human=True,  # Better compatibility
             temperature=0.1,
             top_p=0.95
         )

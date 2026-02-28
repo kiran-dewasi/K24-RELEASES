@@ -16,6 +16,7 @@ interface Voucher {
     narration: string;
     guid?: string;
     ledger_id?: number | string;
+    id?: number;
 }
 
 interface LineItem {
@@ -53,6 +54,7 @@ interface VoucherDrawerProps {
     voucher: Voucher | null;
     detailData?: Record<string, unknown> | null;
     detailLoading?: boolean;
+    onDelete?: (voucher: Voucher) => void;
 }
 
 function formatCurrency(val: number | string | undefined): string {
@@ -94,7 +96,7 @@ function LoadingSkeleton() {
     );
 }
 
-export function VoucherDrawer({ open, onClose, voucher, detailData, detailLoading }: VoucherDrawerProps) {
+export function VoucherDrawer({ open, onClose, voucher, detailData, detailLoading, onDelete }: VoucherDrawerProps) {
     if (!voucher) return null;
 
     const detail = detailData as VoucherDetail | null;
@@ -304,7 +306,12 @@ export function VoucherDrawer({ open, onClose, voucher, detailData, detailLoadin
 
                 {/* ── Footer Actions ─────────────────────────── */}
                 <SheetFooter className="p-4 bg-white border-t sm:justify-between items-center">
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 gap-2"
+                        onClick={() => onDelete && onDelete(voucher)}
+                    >
                         <Trash2 className="h-4 w-4" /> Delete
                     </Button>
                     <div className="flex gap-2">

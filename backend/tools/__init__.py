@@ -140,6 +140,47 @@ def get_top_outstanding() -> str:
         return msg
     except Exception as e:
         return f"Error fetching receivables: {e}"
+
+@tool
+def get_top_customers_by_revenue(limit: int = 5) -> str:
+    """
+    Get top customers ranked by total sales (revenue).
+    Call this when user asks for "top customers", "best customers", "highest revenue", etc.
+    """
+    try:
+        from backend.database import SessionLocal, Ledger, Voucher
+        from sqlalchemy import func, desc
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            results = db.query(
+                Ledger.name,
+                func.sum(Voucher.amount).label("total_sales")
+            ).join(
+                Voucher, Voucher.party_name == Ledger.name
+            ).filter(
+                Ledger.tenant_id == tenant_id,
+                Ledger.parent.ilike("%debtor%"),
+                Voucher.voucher_type.ilike("%sales%")
+            ).group_by(
+                Ledger.id
+            ).order_by(
+                desc("total_sales")
+            ).limit(limit).all()
+
+            if not results:
+                return "No sales data found for customers."
+
+            msg = f"Here are the top {limit} customers by revenue:\n"
+            for row in results:
+                total = row.total_sales or 0
+                msg += f"- {row.name}: ₹{total:,.2f}\n"
+            msg += "\nIs there anything else you want to know about these customers?"
+            return msg
+        finally:
+            db.close()
+    except Exception as e:
+        return f"Error fetching top customers: {e}"
 @tool
 def create_customer(
     name: str,
@@ -877,6 +918,7 @@ TOOLS = [
     create_purchase_voucher_verified,
     create_tally_voucher, # Universal Tool
     get_top_outstanding,
+    get_top_customers_by_revenue,
     # Reporting Tools
     check_stock_levels,
     check_outstanding_payments
@@ -892,7 +934,9 @@ SAFE_TOOLS = [
     get_tally_transactions,
     get_tally_ledger_details,
     check_stock_levels,
-    check_outstanding_payments
+    check_outstanding_payments,
+    get_top_outstanding,
+    get_top_customers_by_revenue
 ]
 
 # Tools that modify state

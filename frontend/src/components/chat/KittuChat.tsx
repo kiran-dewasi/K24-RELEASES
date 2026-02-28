@@ -334,23 +334,23 @@ export function KittuChat() {
             id: Date.now(), role: "user", content: text, timestamp: new Date(),
         };
 
+        const isFirst = messages.length === 0;
+        const existing = chat.threads.find(t => t.id === threadId);
+
         setMessages(prev => {
             const updated = [...prev, userMsg];
-            // Save user msg immediately
             saveMessages(threadId, updated);
-
-            // Upsert thread in context (first message → title)
-            const isFirst = prev.length === 0;
-            const existing = chat.threads.find(t => t.id === threadId);
-            chat.upsertThread({
-                id: threadId,
-                title: isFirst ? text.slice(0, 50) + (text.length > 50 ? "…" : "") : (existing?.title ?? "Conversation"),
-                preview: text.slice(0, 60) + (text.length > 60 ? "…" : ""),
-                createdAt: existing?.createdAt ?? new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                messageCount: updated.length,
-            });
             return updated;
+        });
+
+        // Upsert thread OUTSIDE setMessages to avoid cross-component setState-during-render
+        chat.upsertThread({
+            id: threadId,
+            title: isFirst ? text.slice(0, 50) + (text.length > 50 ? "…" : "") : (existing?.title ?? "Conversation"),
+            preview: text.slice(0, 60) + (text.length > 60 ? "…" : ""),
+            createdAt: existing?.createdAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messageCount: messages.length + 1,
         });
 
         setLoading(true);
@@ -411,19 +411,18 @@ export function KittuChat() {
                                             ? { ...m, content: data.content, isStreaming: false, steps: undefined }
                                             : m
                                     );
-                                    // Persist the finished AI message
                                     saveMessages(threadId, updated);
-                                    // Update thread preview
-                                    const t = chat.threads.find(t => t.id === threadId);
-                                    if (t) {
-                                        chat.upsertThread({
-                                            ...t,
-                                            preview: data.content.slice(0, 60),
-                                            updatedAt: new Date().toISOString(),
-                                        });
-                                    }
                                     return updated;
                                 });
+                                // Update thread preview OUTSIDE setMessages
+                                const t = chat.threads.find(t => t.id === threadId);
+                                if (t) {
+                                    chat.upsertThread({
+                                        ...t,
+                                        preview: data.content.slice(0, 60),
+                                        updatedAt: new Date().toISOString(),
+                                    });
+                                }
                             } else if (["draft_voucher", "card", "table"].includes(data.type)) {
                                 const art: ArtifactItem = {
                                     id: Date.now(),

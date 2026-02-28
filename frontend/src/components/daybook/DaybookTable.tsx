@@ -85,12 +85,14 @@ interface Voucher {
     amount: number | string;
     narration: string;
     ledger_id?: number | string;
+    id?: number;
 }
 
 interface DaybookTableProps {
     vouchers: Voucher[];
     loading: boolean;
     onViewDetails: (voucher: Voucher) => void;
+    onDelete: (voucher: Voucher) => void;
     page: number;
     limit: number;
     totalCount: number;
@@ -102,6 +104,7 @@ export function DaybookTable({
     vouchers,
     loading,
     onViewDetails,
+    onDelete,
     page,
     limit,
     totalCount,
@@ -219,7 +222,12 @@ export function DaybookTable({
                                                 <DropdownMenuItem onClick={() => onViewDetails(voucher)}>View Details</DropdownMenuItem>
                                                 <DropdownMenuItem>Edit Voucher</DropdownMenuItem>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    className="text-destructive"
+                                                    onClick={() => onDelete(voucher)}
+                                                >
+                                                    Delete
+                                                </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     </div>

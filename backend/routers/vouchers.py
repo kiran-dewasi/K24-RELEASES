@@ -101,31 +101,35 @@ _voucher_cache: dict = {}  # key -> {"data": [...], "ledger_map": {...}, "ts": f
 
 @router.get("/vouchers/detail", dependencies=[Depends(get_api_key)])
 async def get_voucher_detail(
-    voucher_number: str,
+    voucher_number: Optional[str] = None,
     voucher_type: Optional[str] = None,
     guid: Optional[str] = None,
+    id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
     """
     🔍 Fetch full voucher detail including line items (inventory entries)
     from Tally. Used for transaction drill-down in the 360° profile.
-
-    Returns:
-        - voucher header (date, type, party, narration)
-        - items[] with name, quantity, rate, amount
-        - ledgers[] (accounting entries)
-        - tax_breakdown[]
-        - total_amount
     """
     try:
         # ── Step 1: Look up voucher in local DB ──────────────────────────────
-        db_query = db.query(Voucher).filter(Voucher.voucher_number == voucher_number)
-        if voucher_type:
-            db_query = db_query.filter(Voucher.voucher_type == voucher_type)
+        db_query = db.query(Voucher)
+        
+        if id:
+            db_query = db_query.filter(Voucher.id == id)
+        elif guid:
+            db_query = db_query.filter(Voucher.guid == guid)
+        elif voucher_number is not None:
+            db_query = db_query.filter(Voucher.voucher_number == voucher_number)
+            if voucher_type:
+                db_query = db_query.filter(Voucher.voucher_type == voucher_type)
+        else:
+            raise HTTPException(status_code=400, detail="Must provide id, guid, or voucher_number")
+
         db_voucher = db_query.first()
 
         if not db_voucher:
-            raise HTTPException(status_code=404, detail=f"Voucher '{voucher_number}' not found")
+            raise HTTPException(status_code=404, detail=f"Voucher not found")
 
         logger.info(
             f"Voucher detail: #{voucher_number} type={db_voucher.voucher_type} "
@@ -248,6 +252,7 @@ async def get_vouchers(
         local_data = []
         for v in db_vouchers:
             local_data.append({
+                "id": v.id,
                 "voucher_number": v.voucher_number,
                 "date": v.date.strftime("%Y%m%d") if v.date else "",
                 "voucher_type": v.voucher_type,
