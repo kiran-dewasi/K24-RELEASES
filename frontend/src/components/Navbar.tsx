@@ -113,27 +113,33 @@ export default function Navbar() {
         setIsSyncing(true);
         setSyncError(null);
         try {
+            // Full sync (ledgers + vouchers + stock) can take 30-60s.
+            // 90s timeout gives plenty of headroom without hanging forever.
             const res = await apiClient(`/api/sync/tally`, {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(15000)
+                signal: AbortSignal.timeout(90000)
             });
             if (res.ok) {
                 setShowSuccess(true);
+                // Reload immediately — sync is fully complete when API responds
                 setTimeout(() => {
                     setShowSuccess(false);
                     window.location.reload();
-                }, 2000);
+                }, 1500);
             } else {
                 const error = await res.json();
                 setSyncError(error.detail || 'Sync failed');
                 setTimeout(() => setSyncError(null), 4000);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Sync error:", error);
-            // Show non-blocking error banner instead of alert()
-            setSyncError('Backend not reachable — is it running?');
-            setTimeout(() => setSyncError(null), 4000);
+            if (error?.name === 'TimeoutError') {
+                setSyncError('Sync is taking long — check Tally connection');
+            } else {
+                setSyncError('Backend not reachable — is it running?');
+            }
+            setTimeout(() => setSyncError(null), 5000);
         } finally {
             setIsSyncing(false);
         }

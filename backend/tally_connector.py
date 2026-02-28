@@ -1884,12 +1884,10 @@ class TallyConnector:
                             # Parse amount
                             amt = float(child.text.replace(",", ""))
                             
-                            # Tally XML often exports Bills Receivable numbers as Negative (Credit convention or just sign)
-                            # But we want Debtors to be Positive in our DB.
-                            # So for Bills Receivable, we invert the sign (or abs it if we are sure).
-                            # Let's simple invert it if it's Bills Receivable.
-                            if report_name == "Bills Receivable":
-                                amt = -amt
+                            # Tally BILLCL tag already returns positive values for Bills Receivable.
+                            # We store debtors as positive (Dr = money owed to us).
+                            # No sign inversion needed — abs() ensures consistent sign regardless.
+                            amt = abs(amt)
                                 
                             balances[current_party] = balances.get(current_party, 0.0) + amt
                         except ValueError:

@@ -425,9 +425,11 @@ class SyncEngine:
                                 name = item.get("name")
                                 if not name or name in updated_names:
                                     continue  # Already updated from Bills
-                                bal = float(item.get("closing_balance", 0))
+                                # Group Summary returns Dr balances as negative in Tally XML.
+                                # Always store as positive (abs) for consistent dashboard logic.
+                                bal = abs(float(item.get("closing_balance", 0)))
                                 ledger = db.query(Ledger).filter(Ledger.name == name).first()
-                                if ledger and ledger.closing_balance == 0.0:
+                                if ledger:  # Always update — don't skip non-zero (stale) values
                                     ledger.closing_balance = bal
                                     fallback_updates += 1
                             if fallback_updates > 0:
@@ -571,35 +573,46 @@ class SyncEngine:
                         }]
 
                     date_str = vch_data.get("date", vch_data.get("DATE", ""))
+                    date_raw = str(date_str or "").strip()
                     try:
-                        vch_date = datetime.strptime(str(date_str), "%Y%m%d") if len(str(date_str)) == 8 else datetime.now()
+                        if len(date_raw) == 8 and date_raw.isdigit():
+                            vch_date = datetime.strptime(date_raw, "%Y%m%d")
+                        elif len(date_raw) == 10 and "-" in date_raw:
+                            vch_date = datetime.strptime(date_raw, "%Y-%m-%d")
+                        else:
+                            raise ValueError(f"Unknown date: {date_raw!r}")
                     except Exception:
-                        vch_date = datetime.now()
+                        logger.warning(f"Bad date '{date_raw}' for #{vch_number} — using sentinel 1900-01-01")
+                        vch_date = datetime(1900, 1, 1)
 
                     # ── LAYER 1: Match by GUID (most reliable, Tally's own unique key) ──
                     existing = None
                     if guid:
                         existing = db.query(Voucher).filter(Voucher.guid == guid).first()
 
-                    # ── LAYER 2: Match by (date + voucher_number + type) ──
-                    # Handles cases where GUID changes across syncs but voucher number is stable
+                    # ── LAYER 2: Match by (voucher_number + type + date, same day) ──
+                    # Use date-only comparison to avoid timestamp mismatch
                     if not existing and vch_number:
+                        from sqlalchemy import func, cast
+                        from sqlalchemy.types import Date
                         existing = db.query(Voucher).filter(
                             Voucher.tenant_id == tenant_id,
                             Voucher.voucher_number == vch_number,
                             Voucher.voucher_type == vch_type,
-                            Voucher.date == vch_date,
+                            cast(Voucher.date, Date) == vch_date.date(),
                         ).first()
 
                     # ── LAYER 3: Fingerprint match (date + party + amount + type) ──
                     # Prevents duplicate blank-numbered vouchers from being inserted twice
                     if not existing and party and amount > 0:
+                        from sqlalchemy import cast
+                        from sqlalchemy.types import Date
                         existing = db.query(Voucher).filter(
                             Voucher.tenant_id == tenant_id,
                             Voucher.voucher_type == vch_type,
                             Voucher.party_name == party,
                             Voucher.amount == amount,
-                            Voucher.date == vch_date,
+                            cast(Voucher.date, Date) == vch_date.date(),
                         ).first()
 
                     if existing:

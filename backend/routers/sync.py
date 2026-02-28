@@ -71,7 +71,9 @@ def perform_sync_task(db: Session):
             existing = db.query(Ledger).filter(Ledger.name == name).first()
             if existing:
                 existing.parent = l.get("Parent")
-                existing.closing_balance = float(l.get("ClosingBalance") or 0)
+                # Tally exports Dr balances as negative. Store abs() for debtors/bank.
+                # Creditors will also be stored positive — dashboard uses abs() for payables.
+                existing.closing_balance = abs(float(l.get("ClosingBalance") or 0))
                 existing.gstin = l.get("PartyGSTIN")
                 existing.email = l.get("Email")
                 existing.phone = l.get("LedgerMobile")
@@ -81,7 +83,7 @@ def perform_sync_task(db: Session):
                     tenant_id=tenant_id,
                     name=name,
                     parent=l.get("Parent"),
-                    closing_balance=float(l.get("ClosingBalance") or 0),
+                    closing_balance=abs(float(l.get("ClosingBalance") or 0)),
                     gstin=l.get("PartyGSTIN"),
                     email=l.get("Email"),
                     phone=l.get("LedgerMobile"),
@@ -107,28 +109,50 @@ def perform_sync_task(db: Session):
             v_num = v.get("voucher_number") or ""
             v_guid = v.get("guid") or ""
             # Don't skip blank-numbered vouchers — they are valid accounting entries
+            date_raw = str(v.get("date", "") or "").strip()
             try:
-                v_date = datetime.strptime(v.get("date", ""), "%Y%m%d")
-            except:
-                v_date = datetime.now()
+                if len(date_raw) == 8 and date_raw.isdigit():
+                    v_date = datetime.strptime(date_raw, "%Y%m%d")
+                elif len(date_raw) == 10 and "-" in date_raw:
+                    v_date = datetime.strptime(date_raw, "%Y-%m-%d")
+                elif len(date_raw) == 10 and "/" in date_raw:
+                    v_date = datetime.strptime(date_raw, "%d/%m/%Y")
+                else:
+                    raise ValueError(f"Unknown date format: {date_raw!r}")
+            except Exception:
+                # NEVER use datetime.now() as fallback — causes infinite duplicates
+                # (each sync run produces a unique timestamp, dedup never matches)
+                # Use a recognizable sentinel instead so the same bad-date voucher
+                # gets upserted rather than duplicated.
+                logger.warning(f"Could not parse date '{date_raw}' for voucher #{v_num} — using 1900-01-01 sentinel")
+                v_date = datetime(1900, 1, 1)
 
             # Wrap items/ledgers as JSON-serialisable lists
             inv_entries = v.get("items") or []
             led_entries = v.get("ledgers") or []
 
-            # Dedup: GUID first, then voucher_number, then fingerprint
+            # Dedup: GUID first, then voucher_number+type+date, then fingerprint
             exists = None
             if v_guid:
                 exists = db.query(Voucher).filter(Voucher.guid == v_guid).first()
             if not exists and v_num:
-                exists = db.query(Voucher).filter(Voucher.voucher_number == v_num).first()
+                from sqlalchemy import cast
+                from sqlalchemy.types import Date
+                exists = db.query(Voucher).filter(
+                    Voucher.tenant_id == tenant_id,
+                    Voucher.voucher_number == v_num,
+                    Voucher.voucher_type == v.get("voucher_type"),
+                    cast(Voucher.date, Date) == v_date.date(),
+                ).first()
             if not exists and v.get("party_name") and v.get("amount"):
+                from sqlalchemy import cast
+                from sqlalchemy.types import Date
                 exists = db.query(Voucher).filter(
                     Voucher.tenant_id == tenant_id,
                     Voucher.voucher_type == v.get("voucher_type"),
                     Voucher.party_name == v.get("party_name"),
                     Voucher.amount == abs(float(v.get("amount") or 0)),
-                    Voucher.date == v_date,
+                    cast(Voucher.date, Date) == v_date.date(),
                 ).first()
 
             if exists:
@@ -194,18 +218,21 @@ def perform_sync_task(db: Session):
                  
              # Journal/Contra ? (Assuming simplistic logic for now based on party nature)
         
-        # Update Ledgers
+        # Update Ledgers — only update Debtor/Creditor ledgers from voucher calculation.
+        # Skip Bank/Cash — those come directly from Tally and should not be overwritten.
         updated_count = 0
         for party_name, bal in party_balances.items():
-            # Find ledger by name (normalized)
             ledger = db.query(Ledger).filter(
                 Ledger.tenant_id == tenant_id,
                 func.lower(Ledger.name) == party_name.lower()
             ).first()
             
             if ledger:
-                ledger.closing_balance = bal
-                updated_count += 1
+                parent_lower = (ledger.parent or "").lower()
+                is_bank_or_cash = "bank" in parent_lower or "cash" in parent_lower
+                if not is_bank_or_cash:  # Don't overwrite bank/cash — they come from Tally directly
+                    ledger.closing_balance = abs(bal)  # Always store positive
+                    updated_count += 1
         
         db.commit()
         logger.info(f"✅ Updated Balances for {updated_count} Ledgers based on Vouchers.")
@@ -240,12 +267,17 @@ async def get_sync_status():
     }
 
 @router.post("/tally")
-async def trigger_tally_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def trigger_tally_sync(db: Session = Depends(get_db)):
     """
     Trigger a Tally Sync (Masters + Recent Transactions).
+    Runs synchronously so the frontend can reload with fresh data after completion.
     """
-    background_tasks.add_task(perform_sync_task, db)
-    return {"status": "success", "message": "Sync started in background. Check logs or dashboard for updates."}
+    try:
+        perform_sync_task(db)
+        return {"status": "success", "message": "Sync complete. Dashboard data is now up to date."}
+    except Exception as e:
+        logger.error(f"Sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
 
 
 # ========== NEW COMPREHENSIVE SYNC ENDPOINTS ==========

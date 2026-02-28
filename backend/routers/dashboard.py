@@ -38,18 +38,18 @@ def get_dashboard_stats(
         Voucher.date >= fy_start
     ).scalar() or 0.0
 
-    # Receivables: positive debtor balances
-    receivables = db.query(func.sum(Ledger.closing_balance)).filter(
+    # Receivables: sum ABS of all debtor balances (handles sign inconsistencies from Tally)
+    receivables = db.query(func.sum(func.abs(Ledger.closing_balance))).filter(
         Ledger.tenant_id == tenant_id,
         Ledger.parent.ilike("%debtor%"),
-        Ledger.closing_balance > 0
+        Ledger.closing_balance != 0
     ).scalar() or 0.0
 
-    # Payables: positive creditor balances (stored as positive)
-    payables = db.query(func.sum(Ledger.closing_balance)).filter(
+    # Payables: sum ABS of all creditor balances (stored as positive or negative from Tally)
+    payables = db.query(func.sum(func.abs(Ledger.closing_balance))).filter(
         Ledger.tenant_id == tenant_id,
         Ledger.parent.ilike("%creditor%"),
-        Ledger.closing_balance > 0
+        Ledger.closing_balance != 0
     ).scalar() or 0.0
 
     # Cash + Bank (abs stored by sync_engine fix)
@@ -85,17 +85,17 @@ def get_top_receivables(
     """Top 5 outstanding receivables for bar chart — DB only."""
     top_debtors = db.query(
         Ledger.name,
-        Ledger.closing_balance
+        func.abs(Ledger.closing_balance).label("abs_balance")
     ).filter(
         Ledger.tenant_id == tenant_id,
         Ledger.parent.ilike("%debtor%"),
-        Ledger.closing_balance > 0
+        Ledger.closing_balance != 0
     ).order_by(
-        desc(Ledger.closing_balance)
+        desc(func.abs(Ledger.closing_balance))
     ).limit(5).all()
 
     return [
-        {"name": r.name[:20], "amount": round(r.closing_balance, 2)}
+        {"name": r.name[:20], "amount": round(r.abs_balance, 2)}
         for r in top_debtors
     ]
 
