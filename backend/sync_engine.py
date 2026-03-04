@@ -591,28 +591,33 @@ class SyncEngine:
                         existing = db.query(Voucher).filter(Voucher.guid == guid).first()
 
                     # ── LAYER 2: Match by (voucher_number + type + date, same day) ──
-                    # Use date-only comparison to avoid timestamp mismatch
+                    # Relaxed: no tenant_id requirement + case-insensitive type
+                    # Catches locally-created vouchers that have no GUID yet
                     if not existing and vch_number:
                         from sqlalchemy import func, cast
                         from sqlalchemy.types import Date
                         existing = db.query(Voucher).filter(
-                            Voucher.tenant_id == tenant_id,
                             Voucher.voucher_number == vch_number,
-                            Voucher.voucher_type == vch_type,
+                            Voucher.voucher_type.ilike(vch_type),
                             cast(Voucher.date, Date) == vch_date.date(),
                         ).first()
 
-                    # ── LAYER 3: Fingerprint match (date + party + amount + type) ──
-                    # Prevents duplicate blank-numbered vouchers from being inserted twice
-                    if not existing and party and amount > 0:
+                    # ── LAYER 3: Fingerprint match (date + amount + type, any tenant) ──
+                    # Catches blank-numbered vouchers or those with slight name differences
+                    if not existing and amount > 0:
                         from sqlalchemy import cast
                         from sqlalchemy.types import Date
                         existing = db.query(Voucher).filter(
-                            Voucher.tenant_id == tenant_id,
-                            Voucher.voucher_type == vch_type,
-                            Voucher.party_name == party,
+                            Voucher.voucher_type.ilike(vch_type),
                             Voucher.amount == amount,
                             cast(Voucher.date, Date) == vch_date.date(),
+                        ).first()
+
+                    # ── LAYER 4: If we still didn't find it, try by GUID alone across all tenants ──
+                    # Handles edge case where tenant_id changed between creation and sync
+                    if not existing and guid:
+                        existing = db.query(Voucher).filter(
+                            Voucher.guid == guid
                         ).first()
 
                     if existing:
