@@ -22,9 +22,10 @@ if os.getenv("GOOGLE_API_KEY"):
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"), transport="rest")
 
 class BaileysMessageRequest(BaseModel):
-    sender_phone: str # +919876543210
+    sender_phone: str           # +919876543210 or LID (185628738236618)
     message_text: str
     media: Optional[dict] = None # { type: 'image', buffer: 'base64...', mimetype: '...' }
+    tenant_id: Optional[str] = None  # Pre-resolved by cloud queue — skip DB lookup if set
 
 class BatchImageItem(BaseModel):
     buffer: str  # Base64 encoded image data
@@ -77,35 +78,42 @@ async def process_baileys_message(
         
         logger.info(f"📬 Processing message from {sender_phone}")
         
-        # ============ STEP 1: STRICT TENANT LOOKUP ============
-        # Priority 1: Check if it's a Dashboard User (Personal Assistant Mode)
-        from backend.database import WhatsAppMapping
-        
-        user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
+        # ============ STEP 1: TENANT RESOLUTION ============
+        # Fast path: if the cloud queue already resolved tenant_id, use it directly.
+        # This is the common case — LID senders, new customers, any format.
+        # No DB lookup needed; tenant was resolved from the bot's to_number at queue time.
+        tenant_id: Optional[str] = payload.tenant_id
 
-        tenant_id = None
-
-        if user_binding and user_binding.tenant_id:
-            tenant_id = user_binding.tenant_id
-            logger.info(f"✅ Authenticated Dashboard User: {user_binding.username} (Tenant: {tenant_id})")
+        if tenant_id:
+            logger.info(f"✅ Tenant pre-resolved by cloud queue: {tenant_id} (sender: {sender_phone})")
         else:
-            # Priority 2: Check WhatsApp customer mapping (external parties linked to a tenant)
-            mapping = db.query(WhatsAppMapping).filter(
-                WhatsAppMapping.whatsapp_number == sender_phone
-            ).first()
+            # Slow path: called directly (not via poller) — resolve from sender phone
+            from backend.database import WhatsAppMapping
 
-            if mapping and mapping.tenant_id:
-                tenant_id = mapping.tenant_id
-                logger.info(f"✅ Tenant resolved via WhatsApp mapping: {tenant_id}")
+            # Priority 1: Dashboard User (Personal Assistant Mode)
+            user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
+
+            if user_binding and user_binding.tenant_id:
+                tenant_id = user_binding.tenant_id
+                logger.info(f"✅ Dashboard User: {user_binding.username} (Tenant: {tenant_id})")
             else:
-                # Priority 3: Unknown number — trigger onboarding
-                logger.info(f"🆕 Unmapped user: {sender_phone}. Triggering onboarding.")
-                from backend.routers.onboarding_utils import handle_onboarding
-                response_text = await handle_onboarding(db, sender_phone, message_text)
-                return {
-                    "status": "success",
-                    "reply_message": response_text
-                }
+                # Priority 2: WhatsApp customer mapping
+                mapping = db.query(WhatsAppMapping).filter(
+                    WhatsAppMapping.whatsapp_number == sender_phone
+                ).first()
+
+                if mapping and mapping.tenant_id:
+                    tenant_id = mapping.tenant_id
+                    logger.info(f"✅ Tenant resolved via WhatsApp mapping: {tenant_id}")
+                else:
+                    # Priority 3: Unknown number — onboarding
+                    logger.info(f"🆕 Unmapped user: {sender_phone}. Triggering onboarding.")
+                    from backend.routers.onboarding_utils import handle_onboarding
+                    response_text = await handle_onboarding(db, sender_phone, message_text)
+                    return {
+                        "status": "success",
+                        "reply_message": response_text
+                    }
         # ============ STEP 2: PREPARE IMAGE DATA ============
         image_data = None
         if media and media.get('type') == 'image':

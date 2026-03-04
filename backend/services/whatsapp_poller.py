@@ -309,6 +309,9 @@ class WhatsAppPoller:
         payload = {
             "sender_phone": customer_phone,
             "message_text": message_text or "",
+            # CRITICAL: Pass tenant_id from the queue job so baileys.py skips
+            # the sender-phone-based lookup. This makes LID senders work perfectly.
+            "tenant_id": job.get("tenant_id") or tenant_id,
             # Pass through media if present in the raw_payload
             "media": (job.get("raw_payload") or {}).get("media"),
         }

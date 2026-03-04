@@ -75,7 +75,9 @@ from fastapi.middleware.cors import CORSMiddleware
 # Explicitly import routers to avoid namespace issues
 from backend.routers import (
     reports, operations, gst, setup, debug, compliance, 
-    auth, agent, sync, bills, contacts, whatsapp, baileys, whatsapp_binding, dashboard, vouchers, ledgers, search, inventory, customers, items, settings, query, devices
+    auth, agent, sync, bills, contacts, whatsapp, baileys, whatsapp_binding,
+    whatsapp_cloud, dashboard, vouchers, ledgers, search, inventory,
+    customers, items, settings, query, devices
 )
 
 
@@ -161,8 +163,9 @@ else:
     print("[SECURITY] Development mode - API accessible without desktop token")
 
 # Include Routers
-app.include_router(auth.router)  # Auth first (no API key required)
-app.include_router(whatsapp_binding.router) # WhatsApp Binding
+app.include_router(auth.router)          # Auth first (no API key required)
+app.include_router(whatsapp_binding.router)  # WhatsApp Binding
+app.include_router(whatsapp_cloud.router)    # ← Cloud Incoming (Baileys → Queue)
 
 # Include Routers
 app.include_router(whatsapp.router)
