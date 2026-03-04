@@ -211,6 +211,10 @@ async def cloud_incoming(
             ),
         )
 
+    # ── IMPORTANT: Normalize to UPPERCASE to match local desktop DB ──
+    tenant_id = tenant_id.upper()
+
+
     # ── 3. Enqueue message (LID or phone — we don't care) ─────
     raw_payload = {
         "from_number":  from_id,

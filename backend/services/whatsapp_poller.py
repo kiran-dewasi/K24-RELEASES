@@ -144,12 +144,22 @@ class WhatsAppPoller:
         while self._running:
             try:
                 tenant_id = self._get_tenant_id()
+                
+                # Fallback: if get_tenant_id() fails (no user logged in), 
+                # try to boot from the .env TENANT_ID so the bot still responds.
                 if not tenant_id:
-                    logger.debug("No tenant_id resolved yet — skipping this cycle.")
+                    env_tid = os.getenv("TENANT_ID")
+                    if env_tid and env_tid != "default":
+                        tenant_id = env_tid
+                        logger.debug(f"Resolved tenant_id from .env: {tenant_id}")
+
+                if not tenant_id:
+                    logger.debug("No tenant_id resolved yet (Not logged in) — skipping this cycle.")
                     await asyncio.sleep(POLL_INTERVAL)
                     continue
 
-                jobs = await self._fetch_pending_jobs(tenant_id)
+                # Fetch jobs. Cloud now enqueues in UPPERCASE to match local DB.
+                jobs = await self._fetch_pending_jobs(tenant_id.upper())
 
                 if jobs:
                     logger.info(f"📥 Fetched {len(jobs)} pending job(s) for tenant {tenant_id}")
@@ -184,7 +194,10 @@ class WhatsAppPoller:
         # Step 2: Run the AI pipeline
         reply_text: Optional[str] = None
         try:
-            reply_text = await self._process_via_ai(customer_phone, message_text, job)
+            # IMPORTANT: Normalize back to UPPERCASE for the local desktop app 
+            # so the Tally Agent can query the local DB (which uses uppercase TENANT-12345).
+            db_tenant_id = (job.get("tenant_id") or tenant_id).upper()
+            reply_text = await self._process_via_ai(customer_phone, message_text, job, db_tenant_id)
         except Exception as e:
             logger.error(f"❌ AI processing failed for job {job_id}: {e}", exc_info=True)
             await self._complete_job(job_id, "failed", error_message=str(e))
@@ -293,7 +306,7 @@ class WhatsAppPoller:
     # ── AI Pipeline ────────────────────────────
 
     async def _process_via_ai(
-        self, customer_phone: str, message_text: str, job: Dict[str, Any]
+        self, customer_phone: str, message_text: str, job: Dict[str, Any], tenant_id: str
     ) -> Optional[str]:
         """
         Forward the message to the local backend's Baileys AI pipeline
@@ -309,9 +322,9 @@ class WhatsAppPoller:
         payload = {
             "sender_phone": customer_phone,
             "message_text": message_text or "",
-            # CRITICAL: Pass tenant_id from the queue job so baileys.py skips
-            # the sender-phone-based lookup. This makes LID senders work perfectly.
-            "tenant_id": job.get("tenant_id") or tenant_id,
+            # CRITICAL: Pass the normalized UPPERCASE tenant_id so the 
+            # AI agent can find the data in the local shadow DB.
+            "tenant_id": tenant_id,
             # Pass through media if present in the raw_payload
             "media": (job.get("raw_payload") or {}).get("media"),
         }
