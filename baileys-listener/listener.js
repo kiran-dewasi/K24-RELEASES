@@ -190,6 +190,71 @@ const qrServer = http.createServer(async (req, res) => {
             }
         });
 
+    } else if (req.method === 'POST' && req.url === '/send-file') {
+        // POST /send-file
+        // Called by the desktop poller when the AI generates an Excel/PDF export.
+        // Decodes the base64 file data and sends it as a WhatsApp document.
+        //
+        // Body: { "to": "917...", "filename": "Sales.xlsx", "data_base64": "...", "mimetype": "application/...", "caption": "..." }
+        // Headers: X-Baileys-Secret: <shared secret>
+
+        const secret = req.headers['x-baileys-secret'];
+        if (secret !== (process.env.BAILEYS_SECRET || 'k24_baileys_secret')) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid secret' }));
+            return;
+        }
+
+        if (!activeSock) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'WhatsApp not connected' }));
+            return;
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const { to, filename, data_base64, mimetype, caption } = JSON.parse(body);
+
+                if (!to || !filename || !data_base64) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required fields: to, filename, data_base64' }));
+                    return;
+                }
+
+                // Build JID (same logic as /send-reply)
+                let jid = to;
+                if (!jid.includes('@')) {
+                    const digits = jid.replace(/[^0-9]/g, '');
+                    jid = digits.length > 15 ? `${digits}@lid` : `${digits}@s.whatsapp.net`;
+                }
+
+                // Decode base64 → Buffer
+                const fileBuffer = Buffer.from(data_base64, 'base64');
+                const fileMime = mimetype || 'application/octet-stream';
+                const fileSizeKB = Math.round(fileBuffer.length / 1024);
+
+                logger.info(`📤 Sending file '${filename}' (${fileSizeKB}KB, ${fileMime}) to ${jid}`);
+
+                await activeSock.sendMessage(jid, {
+                    document: fileBuffer,
+                    mimetype: fileMime,
+                    fileName: filename,
+                    caption: caption || filename,
+                });
+
+                logger.info(`✅ File '${filename}' sent to ${jid}`);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, to: jid, filename, size_kb: fileSizeKB }));
+
+            } catch (e) {
+                logger.error('send-file error: ' + e.message);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: e.message }));
+            }
+        });
+
     } else {
         res.writeHead(404);
         res.end('Not found');
