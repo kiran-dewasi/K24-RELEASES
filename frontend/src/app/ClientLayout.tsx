@@ -51,7 +51,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     const isPublicPage = ["/login", "/signup", "/onboarding", "/forgot-password", "/reset-password", "/auth"]
         .some(p => pathname.startsWith(p));
 
-    if (isPublicPage) return <>{children}<Toaster /></>;
+    // Admin portal is developer-only — bypasses user auth entirely
+    const isAdminPage = pathname.startsWith("/admin");
+
+    if (isPublicPage || isAdminPage) return <>{children}<Toaster /></>;
 
     return (
         <UserProvider>

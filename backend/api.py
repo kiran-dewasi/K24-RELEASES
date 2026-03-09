@@ -79,6 +79,9 @@ from backend.routers import (
     whatsapp_cloud, dashboard, vouchers, ledgers, search, inventory,
     customers, items, settings, query, devices
 )
+# Credit / Usage system routers (Phase: Usage + Admin portal)
+from backend.routers import usage as usage_router
+from backend.routers import admin as admin_router
 
 
 from backend.compliance.audit_service import AuditService
@@ -194,6 +197,9 @@ app.include_router(settings.router) # Phase ?: User Settings
 app.include_router(agent.router) # Ensure agent router is here too if not duplicate
 app.include_router(query.router, prefix="/api") # Day 5: Smart Query API
 app.include_router(devices.router, prefix="/api/devices") # Licensing
+# ── Credit & Usage system ─────────────────────────────────────────────────
+app.include_router(usage_router.router)   # POST /internal/usage/event
+app.include_router(admin_router.router)   # GET  /admin/tenants etc.
 # Auth router is already included at line 83
 # Global simulated in-memory dataframe (single-user MVP)
 # Global simulated in-memory dataframe (single-user MVP)

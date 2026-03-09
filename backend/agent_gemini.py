@@ -539,9 +539,16 @@ def validate_and_fix_extraction(data: dict) -> dict:
     
     return data
 
-def extract_bill_data(image_path: str, api_key: str) -> dict:
+def extract_bill_data(
+    image_path: str,
+    api_key: str,
+    tenant_id: Optional[str] = None,    # ← for credit + LLM tracking
+    page_count: int = 1,                 # ← how many pages in this document
+) -> dict:
     """
-    Optimized for large invoices with many items
+    Optimized for large invoices with many items.
+    Fires DOCUMENT/page_processed credit event per page on successful extraction.
+    Logs LLM token usage for cost analytics.
     """
     import google.generativeai as genai
     
@@ -600,6 +607,40 @@ def extract_bill_data(image_path: str, api_key: str) -> dict:
         
         if not response:
              raise Exception("Failed to get response from Gemini")
+
+        # ── LLM call logging + DOCUMENT credit event ─────────────────────────────────────
+        usage_event_id = None
+        if tenant_id:
+            try:
+                # 1. Fire credit event for document processing
+                from backend.credit_engine import record_event
+                decision = record_event(
+                    tenant_id     = tenant_id,
+                    event_type    = "DOCUMENT",
+                    event_subtype = "page_processed",
+                    source        = "api",
+                    metadata      = {"image_path": image_path, "page_count": page_count, "model": "gemini-2.0-flash"},
+                )
+                usage_event_id = decision.event_id
+                logger.info(f"[CreditHook] DOCUMENT event | tenant={tenant_id} | status={decision.status}")
+            except Exception as ce:
+                logger.warning(f"[CreditHook] Document credit event failed (non-fatal): {ce}")
+
+            try:
+                # 2. Log LLM token usage
+                from backend.credit_engine import log_llm_call
+                usage_meta = response.usage_metadata
+                log_llm_call(
+                    tenant_id      = tenant_id,
+                    model          = "gemini-2.0-flash",
+                    workflow       = "bill_extraction",
+                    tokens_input   = getattr(usage_meta, "prompt_token_count", 0) or 0,
+                    tokens_output  = getattr(usage_meta, "candidates_token_count", 0) or 0,
+                    usage_event_id = usage_event_id,
+                )
+            except Exception as le:
+                logger.warning(f"[LLMLogger] Token logging failed (non-fatal): {le}")
+        # ─────────────────────────────────────────────────────────────────────────────
 
         # Parse response
         text = response.text.strip()

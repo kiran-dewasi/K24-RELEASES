@@ -8,6 +8,45 @@ import datetime
 import time
 import threading
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _fire_voucher_credit_event(
+    voucher_type: str,
+    tenant_id: Optional[str],
+    subtype: str = "created",
+    tally_guid: Optional[str] = None,
+) -> None:
+    """
+    Fire a VOUCHER credit event after a successful Tally push.
+    Runs synchronously but is fast (non-blocking DB call via supabase HTTP).
+    Logs errors silently — never crashes the caller.
+    """
+    if not tenant_id:
+        logger.debug("[CreditHook] No tenant_id — skipping voucher credit event.")
+        return
+    try:
+        from backend.credit_engine import record_event
+        decision = record_event(
+            tenant_id     = tenant_id,
+            event_type    = "VOUCHER",
+            event_subtype = subtype,
+            source        = "tally_sync",
+            metadata      = {"voucher_type": voucher_type, "tally_guid": tally_guid},
+        )
+        logger.info(
+            f"[CreditHook] VOUCHER/{subtype} | tenant={tenant_id} | "
+            f"status={decision.status} | used={decision.usage.credits_used_total}/{decision.usage.max_credits}"
+        )
+        if decision.is_blocked:
+            logger.warning(
+                f"[CreditHook] Tenant {tenant_id} is BLOCKED — voucher was already posted to Tally "
+                f"but future vouchers will be blocked until plan upgrade."
+            )
+    except Exception as exc:
+        logger.warning(f"[CreditHook] Voucher credit event failed (non-fatal): {exc}")
 
 # --- Configuration ---
 TALLY_URL = os.getenv("TALLY_URL", "http://localhost:9000")
@@ -500,51 +539,58 @@ def create_ledger_safely(company: str, ledger_name: str, parent: str = "Sundry D
     xml_payload = TallyXMLBuilder.build_ledger_xml(company, ledger_name, parent, fields)
     return post_to_tally(xml_payload)
 
-def create_voucher_safely(company: str, voucher_type: str, voucher_fields: Dict[str, str], line_items: List[Dict], taxes: List[Dict] = []) -> TallyResponse:
+def create_voucher_safely(
+    company: str,
+    voucher_type: str,
+    voucher_fields: Dict[str, str],
+    line_items: List[Dict],
+    taxes: List[Dict] = [],
+    tenant_id: Optional[str] = None,   # ← Pass tenant_id for credit tracking
+) -> TallyResponse:
     # Validation
     date = voucher_fields.get("Date")
     if not date or len(date) != 8:
          return TallyResponse(success=False, error_details="Invalid Date Format (YYYYMMDD)")
-    
-    # Balance Check
-    total_debit = sum(abs(float(item.get("amount", 0))) for item in line_items if item.get("is_debit"))
-    total_credit = sum(abs(float(item.get("amount", 0))) for item in line_items if not item.get("is_debit"))
-    
-    # Add tax impact if needed (usually taxes are part of line_items but here we separate for Golden XML)
-    
-    # if abs(total_debit - total_credit) > 0.01: # Float tolerance
-    #    return TallyResponse(success=False, error_details=f"Unbalanced Voucher: Dr {total_debit} != Cr {total_credit}")
 
     xml_payload = TallyXMLBuilder.build_voucher_xml(
-        company, 
-        voucher_type, 
-        date, 
-        voucher_fields.get("PartyLedgerName", ""), 
+        company,
+        voucher_type,
+        date,
+        voucher_fields.get("PartyLedgerName", ""),
         voucher_fields.get("Narration", ""),
         line_items=line_items,
-        inventory_items=line_items, # Assuming line_items are inventory items for Purchase/Sales
+        inventory_items=line_items,
         taxes=taxes
     )
-    return post_to_tally(xml_payload)
+    response = post_to_tally(xml_payload)
+
+    # ── Credit event hook ────────────────────────────────────────────────────
+    # Fire AFTER successful push so failed vouchers never consume credits.
+    if response.success and tenant_id:
+        _fire_voucher_credit_event(voucher_type, tenant_id, subtype="created")
+    # ─────────────────────────────────────────────────────────────────────────
+
+    return response
 
 # wrappers for backward compatibility with older naming conventions
-def create_voucher_in_tally(company: str, fields: Dict[str, Any], line_items: List[Dict[str, Any]]) -> TallyResponse:
+def create_voucher_in_tally(
+    company: str,
+    fields: Dict[str, Any],
+    line_items: List[Dict[str, Any]],
+    tenant_id: Optional[str] = None,   # ← Pass tenant_id for credit tracking
+) -> TallyResponse:
     """
-    Wrapper for create_voucher_safely to support legacy code (e.g. sync_engine)
-    that passes (company, fields, line_items) where fields contains 'VOUCHERTYPENAME'.
+    Wrapper for create_voucher_safely.
+    Pass tenant_id so credit consumption is tracked per tenant.
     """
-    # Case-insensitive update of keys
-    fields_ci = {k.upper(): v for k, v in fields.items()}
+    fields_ci    = {k.upper(): v for k, v in fields.items()}
     voucher_type = fields_ci.get("VOUCHERTYPENAME", "Sales")
-    
-    # Map to expected safe fields
-    safe_fields = {
-        "Date": fields_ci.get("DATE"),
+    safe_fields  = {
+        "Date":            fields_ci.get("DATE"),
         "PartyLedgerName": fields_ci.get("PARTYLEDGERNAME"),
-        "Narration": fields_ci.get("NARRATION")
+        "Narration":       fields_ci.get("NARRATION"),
     }
-    
-    return create_voucher_safely(company, voucher_type, safe_fields, line_items)
+    return create_voucher_safely(company, voucher_type, safe_fields, line_items, tenant_id=tenant_id)
 
 def dispatch_tally_update(entity_type: str, company_name: str, payload: Dict[str, Any], tally_url: str = None) -> TallyResponse:
     """
