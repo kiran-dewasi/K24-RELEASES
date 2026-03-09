@@ -226,8 +226,9 @@ class TallyConnector:
                         </STATICVARIABLES>
                         <TDL>
                             <SYSTEM TYPE="Formulae" NAME="MyClosingBal">$$ClosingBalance</SYSTEM>
+                            <SYSTEM TYPE="Formulae" NAME="MyOpeningBal">$$OpeningBalance</SYSTEM>
                             <OBJECT NAME="Ledger">
-                                <FETCH>Name,MyClosingBal,Parent</FETCH>
+                                <FETCH>Name,MyClosingBal,MyOpeningBal,Parent</FETCH>
                             </OBJECT>
                         </TDL>
                     </REQUESTDESC>

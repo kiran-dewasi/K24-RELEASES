@@ -902,6 +902,137 @@ def create_tally_voucher(
         return f"Error creating voucher: {str(e)}"
 
 # ============================================================================
+# FILE EXPORT TOOLS (PDF / Excel via WhatsApp)
+# ============================================================================
+
+# Special sentinel prefix the poller watches for to trigger file delivery.
+# Format: __FILE__::<abs_path>::<caption_text>
+_FILE_PREFIX = "__FILE__::"
+
+@tool
+def generate_excel_report(
+    report_type: str,
+    date_from: str = "",
+    date_to: str = ""
+) -> str:
+    """
+    Generate an Excel (.xlsx) report and send it to the user via WhatsApp.
+
+    Call this when the user asks for an Excel file, spreadsheet, or report download.
+
+    Args:
+        report_type: One of:
+            "sales"       - Sales register for a date range
+            "purchase"    - Purchase register for a date range
+            "receivables" - Outstanding receivable balances (money owed TO you)
+            "payables"    - Outstanding payable balances (money you OWE)
+            "stock"       - Current stock / inventory levels
+        date_from: Start date as YYYYMMDD (required for sales/purchase, e.g. '20260201').
+                   Leave blank for receivables/payables/stock.
+        date_to:   End date as YYYYMMDD (required for sales/purchase, e.g. '20260228').
+                   Leave blank for receivables/payables/stock.
+
+    Returns:
+        A confirmation message; the file will be sent as a WhatsApp attachment.
+    """
+    try:
+        from backend.services.export_service import ExportService
+        from backend.database import SessionLocal
+        from datetime import datetime
+
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            service = ExportService(db, tenant_id)
+            result = None
+
+            rtype = report_type.strip().lower()
+
+            if rtype in ("sales", "sales register"):
+                df = datetime.strptime(date_from, "%Y%m%d") if date_from else None
+                dt = datetime.strptime(date_to, "%Y%m%d") if date_to else None
+                result = service.export_sales_excel(df, dt)
+                caption = f"📊 Sales Register\n{date_from or 'all'} → {date_to or 'now'}"
+
+            elif rtype in ("purchase", "purchase register"):
+                df = datetime.strptime(date_from, "%Y%m%d") if date_from else None
+                dt = datetime.strptime(date_to, "%Y%m%d") if date_to else None
+                result = service.export_purchase_excel(df, dt)
+                caption = f"📊 Purchase Register\n{date_from or 'all'} → {date_to or 'now'}"
+
+            elif rtype in ("receivables", "receivable", "outstanding receivables"):
+                result = service.export_outstanding_excel("receivable")
+                caption = "📊 Outstanding Receivables Report"
+
+            elif rtype in ("payables", "payable", "outstanding payables"):
+                result = service.export_outstanding_excel("payable")
+                caption = "📊 Outstanding Payables Report"
+
+            elif rtype in ("stock", "inventory", "stock report"):
+                result = service.export_stock_excel()
+                caption = "📊 Stock / Inventory Report"
+
+            else:
+                return (
+                    f"❌ Unknown report type '{report_type}'. "
+                    "Choose from: sales, purchase, receivables, payables, stock."
+                )
+
+            if not result or not result.get("success"):
+                return f"❌ Failed to generate Excel: {result.get('error', 'Unknown error')}"
+
+            filepath = result["file_path"]
+            filename = result["filename"]
+            # Return the special sentinel — the poller will deliver the file
+            return f"{_FILE_PREFIX}{filepath}::{caption}\n\n📎 {filename} is ready — sending now!"
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        return f"❌ Error generating Excel report: {e}"
+
+
+@tool
+def generate_pdf_statement(party_name: str) -> str:
+    """
+    Generate a PDF Outstanding Statement for a specific party and send it via WhatsApp.
+
+    Call this when the user asks for a PDF statement, account statement, or
+    outstanding summary for a particular customer or supplier.
+
+    Args:
+        party_name: Name of the customer / supplier (partial match is fine).
+
+    Returns:
+        A confirmation message; the PDF will be sent as a WhatsApp attachment.
+    """
+    try:
+        from backend.services.export_service import ExportService
+        from backend.database import SessionLocal
+
+        tenant_id = _get_tenant()
+        db = SessionLocal()
+        try:
+            service = ExportService(db, tenant_id)
+            result = service.export_statement_pdf(party_name)
+
+            if not result.get("success"):
+                return f"❌ Could not generate PDF for '{party_name}': {result.get('error', 'Party not found.')}"
+
+            filepath = result["file_path"]
+            filename = result["filename"]
+            caption = f"📄 Outstanding Statement — {party_name}"
+            return f"{_FILE_PREFIX}{filepath}::{caption}\n\n📎 {filename} is ready — sending now!"
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        return f"❌ Error generating PDF statement: {e}"
+
+
+# ============================================================================
 # EXPORT ALL TOOLS
 # ============================================================================
 TOOLS = [
@@ -921,7 +1052,10 @@ TOOLS = [
     get_top_customers_by_revenue,
     # Reporting Tools
     check_stock_levels,
-    check_outstanding_payments
+    check_outstanding_payments,
+    # ── File Export Tools (WhatsApp delivery) ──
+    generate_excel_report,
+    generate_pdf_statement,
 ]
 
 # Exports for Graph/Routers
@@ -936,7 +1070,9 @@ SAFE_TOOLS = [
     check_stock_levels,
     check_outstanding_payments,
     get_top_outstanding,
-    get_top_customers_by_revenue
+    get_top_customers_by_revenue,
+    generate_excel_report,
+    generate_pdf_statement,
 ]
 
 # Tools that modify state

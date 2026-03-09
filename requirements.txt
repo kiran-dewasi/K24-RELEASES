@@ -29,3 +29,4 @@ httpcore
 reportlab
 openpyxl
 sentry-sdk[fastapi]
+rapidfuzz

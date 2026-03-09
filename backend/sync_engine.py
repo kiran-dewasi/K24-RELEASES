@@ -338,6 +338,7 @@ class SyncEngine:
                         # Update — also correct tenant_id if it was previously "default"
                         existing.tenant_id = tenant_id
                         existing.parent = ledger_data.get("parent", ledger_data.get("PARENT", existing.parent))
+                        existing.opening_balance = float(ledger_data.get("myopeningbal", ledger_data.get("MYOPENINGBAL", existing.opening_balance)) or 0.0)
                         existing.last_synced = datetime.now()
                     else:
                         # Create with real tenant_id
@@ -345,6 +346,7 @@ class SyncEngine:
                             tenant_id=tenant_id,
                             name=name,
                             parent=ledger_data.get("parent", ledger_data.get("PARENT", "Sundry Debtors")),
+                            opening_balance=float(ledger_data.get("myopeningbal", ledger_data.get("MYOPENINGBAL", 0.0)) or 0.0),
                             closing_balance=0.0,  # Populated by _pull_ledger_balances
                             gstin=ledger_data.get("gstin", ledger_data.get("PARTYGSTIN")),
                             address=ledger_data.get("address"),

@@ -158,8 +158,9 @@ class WhatsAppPoller:
                     await asyncio.sleep(POLL_INTERVAL)
                     continue
 
-                # Fetch jobs. Cloud now enqueues in UPPERCASE to match local DB.
-                jobs = await self._fetch_pending_jobs(tenant_id.upper())
+                # Fetch jobs using LOWERCASE tenant_id — Supabase eq. is case-sensitive
+                # and all existing queue rows use lowercase IDs (e.g. 'tenant-12345').
+                jobs = await self._fetch_pending_jobs(tenant_id.lower())
 
                 if jobs:
                     logger.info(f"📥 Fetched {len(jobs)} pending job(s) for tenant {tenant_id}")
@@ -206,7 +207,38 @@ class WhatsAppPoller:
         # Step 3: Send reply via Baileys listener
         if reply_text:
             try:
-                await self._send_reply(to_phone=customer_phone, reply_text=reply_text)
+                # Detect file-delivery sentinel: __FILE__::<path>::<caption>
+                FILE_PREFIX = "__FILE__::"
+                if reply_text.startswith(FILE_PREFIX):
+                    # Parse: __FILE__::/abs/path.xlsx::caption text\n\n...rest
+                    # The text after the sentinel is  path::caption\n\n...friendly_msg
+                    payload_str = reply_text[len(FILE_PREFIX):]
+                    parts = payload_str.split("::", 1)
+                    file_path = parts[0].strip()
+                    # The caption + friendly message is everything after the second ::
+                    rest = parts[1] if len(parts) > 1 else ""
+                    # caption is first line of rest; friendly_msg is after \n\n
+                    caption_lines = rest.split("\n\n", 1)
+                    caption = caption_lines[0].strip()
+                    friendly_msg = caption_lines[1].strip() if len(caption_lines) > 1 else caption
+
+                    logger.info(f"📎 File delivery detected: {file_path}")
+                    try:
+                        await self._send_file(
+                            to_phone=customer_phone,
+                            file_path=file_path,
+                            caption=caption
+                        )
+                        # Then send the friendly confirmation message
+                        await self._send_reply(to_phone=customer_phone, reply_text=friendly_msg)
+                    except Exception as fe:
+                        logger.error(f"❌ File send failed, sending fallback text: {fe}")
+                        await self._send_reply(
+                            to_phone=customer_phone,
+                            reply_text=f"{friendly_msg}\n\n⚠️ (File could not be attached automatically — please check the K24 dashboard to download it.)"
+                        )
+                else:
+                    await self._send_reply(to_phone=customer_phone, reply_text=reply_text)
             except Exception as e:
                 logger.error(f"❌ Send-reply failed for job {job_id}: {e}", exc_info=True)
                 await self._complete_job(job_id, "failed", error_message=f"send_reply_error: {e}")
@@ -348,6 +380,60 @@ class WhatsAppPoller:
             )
             raise RuntimeError(
                 f"AI pipeline returned {resp.status_code}: {resp.text[:200]}"
+            )
+
+    # ── Baileys File Delivery ──────────────────
+
+    async def _send_file(self, to_phone: str, file_path: str, caption: str = ""):
+        """
+        Send a locally-generated file (PDF/Excel) to a WhatsApp user via Baileys.
+
+        Strategy: base64-encode the file, POST to Baileys /send-file with
+        { to, filename, data_base64, mimetype, caption }.
+        The listener decodes and sends it as a WhatsApp document.
+        """
+        import base64
+        from pathlib import Path
+
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Export file not found: {file_path}")
+
+        # Determine MIME type from extension
+        ext = path.suffix.lower()
+        mimetype_map = {
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xls": "application/vnd.ms-excel",
+            ".pdf": "application/pdf",
+            ".csv": "text/csv",
+        }
+        mimetype = mimetype_map.get(ext, "application/octet-stream")
+
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+        data_b64 = base64.b64encode(file_bytes).decode("utf-8")
+
+        url = f"{BAILEYS_LISTENER_URL}/send-file"
+        payload = {
+            "to": to_phone,
+            "filename": path.name,
+            "data_base64": data_b64,
+            "mimetype": mimetype,
+            "caption": caption,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "X-Baileys-Secret": BAILEYS_SECRET,
+        }
+
+        logger.info(f"📤 Sending file '{path.name}' ({len(file_bytes)//1024}KB) to {to_phone}")
+        resp = await self._http_cloud.post(url, headers=headers, json=payload, timeout=60.0)
+
+        if resp.status_code in (200, 201, 202):
+            logger.info(f"✅ File sent to {to_phone}: {path.name}")
+        else:
+            raise RuntimeError(
+                f"Baileys /send-file returned {resp.status_code}: {resp.text[:200]}"
             )
 
     # ── Baileys Send-Reply ─────────────────────

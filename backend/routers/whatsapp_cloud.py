@@ -211,9 +211,10 @@ async def cloud_incoming(
             ),
         )
 
-    # ── IMPORTANT: Normalize to UPPERCASE to match local desktop DB ──
-    tenant_id = tenant_id.upper()
-
+    # ── IMPORTANT: Normalize to LOWERCASE to match Supabase storage ──
+    # Supabase's PostgREST eq. filter is case-sensitive.
+    # All existing rows + new rows must use the same case.
+    tenant_id = tenant_id.lower()
 
     # ── 3. Enqueue message (LID or phone — we don't care) ─────
     raw_payload = {
