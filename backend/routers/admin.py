@@ -448,3 +448,161 @@ async def assign_plan_to_tenant(tenant_id: str, req: AssignPlanRequest):
     except Exception as exc:
         logger.error(f"[AdminRouter] assign_plan_to_tenant failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── GET /admin/subscription-intents ──────────────────────────────────────────
+
+class IntentStatusUpdate(BaseModel):
+    status:    str            # activated | rejected
+    admin_note: Optional[str] = None
+
+
+@router.get("/subscription-intents", summary="List all subscription payment intents")
+async def list_subscription_intents(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    limit:  int            = Query(50, le=200),
+):
+    """
+    Returns list of UPI subscription payment intents for admin review.
+    Status lifecycle: pending_payment → awaiting_verification → activated | rejected
+    """
+    import httpx, os
+    svc_key = (
+        os.getenv("SUPABASE_SERVICE_KEY") or
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY") or
+        os.getenv("SUPABASE_ANON_KEY", "")
+    )
+    sb_url  = os.getenv("SUPABASE_URL", "")
+    headers = {
+        "apikey":        svc_key,
+        "Authorization": f"Bearer {svc_key}",
+        "Prefer":        "count=exact",
+    }
+    params = f"select=*&order=created_at.desc&limit={limit}"
+    if status:
+        params += f"&status=eq.{status}"
+
+    try:
+        r = httpx.get(f"{sb_url}/rest/v1/subscription_intents?{params}", headers=headers, timeout=10)
+        if r.status_code == 200:
+            intents = r.json()
+            total   = r.headers.get("content-range", f"0-{len(intents)}/{len(intents)}").split("/")[-1]
+            return {"intents": intents, "total": int(total) if total.isdigit() else len(intents)}
+        logger.error(f"[AdminRouter] list_intents failed: {r.status_code} {r.text[:200]}")
+        return {"intents": [], "total": 0}
+    except Exception as exc:
+        logger.error(f"[AdminRouter] list_intents exception: {exc}")
+        return {"intents": [], "total": 0}
+
+
+@router.patch("/subscription-intents/{intent_id}/status", summary="Activate or reject a subscription intent")
+async def update_intent_status(intent_id: str, req: IntentStatusUpdate):
+    """
+    Admin action: mark an intent as 'activated' or 'rejected'.
+
+    On activation:
+      1. Generates a new tenant_id
+      2. Creates tenant record in `tenants` table
+      3. Creates/updates `tenant_config` (subscription_status = active)
+      4. Creates `tenant_plans` entry (credit engine)
+      5. Updates intent with activated_tenant_id + timestamp
+    """
+    import httpx, os, uuid
+    from datetime import timedelta
+
+    if req.status not in ("activated", "rejected"):
+        raise HTTPException(400, detail="Status must be 'activated' or 'rejected'")
+
+    svc_key = (
+        os.getenv("SUPABASE_SERVICE_KEY") or
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY") or
+        os.getenv("SUPABASE_ANON_KEY", "")
+    )
+    sb_url  = os.getenv("SUPABASE_URL", "")
+    headers = {
+        "apikey":        svc_key,
+        "Authorization": f"Bearer {svc_key}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+    }
+
+    def _get(table, filter_str):
+        r = httpx.get(f"{sb_url}/rest/v1/{table}?{filter_str}&limit=1", headers=headers, timeout=8)
+        return (r.json()[0] if r.json() else None) if r.status_code == 200 else None
+
+    def _post(table, data):
+        r = httpx.post(f"{sb_url}/rest/v1/{table}", headers=headers, json=data, timeout=8)
+        return r.json()[0] if r.status_code in (200, 201) and r.json() else None
+
+    def _patch(table, filter_str, data):
+        r = httpx.patch(f"{sb_url}/rest/v1/{table}?{filter_str}", headers=headers, json=data, timeout=8)
+        return r.status_code in (200, 204)
+
+    # 1. Fetch the intent
+    intent = _get("subscription_intents", f"id=eq.{intent_id}&select=*")
+    if not intent:
+        raise HTTPException(404, detail="Intent not found")
+
+    if intent.get("status") not in ("pending_payment", "awaiting_verification"):
+        raise HTTPException(400, detail=f"Intent is already '{intent['status']}'. Cannot change.")
+
+    now         = datetime.now(timezone.utc)
+    update_data = {
+        "status":     req.status,
+        "admin_note": req.admin_note,
+        "updated_at": now.isoformat(),
+    }
+
+    if req.status == "activated":
+        plan_id    = intent["plan_id"]
+        short_uid  = uuid.uuid4().hex[:8].upper()
+        tenant_id  = f"TENANT-{short_uid}"
+        period_end = now + timedelta(days=30)
+
+        # A: Create tenant record
+        tenant_data = {
+            "id":           tenant_id,
+            "company_name": intent.get("company_name", ""),
+        }
+        _post("tenants", tenant_data)
+
+        # B: Create/update tenant_config (the auth gate the backend reads)
+        config_data = {
+            "tenant_id":            tenant_id,
+            "user_email":           intent.get("email", ""),
+            "company_name":         intent.get("company_name", ""),
+            "whatsapp_number":      intent.get("phone", ""),
+            "subscription_status":  "active",
+            "trial_ends_at":        period_end.isoformat(),
+            "subscription_ends_at": period_end.isoformat(),
+        }
+        _post("tenant_config", config_data)
+
+        # C: Create tenant_plans (credit engine)
+        _post("tenant_plans", {
+            "tenant_id":            tenant_id,
+            "plan_id":              plan_id,
+            "status":               "active",
+            "current_period_start": now.isoformat(),
+            "current_period_end":   period_end.isoformat(),
+        })
+
+        update_data["activated_tenant_id"] = tenant_id
+        update_data["activated_at"]        = now.isoformat()
+
+        logger.info(f"[AdminRouter] Intent {intent_id} ACTIVATED → tenant={tenant_id} plan={plan_id}")
+
+    else:
+        logger.info(f"[AdminRouter] Intent {intent_id} REJECTED. Note: {req.admin_note}")
+
+    # Update the intent record
+    success = _patch("subscription_intents", f"id=eq.{intent_id}", update_data)
+    if not success:
+        raise HTTPException(500, detail="Failed to update intent status")
+
+    return {
+        "success":    True,
+        "intent_id":  intent_id,
+        "new_status": req.status,
+        "activated_tenant_id": update_data.get("activated_tenant_id"),
+    }

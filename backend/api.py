@@ -200,6 +200,9 @@ app.include_router(devices.router, prefix="/api/devices") # Licensing
 # ── Credit & Usage system ─────────────────────────────────────────────────
 app.include_router(usage_router.router)   # POST /internal/usage/event
 app.include_router(admin_router.router)   # GET  /admin/tenants etc.
+# ── Public subscription (UPI payment flow) ────────────────────────────────
+from backend.routers import subscribe as subscribe_router
+app.include_router(subscribe_router.router)  # POST /public/subscribe/intent etc.
 # Auth router is already included at line 83
 # Global simulated in-memory dataframe (single-user MVP)
 # Global simulated in-memory dataframe (single-user MVP)

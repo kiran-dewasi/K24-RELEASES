@@ -54,7 +54,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     // Admin portal is developer-only — bypasses user auth entirely
     const isAdminPage = pathname.startsWith("/admin");
 
-    if (isPublicPage || isAdminPage) return <>{children}<Toaster /></>;
+    // Public marketing pages — no auth, no sidebar
+    const isPricingPage = pathname.startsWith("/pricing") || pathname.startsWith("/subscribe");
+
+    if (isPublicPage || isAdminPage || isPricingPage) return <>{children}<Toaster /></>;
 
     return (
         <UserProvider>

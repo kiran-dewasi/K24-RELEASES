@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-    LayoutDashboard, Users, CreditCard, BookOpen, BarChart3, Shield
+    LayoutDashboard, Users, CreditCard, BookOpen, BarChart3, Shield, Receipt
 } from "lucide-react";
 
 const NAV = [
     { href: "/admin/tenants", label: "Tenants", icon: Users },
     { href: "/admin/plans", label: "Plans & Rules", icon: CreditCard },
+    { href: "/admin/subscriptions", label: "Subscriptions", icon: Receipt },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
