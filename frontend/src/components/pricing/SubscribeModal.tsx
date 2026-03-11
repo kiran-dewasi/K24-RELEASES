@@ -162,29 +162,45 @@ function UpiStep({
 }) {
     const [upiRef, setUpiRef] = useState("");
 
-    // Annual amount in rupees (ex-GST)
-    const amountRupees = plan.price_annual_rupees;
-    const amountDisplay = plan.price_annual_display;
+    // Annual amount ex-GST
+    const amountRupees   = plan.price_annual_rupees;
+    // GST-inclusive total — this is what the user actually pays
+    const gstAmount      = Math.round(amountRupees * plan.gst_rate);
+    const totalWithGst   = amountRupees + gstAmount;
 
-    // UPI deep link with real amount
+    const fmtINR = (n: number) =>
+        new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
+
+    // UPI deep link — amount MUST be GST-inclusive (what hits your bank)
     const deepLink =
         `upi://pay?pa=${UPI_CONFIG.upi_id}` +
         `&pn=${encodeURIComponent(UPI_CONFIG.payee_name)}` +
-        `&am=${amountRupees}` +
+        `&am=${totalWithGst}` +
         `&cu=INR` +
-        `&tn=${encodeURIComponent(`K24 ${plan.name} Plan Annual`)}`;
+        `&tn=${encodeURIComponent(`K24 ${plan.name} Plan (incl. 18% GST)`)}`;
 
-    // Live QR code generated from UPI deep link
+    // Live QR — encodes the GST-inclusive total
     const qrUrl =
         `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=` +
         encodeURIComponent(deepLink);
 
     return (
         <div className="space-y-5">
-            {/* Step header */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-0.5">Step 2 — Make payment</p>
-                <p className="text-slate-900 font-bold">{plan.name} Plan · {amountDisplay}</p>
+            {/* Step header with price breakdown */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide">{plan.name} Plan · Annual</p>
+                <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Plan price (ex-GST)</span>
+                    <span className="text-slate-700 font-medium">{fmtINR(amountRupees)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">GST @ 18%</span>
+                    <span className="text-slate-700 font-medium">+ {fmtINR(gstAmount)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-slate-200 pt-2 mt-1">
+                    <span className="text-slate-900 font-bold">Total to pay</span>
+                    <span className="text-blue-700 font-bold text-base">{fmtINR(totalWithGst)}</span>
+                </div>
             </div>
 
             {/* UPI details */}
@@ -211,10 +227,11 @@ function UpiStep({
                         <CopyButton text={UPI_CONFIG.upi_id} />
                     </div>
                     <div className="flex items-center gap-2 mt-2 text-sm">
-                        <span className="text-slate-500">Amount:</span>
-                        <span className="font-bold text-slate-900">{amountDisplay}</span>
-                        <CopyButton text={String(amountRupees)} />
+                        <span className="text-slate-500">Amount to transfer:</span>
+                        <span className="font-bold text-slate-900">{fmtINR(totalWithGst)}</span>
+                        <CopyButton text={String(totalWithGst)} />
                     </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Includes ₹{gstAmount.toLocaleString("en-IN")} GST (18%)</p>
                 </div>
 
                 {/* Open payment app */}
