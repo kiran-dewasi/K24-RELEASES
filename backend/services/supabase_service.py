@@ -163,6 +163,39 @@ class SupabaseHTTPService:
             return data[0] if data else None
         return None
     
+    def create_tenant_config(self, tenant_id: str, email: str, company_name: str, whatsapp_number: Optional[str] = None) -> Optional[Dict]:
+        """Create a default trial configuration in tenant_config table"""
+        if not self.client:
+            return None
+            
+        from datetime import datetime, timezone, timedelta
+        trial_ends_at = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        
+        payload = {
+            "tenant_id": tenant_id,
+            "user_email": email,
+            "company_name": company_name,
+            "whatsapp_number": whatsapp_number,
+            "subscription_status": "trial",
+            "trial_ends_at": trial_ends_at
+        }
+        
+        try:
+            response = httpx.post(
+                self._rest_url('tenant_config'),
+                headers=self._get_headers(use_service_key=True),
+                json=payload,
+                timeout=10
+            )
+            if response.status_code in [200, 201]:
+                data = response.json() if response.text else [payload]
+                return data[0] if isinstance(data, list) and data else payload
+            print(f"Failed to create tenant config: {response.text}")
+            return None
+        except Exception as e:
+            print(f"Error creating tenant config: {e}")
+            return None
+    
     # ============================================
     # SUBSCRIPTION OPERATIONS
     # ============================================
@@ -299,6 +332,9 @@ class SupabaseService:
     
     def get_tenant_by_id(self, tenant_id: str) -> Optional[Dict]:
         return self._http.get_tenant_by_id(tenant_id)
+        
+    def create_tenant_config(self, tenant_id: str, email: str, company_name: str, whatsapp_number: Optional[str] = None) -> Optional[Dict]:
+        return self._http.create_tenant_config(tenant_id, email, company_name, whatsapp_number)
     
     def get_user_subscription(self, user_id: str) -> Optional[Dict]:
         return self._http.get_user_subscription(user_id)

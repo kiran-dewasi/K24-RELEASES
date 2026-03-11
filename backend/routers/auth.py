@@ -124,6 +124,19 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
                         supabase_http_service.create_subscription(user_id, tenant_id, "free")
                     except Exception as e:
                          print(f"Supabase Subscription Warning: {e}")
+                
+                # E. Create Trial configuration in tenant_config
+                if tenant_id and user_id:
+                    try:
+                        # For desktop signups, we don't have whatsapp number yet, so we pass None
+                        supabase_http_service.create_tenant_config(
+                            tenant_id=tenant_id,
+                            email=user_data.email, 
+                            company_name=user_data.company_name,
+                            whatsapp_number=None
+                        )
+                    except Exception as e:
+                         print(f"Supabase Trial Setup Warning: {e}")
 
         except Exception as e:
             # If Supabase fails (e.g. offline), should we fail strictly or allow local-only?
@@ -395,15 +408,23 @@ def get_current_user_info(current_user: User = Depends(get_current_active_user))
     }
 
     # Append trial / subscription info from Supabase (fail silently)
-    if current_user.tenant_id and supabase_service.client:
+    from backend.services.supabase_service import supabase_http_service
+    if current_user.tenant_id and supabase_http_service.client:
         try:
-            result = supabase_service.client.table("tenant_config").select(
-                "subscription_status, trial_ends_at"
-            ).eq("tenant_id", current_user.tenant_id).limit(1).execute()
-            if result.data:
-                response_dict["subscription_status"] = result.data[0].get("subscription_status")
-                response_dict["trial_ends_at"] = result.data[0].get("trial_ends_at")
-        except Exception:
+            import httpx
+            headers = supabase_http_service._get_headers(use_service_key=True)
+            response = httpx.get(
+                f"{supabase_http_service.url}/rest/v1/tenant_config?tenant_id=eq.{current_user.tenant_id}&select=subscription_status,trial_ends_at&limit=1",
+                headers=headers,
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data and len(data) > 0:
+                    response_dict["subscription_status"] = data[0].get("subscription_status")
+                    response_dict["trial_ends_at"] = data[0].get("trial_ends_at")
+        except Exception as e:
+            print(f"Failed to fetch trial info: {e}")
             pass  # fail silently — don't break login
 
     return response_dict
