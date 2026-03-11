@@ -49,7 +49,9 @@ class UserResponse(BaseModel):
     tenant_id: str | None
     whatsapp_number: str | None
     is_whatsapp_verified: bool | None = False
-    
+    subscription_status: str | None = None
+    trial_ends_at: str | None = None
+
     class Config:
         from_attributes = True
 
@@ -374,9 +376,37 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me")
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
-    return current_user
+    from backend.services.supabase_service import supabase_service
+
+    response_dict = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+        "company_id": current_user.company_id,
+        "tenant_id": current_user.tenant_id,
+        "whatsapp_number": current_user.whatsapp_number,
+        "is_whatsapp_verified": getattr(current_user, "is_whatsapp_verified", False) or False,
+        "subscription_status": None,
+        "trial_ends_at": None,
+    }
+
+    # Append trial / subscription info from Supabase (fail silently)
+    if current_user.tenant_id and supabase_service.client:
+        try:
+            result = supabase_service.client.table("tenant_config").select(
+                "subscription_status, trial_ends_at"
+            ).eq("tenant_id", current_user.tenant_id).limit(1).execute()
+            if result.data:
+                response_dict["subscription_status"] = result.data[0].get("subscription_status")
+                response_dict["trial_ends_at"] = result.data[0].get("trial_ends_at")
+        except Exception:
+            pass  # fail silently — don't break login
+
+    return response_dict
 
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = None

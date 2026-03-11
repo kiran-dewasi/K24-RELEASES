@@ -9,6 +9,7 @@ import { UserProvider } from "@/contexts/UserContext";
 import { SidebarProvider, useSidebar } from "@/contexts/SidebarContext";
 import { ChatProvider } from "@/contexts/ChatContext";
 import AuthGuard from "@/components/AuthGuard";
+import TrialBanner from "@/components/TrialBanner";
 
 function InnerLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -26,6 +27,9 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
             >
                 {/* Navbar is hidden for the full-workbench chat page */}
                 {!isFullWorkbench && <Navbar />}
+
+                {/* Trial banner — between Navbar and page content, hidden on chat workbench */}
+                {!isFullWorkbench && <TrialBanner />}
 
                 {isFullWorkbench ? (
                     // Full workbench — takes full height, no navbar overhead

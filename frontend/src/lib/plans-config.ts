@@ -215,6 +215,6 @@ export const FAQ_ITEMS = [
     },
     {
         q: "Is there a free trial?",
-        a: "We currently offer a 7-day trial for select businesses. After signing up, contact us on WhatsApp to request trial access. Enterprise customers receive a demo and guided onboarding session before committing.",
+        a: "We currently offer a 3-day free trial for all new signups. After signing up, your trial starts immediately and gives you full access to K24 features. Enterprise customers receive a demo and guided onboarding session before committing.",
     },
 ];
