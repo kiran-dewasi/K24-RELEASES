@@ -127,9 +127,20 @@ class TallyReader:
                 
                 if name:
                     # Store in cache
-                    self.ledger_cache[name.strip().lower()] = name.strip()
+                    self.ledger_cache[" ".join(name.split()).lower()] = name.strip()
                     count += 1
             
+            # PRODUCTION GUARD: if 0 ledgers returned, Tally likely has no company open
+            # or the XML format changed. DON'T mark cache as populated so the next
+            # call retries the fetch instead of trusting an empty cache.
+            if count == 0:
+                logger.error(
+                    "❌ fetch_all_masters returned 0 ledgers. "
+                    "Tally may have no company open, or XML parse failed. "
+                    "cache_populated stays False — will retry on next call."
+                )
+                return
+
             logger.info(f"✅ Cache Updated: Found {count} Ledgers.")
             self.cache_populated = True
 
@@ -159,9 +170,18 @@ class TallyReader:
                 name = item.get("NAME") or item.findtext("NAME")
                     
                 if name:
-                    self.item_cache[name.strip().lower()] = name.strip()
+                    self.item_cache[" ".join(name.split()).lower()] = name.strip()
                     count += 1
             
+            # PRODUCTION GUARD: 0 items means Tally has no company open or parse failed.
+            # Don't treat an empty cache as valid — leave it uncached so next call retries.
+            if count == 0:
+                logger.error(
+                    "❌ fetch_all_items returned 0 items. "
+                    "Tally may have no company open. Will retry on next call."
+                )
+                return
+
             logger.info(f"✅ Cache Updated: Found {count} Items.")
 
         except Exception as e:
@@ -170,20 +190,50 @@ class TallyReader:
 
     def check_ledger_exists(self, ledger_name: str) -> Optional[str]:
         """
-        Exact (Case-Insensitive) Lookup in Cache.
-        Returns: Actual Name if found, None otherwise.
+        Case-insensitive lookup in cache with smart fuzzy matching.
+        Returns: Actual Tally name if found, None otherwise.
         """
         if not self.cache_populated:
             self.fetch_all_masters()
-            
-        key = ledger_name.strip().lower()
+
+        key = " ".join(ledger_name.split()).lower()
+
+        # 1. Exact match
         if key in self.ledger_cache:
             return self.ledger_cache[key]
-        
-        # If not found, maybe cache is stale? 
-        # For now, trust cache. If we want to be safe, we could re-fetch if not found, 
-        # but that defeats the purpose of cache during bulk ops.
-        # Let's assume one refresh per session is okay, or explicit refresh.
+
+        # 2. Substring match (one contains the other)
+        for cached_key, cached_name in self.ledger_cache.items():
+            if key in cached_key or cached_key in key:
+                logger.info(f"Substring ledger match: '{ledger_name}' → '{cached_name}'")
+                return cached_name
+
+        # 3. difflib fuzzy match — handles typos like 'enterprises' vs 'enetrprises'
+        import difflib
+        all_keys = list(self.ledger_cache.keys())
+        close = difflib.get_close_matches(key, all_keys, n=1, cutoff=0.75)
+        if close:
+            matched_name = self.ledger_cache[close[0]]
+            logger.info(f"Fuzzy ledger match (difflib): '{ledger_name}' → '{matched_name}' (via key '{close[0]}')") 
+            return matched_name
+
+        # 4. Cache miss — do ONE live re-fetch in case the cache was stale
+        if self.cache_populated:
+            logger.info(
+                f"Cache miss for ledger '{ledger_name}' — re-fetching from Tally once..."
+            )
+            self.cache_populated = False
+            self.fetch_all_masters()
+            if key in self.ledger_cache:
+                return self.ledger_cache[key]
+            # Try difflib again with fresh cache
+            all_keys = list(self.ledger_cache.keys())
+            close = difflib.get_close_matches(key, all_keys, n=1, cutoff=0.75)
+            if close:
+                matched_name = self.ledger_cache[close[0]]
+                logger.info(f"Fuzzy ledger match (post-refetch): '{ledger_name}' → '{matched_name}'")
+                return matched_name
+
         return None
 
     def get_ledger_state(self, ledger_name: str) -> Optional[str]:
@@ -321,11 +371,56 @@ class TallyReader:
             return None
 
     def check_item_exists(self, item_name: str) -> Optional[str]:
+        """
+        Case-insensitive item lookup with smart fuzzy + keyword matching.
+        Returns: Actual Tally item name if found, None otherwise.
+        """
         if not self.item_cache:
             self.fetch_all_items()
-            
-        key = item_name.strip().lower()
-        return self.item_cache.get(key)
+
+        key = " ".join(item_name.split()).lower()
+
+        # 1. Exact match
+        if key in self.item_cache:
+            return self.item_cache[key]
+
+        # 2. Substring match (one contains the other)
+        #    Handles: 'jeera' inside 'cumin seeds ( jeera )'
+        for cached_key, cached_name in self.item_cache.items():
+            if key in cached_key or cached_key in key:
+                logger.info(f"Substring item match: '{item_name}' → '{cached_name}'")
+                return cached_name
+
+        # 3. Word-level keyword match
+        #    Any word from the user query found inside any item name
+        #    Handles: 'jeera' → 'CUMIN SEEDS ( JEERA )'
+        query_words = [w for w in key.split() if len(w) > 2]  # skip tiny words
+        for cached_key, cached_name in self.item_cache.items():
+            for word in query_words:
+                if word in cached_key:
+                    logger.info(f"Keyword item match: '{item_name}' (word='{word}') → '{cached_name}'")
+                    return cached_name
+
+        # 4. difflib fuzzy match — handles typos
+        import difflib
+        all_keys = list(self.item_cache.keys())
+        close = difflib.get_close_matches(key, all_keys, n=1, cutoff=0.75)
+        if close:
+            matched_name = self.item_cache[close[0]]
+            logger.info(f"Fuzzy item match (difflib): '{item_name}' → '{matched_name}'")
+            return matched_name
+
+        # 5. One live re-fetch on miss
+        if self.item_cache:
+            logger.info(
+                f"Cache miss for item '{item_name}' — re-fetching from Tally once..."
+            )
+            self.item_cache = {}
+            self.fetch_all_items()
+            if key in self.item_cache:
+                return self.item_cache[key]
+
+        return None
         
     def get_godowns(self) -> List[str]:
         """Fetches list of Godowns."""

@@ -292,9 +292,16 @@ class TallyClient:
 
             logger.info(f"Tally raw response: {resp_text[:300]}")
 
-            # Only trust explicit CREATED or ALTERED confirmation
-            if "<CREATED>1</CREATED>" in resp_text or "<ALTERED>1</ALTERED>" in resp_text:
-                logger.info("✅ Tally confirmed voucher created/altered.")
+            # CREATED=1 → new object created
+            # ALTERED=1 → existing object updated
+            # IGNORED=1 → object already exists exactly as-is (SUCCESS for ensure_* operations)
+            if ("<CREATED>1</CREATED>" in resp_text or
+                    "<ALTERED>1</ALTERED>" in resp_text or
+                    "<IGNORED>1</IGNORED>" in resp_text):
+                if "<IGNORED>1</IGNORED>" in resp_text:
+                    logger.info("✅ Tally confirmed object already exists (IGNORED=1 → treating as success).")
+                else:
+                    logger.info("✅ Tally confirmed object created/altered.")
                 return True
 
             # Any exception is a rejection
@@ -333,23 +340,17 @@ class TallyEngine:
         self.search = TallySearch(tally_url)
 
     def ensure_ledger_exists(self, name: str, group: str, affects_stock: bool = False, is_duty: bool = False, gstin: str = None) -> Optional[str]:
+        # NORMALIZE: collapse multiple spaces, strip edges, title-case
+        # e.g. "vinayak  enterprises" → "Vinayak Enterprises"
+        name = " ".join(name.split()).strip()
+
         # 1. READ FIRST (Cache/Live Lookup)
-        # Check if ledger exists (by Name or Alias)
         existing_name = self.reader.check_ledger_exists(name)
         
         if existing_name:
-            # IDENTITY FOUND: Verify Group?
-            # STRICT GROUP CHECK & CORRECTION
-            # Logic: If we need "Sundry Creditors" but it's "Current Assets", we MUST fix it.
-            # We don't have the current group in `existing_name`, so we optimistically ALTER it if strict compliance is needed.
-            # However, `check_ledger_exists` only returns name. We'd need to fetch details. 
-            # TRADEOFF: Just send an ALTER if it exists? No, that's heavy.
-            # ACTION: If we are ensuring "Sundry Creditors" or "Sundry Debtors", we force update.
             if group in ["Sundry Creditors", "Sundry Debtors"]:
                  logger.info(f"DEBUG: Enforcing Group '{group}' for '{existing_name}' via Alter...")
                  xml = TallyObjectFactory.create_ledger_xml(existing_name, group, affects_stock, is_duty, gstin)
-                 # Inject ACTION="Alter" into the XML (Factory makes Create/Import, but Import Data handles updates too)
-                 # Tally "Import Data" will UPDATE/ALTER if name matches.
                  self.client.send_request(xml)
             
             logger.info(f"✅ Ledger Exists: '{existing_name}' (Mapped from '{name}')")
@@ -360,23 +361,31 @@ class TallyEngine:
         xml = TallyObjectFactory.create_ledger_xml(name, group, affects_stock, is_duty, gstin)
         
         if self.client.send_request(xml):
-            self.reader.ledger_cache[name.strip().lower()] = name.strip()
+            # After create/IGNORED, re-fetch cache to get the exact Tally-canonical name
+            # (handles case where Tally already had it with different case/spacing)
+            self.reader.cache_populated = False
+            self.reader.fetch_all_masters()
+            canonical = self.reader.ledger_cache.get(" ".join(name.split()).lower())
+            if canonical:
+                logger.info(f"✅ Ledger canonical name from Tally: '{canonical}'")
+                return canonical
+            # Fallback: use the normalized name we sent
+            self.reader.ledger_cache[" ".join(name.split()).lower()] = name.strip()
             return name
             
         logger.error(f"Failed to ensure Ledger: {name}")
         return None
 
     def ensure_stock_item(self, name: str, unit: str = "kg") -> Optional[str]:
+        # NORMALIZE: collapse multiple spaces, strip edges
+        name = " ".join(name.split()).strip()
+
         # 1. READ FIRST
         existing_name = self.reader.check_item_exists(name)
-        # Force Update to No Batch? Only on create.
-        # If exists, we hope it's fine.
         
         if existing_name:
             logger.info(f"✅ Item Exists: '{existing_name}'.")
-            name = existing_name
-            # Fallthrough to create? No, only return.
-            return name
+            return existing_name
         
         # 2. CREATE
         logger.info(f"DEBUG: Item '{name}' NOT found. Creating...")
@@ -387,8 +396,14 @@ class TallyEngine:
         # Ensure Item
         xml = TallyObjectFactory.create_stock_item_xml(name, unit)
         if self.client.send_request(xml):
-            # Update Cache
-            self.reader.item_cache[name.strip().lower()] = name.strip()
+            # Re-fetch to get canonical Tally name
+            self.reader.item_cache = {}
+            self.reader.fetch_all_items()
+            canonical = self.reader.item_cache.get(" ".join(name.split()).lower())
+            if canonical:
+                logger.info(f"✅ Item canonical name from Tally: '{canonical}'")
+                return canonical
+            self.reader.item_cache[" ".join(name.split()).lower()] = name.strip()
             return name
             
         logger.error(f"Failed to ensure Stock Item: {name}")

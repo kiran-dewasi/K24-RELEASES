@@ -425,6 +425,10 @@ def create_purchase_invoice(
         from backend.tally_engine import TallyEngine
         engine = TallyEngine()
         
+        # NORMALIZE: collapse all whitespace variations at entry point
+        # "vinayak  enterprises" → "Vinayak Enterprises" style lookup will succeed
+        vendor_name = " ".join(vendor_name.split()).strip()
+        
         # Date Handling
         if not date:
             from datetime import datetime
