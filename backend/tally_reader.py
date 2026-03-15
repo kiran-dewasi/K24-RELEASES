@@ -164,13 +164,17 @@ class TallyReader:
             root = ET.fromstring(self._clean_xml(r.text))
             
             self.item_cache = {}
+            self.item_unit_cache = getattr(self, "item_unit_cache", {}) # Keep it if exists
             count = 0
 
             for item in root.findall(".//STOCKITEM"):
                 name = item.get("NAME") or item.findtext("NAME")
+                unit = item.findtext("BASEUNITS") or "Kgs"
                     
                 if name:
-                    self.item_cache[" ".join(name.split()).lower()] = name.strip()
+                    normalized = " ".join(name.split()).lower()
+                    self.item_cache[normalized] = name.strip()
+                    self.item_unit_cache[normalized] = unit.strip()
                     count += 1
             
             # PRODUCTION GUARD: 0 items means Tally has no company open or parse failed.

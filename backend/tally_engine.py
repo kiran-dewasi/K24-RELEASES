@@ -376,7 +376,7 @@ class TallyEngine:
         logger.error(f"Failed to ensure Ledger: {name}")
         return None
 
-    def ensure_stock_item(self, name: str, unit: str = "kg") -> Optional[str]:
+    def ensure_stock_item(self, name: str, unit: str = "kg") -> tuple[Optional[str], str]:
         # NORMALIZE: collapse multiple spaces, strip edges
         name = " ".join(name.split()).strip()
 
@@ -385,7 +385,9 @@ class TallyEngine:
         
         if existing_name:
             logger.info(f"✅ Item Exists: '{existing_name}'.")
-            return existing_name
+            normalized = " ".join(existing_name.split()).lower()
+            canonical_unit = getattr(self.reader, "item_unit_cache", {}).get(normalized, unit)
+            return existing_name, canonical_unit
         
         # 2. CREATE
         logger.info(f"DEBUG: Item '{name}' NOT found. Creating...")
@@ -398,16 +400,23 @@ class TallyEngine:
         if self.client.send_request(xml):
             # Re-fetch to get canonical Tally name
             self.reader.item_cache = {}
+            if hasattr(self.reader, "item_unit_cache"):
+                self.reader.item_unit_cache = {}
             self.reader.fetch_all_items()
-            canonical = self.reader.item_cache.get(" ".join(name.split()).lower())
+            
+            n = " ".join(name.split()).lower()
+            canonical = self.reader.item_cache.get(n)
+            canonical_unit = getattr(self.reader, "item_unit_cache", {}).get(n, unit)
             if canonical:
-                logger.info(f"✅ Item canonical name from Tally: '{canonical}'")
-                return canonical
-            self.reader.item_cache[" ".join(name.split()).lower()] = name.strip()
-            return name
+                logger.info(f"✅ Item canonical name from Tally: '{canonical}' with unit '{canonical_unit}'")
+                return canonical, canonical_unit
+            self.reader.item_cache[n] = name.strip()
+            if hasattr(self.reader, "item_unit_cache"):
+                self.reader.item_unit_cache[n] = unit
+            return name, unit
             
         logger.error(f"Failed to ensure Stock Item: {name}")
-        return None
+        return None, unit
 
     def ensure_standard_gst_ledgers(self):
         """
@@ -521,7 +530,7 @@ class TallyEngine:
             tax_rate = float(item.get("tax_rate", 0))
             
             # Verify Unit & Item
-            confirmed_item = self.ensure_stock_item(name, unit)
+            confirmed_item, canonical_unit = self.ensure_stock_item(name, unit)
             if not confirmed_item: return {"status": "error", "message": f"Item Failed: {name}"}
             
             base_amt = qty * rate
@@ -531,7 +540,7 @@ class TallyEngine:
             items_payload.append({
                 "name": confirmed_item,
                 "quantity": qty,
-                "unit": unit,
+                "unit": canonical_unit,
                 "rate": rate,
                 "taxable_amount": calc["taxable"]
             })
@@ -612,7 +621,7 @@ class TallyEngine:
             global_rate = float(payload.get("gst_rate", 0))
             
             # Item setup
-            confirmed_item = self.ensure_stock_item(name, unit=unit)
+            confirmed_item, canonical_unit = self.ensure_stock_item(name, unit=unit)
             if not confirmed_item: return {"status": "error", "message": f"Item Failed: {name}"}
             
             amount = qty * rate
@@ -624,7 +633,7 @@ class TallyEngine:
             items_payload.append({
                 "name": confirmed_item,
                 "quantity": qty,
-                "unit": unit,
+                "unit": canonical_unit,
                 "rate": rate,
                 "amount": amount
             })
