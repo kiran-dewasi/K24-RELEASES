@@ -480,7 +480,17 @@ class TallyEngine:
         Ensures Party, Purchase Account, and Stock Items exist before Voucher creation.
         """
         logger.info("Starting Verified Purchase Request...")
-        
+
+        # 0. PRE-WARM CACHE: fetch all ledgers + items ONCE upfront
+        #    This prevents cold-cache misses when ensure_* calls run sequentially.
+        #    Without this, Tally is busy with ledger calls when item cache tries to populate.
+        logger.info("🔥 Pre-warming Tally cache (ledgers + items)...")
+        if not self.reader.cache_populated:
+            self.reader.fetch_all_masters()
+        if not self.reader.item_cache:
+            self.reader.fetch_all_items()
+        logger.info(f"✅ Cache ready: {len(self.reader.ledger_cache)} ledgers, {len(self.reader.item_cache)} items")
+
         # 1. Validate & Context
         party_name_input = payload.get("party_name")
         if not party_name_input or party_name_input.lower() == "unknown":
