@@ -452,37 +452,133 @@ class GoldenXMLBuilder:
         # Calculate totals
         item_total = sum(item.amount for item in data.inventory_items)
         tax_total = sum(e.amount for e in data.ledger_entries if not e.is_party)
-        grand_total = item_total + tax_total
+        voucher_total = item_total + tax_total
 
         # Find the correct Sales ledger name — use passed override or default
         sales_ledger = data.sales_ledger_name or "Sales Account"
 
-        xml = cls.build_envelope(data.company)
+        xml = cls.build_envelope(data.company, report_name="Vouchers")
         xml += f"""    <TALLYMESSAGE xmlns:UDF="TallyUDF">
-     <VOUCHER REMOTEID="{guid}" VCHTYPE="Sales" ACTION="Create" OBJVIEW="Accounting Voucher View">
+     <VOUCHER REMOTEID="{guid}" VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">
+      <BASICBUYERADDRESS.LIST TYPE="String">
+       <BASICBUYERADDRESS>{escape(data.party_name)}</BASICBUYERADDRESS>
+      </BASICBUYERADDRESS.LIST>
       <OLDAUDITENTRYIDS.LIST TYPE="Number">
        <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
       </OLDAUDITENTRYIDS.LIST>
       <DATE>{date}</DATE>
+      <REFERENCEDATE>{date}</REFERENCEDATE>
+      <BILLOFLADINGDATE>{date}</BILLOFLADINGDATE>
       <VCHSTATUSDATE>{date}</VCHSTATUSDATE>
       <GUID>{guid}</GUID>
-      <STATENAME>{escape(data.state_name)}</STATENAME>
       <GSTREGISTRATIONTYPE>{escape(data.gst_registration_type)}</GSTREGISTRATIONTYPE>
+      <VATDEALERTYPE>Regular</VATDEALERTYPE>
+      <STATENAME>{escape(data.state_name)}</STATENAME>
+      <COUNTRYOFRESIDENCE>India</COUNTRYOFRESIDENCE>
+      <PARTYGSTIN>{escape(data.party_gstin or "")}</PARTYGSTIN>
       <PLACEOFSUPPLY>{escape(data.place_of_supply)}</PLACEOFSUPPLY>
       <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
       <PARTYNAME>{escape(data.party_name)}</PARTYNAME>
       <PARTYLEDGERNAME>{escape(data.party_name)}</PARTYLEDGERNAME>
       <VOUCHERNUMBER>{escape(data.voucher_number or "")}</VOUCHERNUMBER>
-      <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
-      <NARRATION>{escape(data.narration or "")}</NARRATION>
-      <ISINVOICE>No</ISINVOICE>
-      <EFFECTIVEDATE>{date}</EFFECTIVEDATE>
+      <BASICBUYERNAME>{escape(data.party_name)}</BASICBUYERNAME>
+      <REFERENCE>{escape(data.reference or data.voucher_number or "")}</REFERENCE>
+      <PARTYMAILINGNAME>{escape(data.party_name)}</PARTYMAILINGNAME>
+      <CONSIGNEEMAILINGNAME>{escape(data.party_name)}</CONSIGNEEMAILINGNAME>
+      <CONSIGNEESTATENAME>{escape(data.state_name)}</CONSIGNEESTATENAME>
+      <CONSIGNEECOUNTRYNAME>India</CONSIGNEECOUNTRYNAME>
+      <BASICBASEPARTYNAME>{escape(data.party_name)}</BASICBASEPARTYNAME>
       <NUMBERINGSTYLE>Auto Retain</NUMBERINGSTYLE>
+      <CSTFORMISSUETYPE>&#4; Not Applicable</CSTFORMISSUETYPE>
+      <CSTFORMRECVTYPE>&#4; Not Applicable</CSTFORMRECVTYPE>
+      <FBTPAYMENTTYPE>Default</FBTPAYMENTTYPE>
+      <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
+      <VCHSTATUSTAXADJUSTMENT>Default</VCHSTATUSTAXADJUSTMENT>
+      <VCHSTATUSVOUCHERTYPE>Sales</VCHSTATUSVOUCHERTYPE>
+      <VCHGSTCLASS>&#4; Not Applicable</VCHGSTCLASS>
+      <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
+      <DIFFACTUALQTY>No</DIFFACTUALQTY>
+      <ISMSTFROMSYNC>No</ISMSTFROMSYNC>
       <ISDELETED>No</ISDELETED>
+      <ISSECURITYONWHENENTERED>No</ISSECURITYONWHENENTERED>
+      <ASORIGINAL>No</ASORIGINAL>
+      <AUDITED>No</AUDITED>
+      <ISCOMMONPARTY>No</ISCOMMONPARTY>
+      <FORJOBCOSTING>No</FORJOBCOSTING>
+      <ISOPTIONAL>No</ISOPTIONAL>
+      <EFFECTIVEDATE>{date}</EFFECTIVEDATE>
+      <USEFOREXCISE>No</USEFOREXCISE>
+      <ISFORJOBWORKIN>No</ISFORJOBWORKIN>
+      <ALLOWCONSUMPTION>No</ALLOWCONSUMPTION>
+      <USEFORINTEREST>No</USEFORINTEREST>
+      <USEFORGAINLOSS>No</USEFORGAINLOSS>
+      <USEFORGODOWNTRANSFER>No</USEFORGODOWNTRANSFER>
+      <USEFORCOMPOUND>No</USEFORCOMPOUND>
+      <USEFORSERVICETAX>No</USEFORSERVICETAX>
+      <ISREVERSECHARGEAPPLICABLE>No</ISREVERSECHARGEAPPLICABLE>
+      <ISSYSTEM>No</ISSYSTEM>
+      <ISFETCHEDONLY>No</ISFETCHEDONLY>
+      <ISGSTOVERRIDDEN>No</ISGSTOVERRIDDEN>
+      <ISCANCELLED>No</ISCANCELLED>
+      <ISONHOLD>No</ISONHOLD>
+      <ISSUMMARY>No</ISSUMMARY>
+      <ISECOMMERCESUPPLY>No</ISECOMMERCESUPPLY>
+      <ISBOENOTAPPLICABLE>No</ISBOENOTAPPLICABLE>
+      <ISGSTSECSEVENAPPLICABLE>No</ISGSTSECSEVENAPPLICABLE>
+      <IGNOREEINVVALIDATION>No</IGNOREEINVVALIDATION>
+      <CMPGSTISOTHTERRITORYASSESSEE>No</CMPGSTISOTHTERRITORYASSESSEE>
+      <PARTYGSTISOTHTERRITORYASSESSEE>No</PARTYGSTISOTHTERRITORYASSESSEE>
+      <IRNJSONEXPORTED>No</IRNJSONEXPORTED>
+      <IRNCANCELLED>No</IRNCANCELLED>
+      <IGNOREGSTCONFLICTINMIG>No</IGNOREGSTCONFLICTINMIG>
+      <ISOPBALTRANSACTION>No</ISOPBALTRANSACTION>
+      <IGNOREGSTFORMATVALIDATION>No</IGNOREGSTFORMATVALIDATION>
+      <ISELIGIBLEFORITC>Yes</ISELIGIBLEFORITC>
+      <IGNOREGSTOPTIONALUNCERTAIN>No</IGNOREGSTOPTIONALUNCERTAIN>
+      <UPDATESUMMARYVALUES>No</UPDATESUMMARYVALUES>
+      <ISEWAYBILLAPPLICABLE>No</ISEWAYBILLAPPLICABLE>
+      <ISDELETEDRETAINED>No</ISDELETEDRETAINED>
+      <ISNULL>No</ISNULL>
+      <ISEXCISEVOUCHER>No</ISEXCISEVOUCHER>
+      <EXCISETAXOVERRIDE>No</EXCISETAXOVERRIDE>
+      <USEFORTAXUNITTRANSFER>No</USEFORTAXUNITTRANSFER>
+      <ISINVOICE>Yes</ISINVOICE>
+      <MFGJOURNAL>No</MFGJOURNAL>
+      <HASDISCOUNTS>No</HASDISCOUNTS>
+      <ASPAYSLIP>No</ASPAYSLIP>
+      <ISCOSTCENTRE>No</ISCOSTCENTRE>
+      <ISSTXNONREALIZEDVCH>No</ISSTXNONREALIZEDVCH>
+      <ISEXCISEMANUFACTURERON>No</ISEXCISEMANUFACTURERON>
+      <ISBLANKCHEQUE>No</ISBLANKCHEQUE>
+      <ISVOID>No</ISVOID>
+      <ISVATDUTYPAID>Yes</ISVATDUTYPAID>
+      <ISDELIVERYSAMEASCONSIGNEE>No</ISDELIVERYSAMEASCONSIGNEE>
+      <ISDISPATCHSAMEASCONSIGNOR>No</ISDISPATCHSAMEASCONSIGNOR>
+      <CHANGEVCHMODE>No</CHANGEVCHMODE>
       <VOUCHERNUMBERSERIES>Default</VOUCHERNUMBERSERIES>
+      <EWAYBILLDETAILS.LIST>      </EWAYBILLDETAILS.LIST>
+      <EXCLUDEDTAXATIONS.LIST>      </EXCLUDEDTAXATIONS.LIST>
+      <OLDAUDITENTRIES.LIST>      </OLDAUDITENTRIES.LIST>
+      <ACCOUNTAUDITENTRIES.LIST>      </ACCOUNTAUDITENTRIES.LIST>
+      <AUDITENTRIES.LIST>      </AUDITENTRIES.LIST>
+      <DUTYHEADDETAILS.LIST>      </DUTYHEADDETAILS.LIST>
+      <GSTADVADJDETAILS.LIST>      </GSTADVADJDETAILS.LIST>
 """
 
-        # 1. Party entry (Debit — customer owes us the grand total)
+        # Add inventory items
+        for item in data.inventory_items:
+            # Override item's purchase ledger to the requested sales ledger context
+            old_pl = item.purchase_ledger
+            item.purchase_ledger = sales_ledger
+            xml += cls._build_inventory_entry(item, is_purchase=False)
+            item.purchase_ledger = old_pl
+
+        # Add additional ledger entries (Taxes, etc.)
+        for entry in data.ledger_entries:
+            if not entry.is_party:
+                xml += cls._build_ledger_entry(entry)
+
+        # Add party ledger entry (Debit for Sales)
         xml += f"""      <LEDGERENTRIES.LIST>
        <OLDAUDITENTRYIDS.LIST TYPE="Number">
         <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
@@ -493,48 +589,22 @@ class GoldenXMLBuilder:
        <LEDGERFROMITEM>No</LEDGERFROMITEM>
        <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
        <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+       <GSTOVERRIDDEN>No</GSTOVERRIDDEN>
+       <ISGSTASSESSABLEVALUEOVERRIDDEN>No</ISGSTASSESSABLEVALUEOVERRIDDEN>
+       <STRDISGSTAPPLICABLE>No</STRDISGSTAPPLICABLE>
+       <STRDGSTISPARTYLEDGER>No</STRDGSTISPARTYLEDGER>
+       <STRDGSTISDUTYLEDGER>No</STRDGSTISDUTYLEDGER>
+       <CONTENTNEGISPOS>No</CONTENTNEGISPOS>
        <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
-       <AMOUNT>-{grand_total:.2f}</AMOUNT>
+       <ISCAPVATTAXALTERED>No</ISCAPVATTAXALTERED>
+       <ISCAPVATNOTCLAIMED>No</ISCAPVATNOTCLAIMED>
+       <AMOUNT>-{voucher_total:.2f}</AMOUNT>
        <BILLALLOCATIONS.LIST>
         <NAME>{escape(data.reference or data.voucher_number or "New")}</NAME>
         <BILLTYPE>New Ref</BILLTYPE>
         <TDSDEDUCTEEISSPECIALRATE>No</TDSDEDUCTEEISSPECIALRATE>
-        <AMOUNT>-{grand_total:.2f}</AMOUNT>
+        <AMOUNT>-{voucher_total:.2f}</AMOUNT>
        </BILLALLOCATIONS.LIST>
-      </LEDGERENTRIES.LIST>
-"""
-
-        # 2. Sales Account entry (Credit — revenue earned)
-        xml += f"""      <LEDGERENTRIES.LIST>
-       <OLDAUDITENTRYIDS.LIST TYPE="Number">
-        <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
-       </OLDAUDITENTRYIDS.LIST>
-       <LEDGERNAME>{escape(sales_ledger)}</LEDGERNAME>
-       <GSTCLASS>&#4; Not Applicable</GSTCLASS>
-       <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-       <LEDGERFROMITEM>No</LEDGERFROMITEM>
-       <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
-       <ISPARTYLEDGER>No</ISPARTYLEDGER>
-       <ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>
-       <AMOUNT>{item_total:.2f}</AMOUNT>
-      </LEDGERENTRIES.LIST>
-"""
-
-        # 3. GST tax ledger entries (Credit — output tax liability)
-        for entry in data.ledger_entries:
-            if not entry.is_party:
-                xml += f"""      <LEDGERENTRIES.LIST>
-       <OLDAUDITENTRYIDS.LIST TYPE="Number">
-        <OLDAUDITENTRYIDS>-1</OLDAUDITENTRYIDS>
-       </OLDAUDITENTRYIDS.LIST>
-       <LEDGERNAME>{escape(entry.ledger_name)}</LEDGERNAME>
-       <GSTCLASS>&#4; Not Applicable</GSTCLASS>
-       <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-       <LEDGERFROMITEM>No</LEDGERFROMITEM>
-       <REMOVEZEROENTRIES>No</REMOVEZEROENTRIES>
-       <ISPARTYLEDGER>No</ISPARTYLEDGER>
-       <ISLASTDEEMEDPOSITIVE>No</ISLASTDEEMEDPOSITIVE>
-       <AMOUNT>{entry.amount:.2f}</AMOUNT>
       </LEDGERENTRIES.LIST>
 """
 

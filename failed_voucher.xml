@@ -2,33 +2,48 @@
     <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
     <BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC>
     <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
-        <VOUCHER VCHTYPE="Receipt" ACTION="Create" OBJVIEW="Accounting Voucher View">
-            <DATE>20260227</DATE>
-            <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>
-            <PARTYLEDGERNAME>Cash</PARTYLEDGERNAME>
-            
-            <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
-            <ISINVOICE>No</ISINVOICE>
+        <VOUCHER VCHTYPE="Purchase" ACTION="Create" OBJVIEW="Invoice Voucher View">
+            <DATE>20250315</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <PARTYLEDGERNAME>Test End To End Supplier</PARTYLEDGERNAME>
+            <VOUCHERNUMBER>TEST-PURCH-1773567696</VOUCHERNUMBER>
+            <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
+            <ISINVOICE>Yes</ISINVOICE>
             
             <LEDGERENTRIES.LIST>
-                <LEDGERNAME>Cash</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                <LEDGERNAME>Test End To End Supplier</LEDGERNAME>
+                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
                 <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
-                <AMOUNT>-500.00</AMOUNT>
+                <AMOUNT>-3000.00</AMOUNT>
                 
                 <BILLALLOCATIONS.LIST>
-                    <NAME>Ref-20260227-1772215101</NAME>
+                    <NAME>TEST-PURCH-1773567696</NAME>
                     <BILLTYPE>New Ref</BILLTYPE>
-                    <AMOUNT>-500.00</AMOUNT>
+                    <AMOUNT>-3000.00</AMOUNT>
                 </BILLALLOCATIONS.LIST>
             </LEDGERENTRIES.LIST>
 
             
-            <LEDGERENTRIES.LIST>
-                <LEDGERNAME>Ramesh Traders</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-                <AMOUNT>-500.00</AMOUNT>
-            </LEDGERENTRIES.LIST>
-            
+                <ALLINVENTORYENTRIES.LIST>
+                    <STOCKITEMNAME>Test Item</STOCKITEMNAME>
+                    <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                    <RATE>120.0/kg</RATE>
+                    <AMOUNT>-3000.00</AMOUNT>
+                    <ACTUALQTY> 25.0 kg</ACTUALQTY>
+                    <BILLEDQTY> 25.0 kg</BILLEDQTY>
+
+                    <BATCHALLOCATIONS.LIST>
+                        <GODOWNNAME>Main Location</GODOWNNAME>
+                        <AMOUNT>-3000.00</AMOUNT>
+                        <ACTUALQTY> 25.0 kg</ACTUALQTY>
+                        <BILLEDQTY> 25.0 kg</BILLEDQTY>
+                    </BATCHALLOCATIONS.LIST>
+
+                    <ACCOUNTINGALLOCATIONS.LIST>
+                        <LEDGERNAME>Purchase Account</LEDGERNAME>
+                        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+                        <AMOUNT>-3000.00</AMOUNT>
+                    </ACCOUNTINGALLOCATIONS.LIST>
+                </ALLINVENTORYENTRIES.LIST>
         </VOUCHER>
     </TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>

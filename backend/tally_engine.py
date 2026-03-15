@@ -40,6 +40,73 @@ class TallyObjectFactory:
     Universal Factory for generating Tally XMLs.
     """
 
+    # Toggles fallback behavior for items that lack batch info:
+    # Set this to True globally if you need the old behavior per company/tenant requirements.
+    allow_default_primary_batch_for_nonbatch_items = False
+    
+    @staticmethod
+    def get_stock_item_config(item_name: str) -> Dict[str, Any]:
+        """
+        Retrieves the configuration for a stock item.
+        For now, this is a simulated method that assumes batch tracking is off by default
+        to prevent EXCEPTION: 1 from Tally for unknown items or non-batch items.
+        
+        TODO: Connect this to DB/cache to dynamically fetch 'ISBATCHWISEON' from Tally.
+        """
+        return {
+            "is_batchwise_on": False,
+            "default_godown_name": "Main Location",
+            "default_batch_name": "Primary Batch"
+        }
+
+    @classmethod
+    def build_inventory_allocation_xml(cls, line_item: Dict[str, Any], item_signed_amt: float, qty: float, unit: str) -> str:
+        """
+        Builds the BATCHALLOCATIONS.LIST block for a line item.
+        
+        line_item contains:
+          - name
+          - godown (optional)
+          - batch (optional, for batch-enabled items)
+          
+        Examples (Docstring pseudo-tests):
+        1. Non-batch item like "CUMIN SEEDS ( JEERA )":
+           is_batchwise_on = False.
+           Expected XML: <BATCHALLOCATIONS.LIST> with <GODOWNNAME> but no <BATCHNAME>.
+        2. Batch-enabled item with explicit batch_name:
+           is_batchwise_on = True, line_item["batch"] = "Batch-123"
+           Expected XML: Includes <BATCHNAME>Batch-123</BATCHNAME>.
+        3. Batch-enabled item without explicit batch_name:
+           is_batchwise_on = True, line_item["batch"] is None
+           Expected XML: Includes <BATCHNAME>Primary Batch</BATCHNAME>.
+        """
+        item_name = line_item.get("name", "")
+        config = cls.get_stock_item_config(item_name)
+        
+        # Always set a valid godown name (default to "Main Location" if none)
+        godown = line_item.get("godown") or config.get("default_godown_name", "Main Location")
+        is_batchwise_on = config.get("is_batchwise_on", False)
+        
+        # Use Tally's behavior: Godown allocation is valid without batches.
+        # Batch fields should be omitted if the item is not batch-enabled.
+        if is_batchwise_on or cls.allow_default_primary_batch_for_nonbatch_items:
+            batch = line_item.get("batch") or config.get("default_batch_name", "Primary Batch")
+            return f"""<BATCHALLOCATIONS.LIST>
+                        <GODOWNNAME>{escape(godown)}</GODOWNNAME>
+                        <BATCHNAME>{escape(batch)}</BATCHNAME>
+                        <AMOUNT>{item_signed_amt:.2f}</AMOUNT>
+                        <ACTUALQTY> {qty} {unit}</ACTUALQTY>
+                        <BILLEDQTY> {qty} {unit}</BILLEDQTY>
+                    </BATCHALLOCATIONS.LIST>"""
+        else:
+            # Omit <BATCHNAME> entirely for non-batch items.
+            return f"""<BATCHALLOCATIONS.LIST>
+                        <GODOWNNAME>{escape(godown)}</GODOWNNAME>
+                        <AMOUNT>{item_signed_amt:.2f}</AMOUNT>
+                        <ACTUALQTY> {qty} {unit}</ACTUALQTY>
+                        <BILLEDQTY> {qty} {unit}</BILLEDQTY>
+                    </BATCHALLOCATIONS.LIST>"""
+
     @staticmethod
     def create_unit_xml(unit_name: str) -> str:
         return f"""<ENVELOPE>
@@ -166,6 +233,10 @@ class TallyObjectFactory:
                 item_signed_amt = get_tally_amount(amount, items_is_debit)
                 validation_sum += item_signed_amt
 
+                inventory_allocation_xml = TallyObjectFactory.build_inventory_allocation_xml(
+                    line_item=item, item_signed_amt=item_signed_amt, qty=qty, unit=unit
+                )
+
                 items_xml += f"""
                 <ALLINVENTORYENTRIES.LIST>
                     <STOCKITEMNAME>{name}</STOCKITEMNAME>
@@ -175,13 +246,7 @@ class TallyObjectFactory:
                     <ACTUALQTY> {qty} {unit}</ACTUALQTY>
                     <BILLEDQTY> {qty} {unit}</BILLEDQTY>
 
-                    <BATCHALLOCATIONS.LIST>
-                        <GODOWNNAME>{item.get('godown') or 'Main Location'}</GODOWNNAME>
-                        <BATCHNAME>{item.get('batch') or 'Primary Batch'}</BATCHNAME>
-                        <AMOUNT>{item_signed_amt:.2f}</AMOUNT>
-                        <ACTUALQTY> {qty} {unit}</ACTUALQTY>
-                        <BILLEDQTY> {qty} {unit}</BILLEDQTY>
-                    </BATCHALLOCATIONS.LIST>
+                    {inventory_allocation_xml}
 
                     <ACCOUNTINGALLOCATIONS.LIST>
                         <LEDGERNAME>{main_ledger}</LEDGERNAME>
@@ -545,23 +610,62 @@ class TallyEngine:
                 "taxable_amount": calc["taxable"]
             })
 
-        # 5. Build Voucher (Using INTERNAL Factory)
-        logger.info("DEBUG: Building Voucher XML...")
-        # Passing verified purchase_ledger explicitly, mapped to main_ledger
-        voucher_xml = TallyObjectFactory.create_voucher_xml(
-            payload={
-                "date": payload.get("date", "20250401"),
-                "voucher_type": "Purchase",
-                "voucher_number": payload.get("voucher_number", ""),
-                "party_name": confirmed_party,
-                "main_ledger": confirmed_purch_ledger, # Verified Ledger
-                "items": items_payload,
-                "amount": payload.get("amount", 0) # Fallback for simple voucher
-            },
-            tax_ledgers=[] # Purchase usually input tax, maybe impl proper fetching later
+        # 5. Build Voucher (Using Golden XML Builder)
+        logger.info("DEBUG: Building Purchase Voucher XML via Golden XML Builder...")
+        from backend.tally_golden_xml import GoldenXMLBuilder, VoucherData, InventoryItem, LedgerEntry
+
+        # Auto-detect company name from Tally
+        company_name = self.reader.get_company_name() or os.getenv("TALLY_COMPANY", "")
+        if company_name:
+            logger.info(f"Using Tally company: '{company_name}'")
+        else:
+            logger.warning("Could not detect Tally company name — omitting SVCURRENTCOMPANY")
+
+        date_str = payload.get("date", "20250401")
+        voucher_number = payload.get("voucher_number", "")
+        
+        # Build inventory items
+        golden_items = []
+        for it in items_payload:
+            inv = InventoryItem(
+                name=it["name"],
+                quantity=it["quantity"],
+                rate=it["rate"],
+                unit=it.get("unit", "Kgs"),
+                godown="Main Location",
+                purchase_ledger=confirmed_purch_ledger,
+            )
+            golden_items.append(inv)
+
+        # Build tax ledger entries (Purchases usually collect input taxes if applicable,
+        # but the original logic didn't populate tax buckets here. We'll leave it empty for now
+        # until requested, as done originally).
+        golden_taxes = []
+
+        data = VoucherData(
+            company=company_name,
+            voucher_type="Purchase",
+            date=date_str,
+            party_name=confirmed_party,
+            voucher_number=voucher_number,
+            reference=voucher_number,
+            narration=payload.get("narration", ""),
+            # Defaults just in case they are needed for GoldenXML
+            state_name=os.getenv("COMPANY_STATE", "Maharashtra"),
+            place_of_supply=os.getenv("COMPANY_STATE", "Maharashtra"),
+            inventory_items=golden_items,
+            ledger_entries=golden_taxes,
         )
 
-        logger.info(f"DEBUG: FINAL XML:\n{voucher_xml}")
+        voucher_xml = GoldenXMLBuilder.build_purchase_voucher(data)
+
+        logger_debug = logging.getLogger("XML_DEBUG")
+        logger_debug.info("\n\n" + "="*40 + " GOLDEN PURCHASE VOUCHER XML " + "="*40)
+        logger_debug.info(voucher_xml)
+        logger_debug.info("="*100 + "\n")
+
+        with open("last_purchase_voucher.xml", "w", encoding="utf-8") as f:
+            f.write(voucher_xml)
         
         if self.client.send_request(voucher_xml):
             return {"status": "success", "message": "Voucher Created"}
