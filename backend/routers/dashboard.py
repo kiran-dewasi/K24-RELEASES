@@ -35,7 +35,8 @@ def get_dashboard_stats(
     sales_total = db.query(func.sum(Voucher.amount)).filter(
         Voucher.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%sales%"),
-        Voucher.date >= fy_start
+        Voucher.date >= fy_start,
+        Voucher.sync_status != "DELETED"
     ).scalar() or 0.0
 
     # Receivables: sum ABS of all debtor balances (handles sign inconsistencies from Tally)
@@ -116,6 +117,7 @@ def get_cashflow(
         Voucher.tenant_id == tenant_id,
         Voucher.date >= start_dt,
         Voucher.date <= end_dt,
+        Voucher.sync_status != "DELETED",
         or_(
             Voucher.voucher_type.ilike("%receipt%"),
             Voucher.voucher_type.ilike("%payment%")
@@ -245,7 +247,8 @@ def get_dashboard_party(
         Voucher.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%sales%"),
         Voucher.date >= fy_start,
-        Voucher.party_name != None
+        Voucher.party_name != None,
+        Voucher.sync_status != "DELETED"
     ).group_by(Voucher.party_name).order_by(desc("total")).limit(5).all()
 
     top_suppliers = db.query(
@@ -255,7 +258,8 @@ def get_dashboard_party(
         Voucher.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%purchase%"),
         Voucher.date >= fy_start,
-        Voucher.party_name != None
+        Voucher.party_name != None,
+        Voucher.sync_status != "DELETED"
     ).group_by(Voucher.party_name).order_by(desc("total")).limit(5).all()
 
     return {

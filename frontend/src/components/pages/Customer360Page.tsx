@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { apiClient } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -435,7 +435,7 @@ function Customer360Content() {
         setVoucherLoading(true);
         try {
             const params = new URLSearchParams({ voucher_number: voucherNumber, voucher_type: voucherType });
-            const res = await apiClient(`/api/vouchers/detail?${params}`);
+            const res = await api.get(`/api/vouchers/detail?${params}`);
             if (res.ok) {
                 const detail = await res.json();
                 setSelectedVoucher(detail);
@@ -451,7 +451,7 @@ function Customer360Content() {
         setLoading(true);
         setError(null);
         try {
-            const res = await apiClient(`/api/customers/${id}/360`);
+            const res = await api.get(`/api/customers/${id}/360`);
 
             if (!res.ok) {
                 if (res.status === 404) {

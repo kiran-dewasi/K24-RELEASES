@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 import {
     Table,
     TableBody,
@@ -37,7 +37,7 @@ export function LedgerItemsTab({ ledgerId }: LedgerItemsTabProps) {
         const fetchItems = async () => {
             setLoading(true);
             try {
-                const res = await apiClient(`/api/ledgers/${ledgerId}/items`);
+                const res = await api.get(`/api/ledgers/${ledgerId}/items`);
                 if (res.ok) {
                     const data = await res.json();
                     setItems(data.items || []);

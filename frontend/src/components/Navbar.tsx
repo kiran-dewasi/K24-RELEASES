@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, CheckCircle2, RefreshCw, Bell } from "lucide-react";
 import { useState, useEffect } from "react";
-import { API_CONFIG, apiClient } from "@/lib/api-config";
+import { api , checkBackendStatus } from "@/lib/api";
 
 // Map routes to titles and subtitles
 const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
@@ -43,12 +43,9 @@ export default function Navbar() {
         const timer = setTimeout(async () => {
             if (searchQuery.length > 2) {
                 try {
-                    const res = await apiClient(`/api/search/global?q=${encodeURIComponent(searchQuery)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        setResults(data);
-                        setIsOpen(true);
-                    }
+                    const data = await api.get(`/api/search/global?q=${encodeURIComponent(searchQuery)}`);
+                    setResults(data);
+                    setIsOpen(true);
                 } catch (e) {
                     console.error("Search failed", e);
                 }
@@ -78,12 +75,8 @@ export default function Navbar() {
     useEffect(() => {
         const checkHealth = async () => {
             try {
-                const res = await fetch(`http://127.0.0.1:8001/health`, {
-                    cache: 'no-cache',
-                    signal: AbortSignal.timeout(5000)
-                });
-
-                if (res.ok) {
+                const status = await checkBackendStatus();
+                if (status.running) {
                     const newStatus = {
                         connected: true,
                         lastSync: new Date().toISOString()
@@ -94,7 +87,6 @@ export default function Navbar() {
                     setSyncHealth({ connected: false, lastSync: null });
                 }
             } catch {
-                // Backend not ready yet — fail silently, dot stays red until it's up
                 setSyncHealth({ connected: false, lastSync: null });
             }
         };
@@ -115,23 +107,12 @@ export default function Navbar() {
         try {
             // Full sync (ledgers + vouchers + stock) can take 30-60s.
             // 90s timeout gives plenty of headroom without hanging forever.
-            const res = await apiClient(`/api/sync/tally`, {
-                method: "POST",
-                headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(90000)
-            });
-            if (res.ok) {
-                setShowSuccess(true);
-                // Reload immediately — sync is fully complete when API responds
-                setTimeout(() => {
-                    setShowSuccess(false);
-                    window.location.reload();
-                }, 1500);
-            } else {
-                const error = await res.json();
-                setSyncError(error.detail || 'Sync failed');
-                setTimeout(() => setSyncError(null), 4000);
-            }
+            await api.post(`/api/sync/tally`);
+            setShowSuccess(true);
+            setTimeout(() => {
+                setShowSuccess(false);
+                window.location.reload();
+            }, 1500);
         } catch (error: any) {
             console.error("Sync error:", error);
             if (error?.name === 'TimeoutError') {

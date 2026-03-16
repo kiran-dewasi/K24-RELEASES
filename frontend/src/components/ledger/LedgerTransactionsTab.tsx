@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 import {
     Table,
     TableBody,
@@ -75,7 +75,7 @@ export function LedgerTransactionsTab({ ledgerId }: LedgerTransactionsTabProps) 
             if (voucherType !== 'all') query.append("voucher_type", voucherType);
             if (debouncedSearch) query.append("search", debouncedSearch);
 
-            const res = await apiClient(`/api/ledgers/${ledgerId}/transactions?${query.toString()}`);
+            const res = await api.get(`/api/ledgers/${ledgerId}/transactions?${query.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 processTransactions(data.transactions, data.opening_balance);

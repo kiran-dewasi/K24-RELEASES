@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { InventoryItem, StockMovement } from '@/types/inventory';
-import { apiClient } from '@/lib/api-config';
+import { api } from "@/lib/api";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -34,7 +34,7 @@ function InventoryDetailContent() {
             try {
                 setLoading(true);
                 // Fetch Item Details
-                const itemRes = await apiClient(`/api/inventory/${encodeURIComponent(itemName)}`);
+                const itemRes = await api.get(`/api/inventory/${encodeURIComponent(itemName)}`);
 
                 if (itemRes.ok) {
                     const data = await itemRes.json();
@@ -44,7 +44,7 @@ function InventoryDetailContent() {
                 }
 
                 // Fetch Movements
-                const moveRes = await apiClient(`/api/inventory/${encodeURIComponent(itemName)}/movements`);
+                const moveRes = await api.get(`/api/inventory/${encodeURIComponent(itemName)}/movements`);
                 if (moveRes.ok) {
                     const mData = await moveRes.json();
                     setMovements(mData.movements || []);

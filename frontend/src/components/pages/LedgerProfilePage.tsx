@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 import {
     ArrowLeft,
     Mail,
@@ -66,7 +66,7 @@ function LedgerProfileContent() {
         setLoading(true);
         try {
             // Fetch Details
-            const res = await apiClient(`/api/ledgers/${ledger_id}`);
+            const res = await api.get(`/api/ledgers/${ledger_id}`);
             if (res.ok) {
                 const data = await res.json();
                 setLedger(data);

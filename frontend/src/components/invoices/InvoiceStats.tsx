@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { Loader2 } from "lucide-react";
@@ -20,11 +20,11 @@ export function InvoiceStats() {
         const fetchStats = async () => {
             try {
                 // Fetch dashboard stats which includes receivables
-                const statsRes = await apiClient("/api/dashboard/stats");
+                const statsRes = await api.get("/api/dashboard/stats");
                 const dashStats = statsRes.ok ? await statsRes.json() : null;
 
                 // Fetch cashflow for chart
-                const cfRes = await apiClient("/api/dashboard/cashflow");
+                const cfRes = await api.get("/api/dashboard/cashflow");
                 const cashflowData = cfRes.ok ? await cfRes.json() : [];
 
                 // Convert cashflow to chart format

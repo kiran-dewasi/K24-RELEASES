@@ -290,8 +290,11 @@ function ReportDetailContent({ slug }: { slug: string }) {
         if (filters.partyName) params.set("party_name", filters.partyName);
 
         try {
-            // Call the Next.js API proxy — runs server-side, no Tauri/CORS issues
-            const res = await fetch(`/api/export-pdf?${params.toString()}`);
+            // Call the python backend directly, passing the API key
+            const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001'}/reports/${slug}/export?${params.toString()}`;
+            const res = await fetch(backendUrl, {
+                headers: { "x-api-key": process.env.NEXT_PUBLIC_API_KEY || "k24-secret-key-123" }
+            });
             if (!res.ok) {
                 const errJson = await res.json().catch(() => ({ error: res.statusText }));
                 throw new Error(errJson?.error || `HTTP ${res.status}`);

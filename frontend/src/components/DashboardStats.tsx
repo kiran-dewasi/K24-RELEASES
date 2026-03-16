@@ -8,7 +8,7 @@ import {
     Wallet, TrendingUp, CreditCard, PiggyBank,
     ArrowUpRight, ArrowDownRight, RefreshCw, Zap
 } from "lucide-react";
-import { API_CONFIG, apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,22 +70,19 @@ export default function DashboardStats() {
         setLoading(true);
         setError("");
         try {
-            const [sRes, stRes, pRes] = await Promise.all([
-                apiClient("/api/dashboard/stats"),
-                apiClient("/api/dashboard/stock-summary"),
-                apiClient("/api/dashboard/party-analysis"),
+            const [statsData, stockData, partyData] = await Promise.all([
+                api.get("/api/dashboard/stats"),
+                api.get("/api/dashboard/stock-summary"),
+                api.get("/api/dashboard/party-analysis"),
             ]);
 
-            if (sRes.ok) {
-                const data = await sRes.json();
-                setStats(data);
-                // Auto-retry once if all financial values are 0 (backend still warming up / Tally not synced yet)
-                if (data.cash === 0 && data.receivables === 0 && data.payables === 0) {
-                    setTimeout(() => setRefreshKey(k => k + 1), 4000);
-                }
+            setStats(statsData);
+            // Auto-retry once if all financial values are 0 (backend still warming up / Tally not synced yet)
+            if (statsData.cash === 0 && statsData.receivables === 0 && statsData.payables === 0) {
+                setTimeout(() => setRefreshKey(k => k + 1), 4000);
             }
-            if (stRes.ok) setStockStats(await stRes.json());
-            if (pRes.ok) setPartyStats(await pRes.json());
+            setStockStats(stockData);
+            setPartyStats(partyData);
         } catch (err) {
             console.error(err);
             setError("Failed to load dashboard data");

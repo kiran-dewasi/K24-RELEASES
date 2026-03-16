@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { Contact } from '@/types'
-import { getContacts, createContact, deleteContact } from '@/app/actions/contacts'
+// import { getContacts, createContact, deleteContact } from '@/app/actions/contacts'
+// Mocks for static export
+const getContacts = async (bId: string, s: string, p: number) => ({ data: [], count: 0 });
+const createContact = async (data: any) => {};
+const deleteContact = async (id: string) => {};
 import {
     Table,
     TableBody,

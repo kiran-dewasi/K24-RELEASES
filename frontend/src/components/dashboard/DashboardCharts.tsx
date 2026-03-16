@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { useState, useEffect } from "react";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 
 export function DashboardCharts() {
     const [cashflowData, setCashflowData] = useState<any[]>([]);
@@ -16,8 +16,8 @@ export function DashboardCharts() {
             setLoading(true);
             try {
                 const [cfRes, recRes] = await Promise.all([
-                    apiClient("/api/dashboard/cashflow"),
-                    apiClient("/api/dashboard/receivables")
+                    api.get("/api/dashboard/cashflow"),
+                    api.get("/api/dashboard/receivables")
                 ]);
 
                 if (cfRes.ok) setCashflowData(await cfRes.json());

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Phone, User, Hash, FileText, Search, Loader2, Bot, CheckCircle, AlertCircle, Save } from "lucide-react";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 
 interface CustomerMapping {
     id: string;
@@ -146,7 +146,7 @@ function BotNumberCard() {
     const fetchBotNumber = async () => {
         setLoading(true);
         try {
-            const res = await apiClient("/api/whatsapp/bot-number");
+            const res = await api.get("/api/whatsapp/bot-number");
             if (res.ok) {
                 const data = await res.json();
                 if (data.whatsapp_number) {
@@ -167,9 +167,7 @@ function BotNumberCard() {
         setStatus("idle");
         setErrorMsg("");
         try {
-            const res = await apiClient("/api/whatsapp/bot-number", {
-                method: "PUT",
-                body: JSON.stringify({ whatsapp_number: botNumber.trim() })
+            const res = await api.put("/api/whatsapp/bot-number", { whatsapp_number: botNumber.trim()
             });
             if (res.ok) {
                 const data = await res.json();
@@ -287,7 +285,7 @@ export default function WhatsAppSettingsPage() {
 
     const fetchMappings = async () => {
         try {
-            const res = await apiClient('/api/whatsapp/customers');
+            const res = await api.get('/api/whatsapp/customers');
             if (res.ok) {
                 const data = await res.json();
                 setMappings(data.mappings || []);
@@ -302,10 +300,7 @@ export default function WhatsAppSettingsPage() {
     const handleAdd = async (formData: any) => {
         setSubmitting(true);
         try {
-            const res = await apiClient('/api/whatsapp/customers', {
-                method: 'POST',
-                body: JSON.stringify(formData)
-            });
+            const res = await api.post('/api/whatsapp/customers', formData);
 
             if (res.ok) {
                 setShowAddForm(false);
@@ -327,9 +322,7 @@ export default function WhatsAppSettingsPage() {
         setMappings(prev => prev.filter(m => m.id !== id));
 
         try {
-            await apiClient(`/api/whatsapp/customers/${id}`, {
-                method: 'DELETE'
-            });
+            await api.delete(`/api/whatsapp/customers/${id}`);
         } catch (error) {
             alert("Failed to delete");
             fetchMappings();

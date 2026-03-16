@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Sparkles, ArrowRight, Check, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FollowUpCard, PartySelectorCard, ItemSelectorCard } from "@/components/chat/ChatCards";
-import { API_CONFIG, apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 
 interface DraftVoucher {
     party_name: string;
@@ -129,15 +129,20 @@ export default function MagicInput({
         setLoading(true);
 
         try {
-            const res = await apiClient("/api/chat", {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001'}/api/chat`, {
                 method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'k24-secret-key-123'
+                },
                 body: JSON.stringify({
                     thread_id: threadId || crypto.randomUUID(),
                     message: textToProcess
                 }),
             });
 
-            if (!res.ok) throw new Error(res.statusText);
+            if (!response.ok) throw new Error(response.statusText);
+            const res = response;
 
             // Create placeholder for assistant response
             const assistantMsgId = Date.now();
@@ -207,10 +212,7 @@ export default function MagicInput({
 
     const handleConfirmDraft = async (draft: DraftVoucher) => {
         try {
-            const res = await apiClient("/vouchers", {
-                method: "POST",
-                body: JSON.stringify(draft),
-            });
+            const res = await api.post("/vouchers");
             const result = await res.json();
 
             if (res.ok) {

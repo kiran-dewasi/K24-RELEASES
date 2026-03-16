@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiClient } from '@/lib/api-config';
+import { api } from "@/lib/api";
 import { StockMovement } from '@/types/inventory';
 import { StockMovementTable } from '@/components/inventory/StockMovementTable';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,7 +19,7 @@ export default function StockMovementsPage() {
     const fetchMovements = async () => {
         try {
             setLoading(true);
-            const res = await apiClient(`/api/inventory/movements/all?days=30`);
+            const res = await api.get(`/api/inventory/movements/all?days=30`);
             if (res.ok) {
                 const data = await res.json();
                 setMovements(data.movements || []);

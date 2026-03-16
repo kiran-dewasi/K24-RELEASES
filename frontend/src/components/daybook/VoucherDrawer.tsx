@@ -148,7 +148,7 @@ export function VoucherDrawer({ open, onClose, voucher, detailData, detailLoadin
                         {detailLoading && <LoadingSkeleton />}
 
                         {/* Error / No Tally connection */}
-                        {!detailLoading && !detail && (
+                        {!detailLoading && (!detail || detail.source === "tally_fallback_not_found") && (
                             <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
                                 <AlertCircle className="h-4 w-4 shrink-0" />
                                 <span>Could not fetch live details from Tally. Showing available info only.</span>

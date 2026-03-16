@@ -13,9 +13,11 @@ venv/
 .venv/
 
 # Build artifacts and binaries (MUST be excluded - too large for GitHub)
+build/
 build_temp/
 dist/
 target/
+*.pkl
 *.exe
 *.msi
 *.zip

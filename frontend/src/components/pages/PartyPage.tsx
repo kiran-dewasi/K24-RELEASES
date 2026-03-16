@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,14 +64,14 @@ function PartyProfileContent() {
         setLoading(true);
         try {
             // Fetch Profile
-            const res = await apiClient(`/api/ledgers/${id}`);
+            const res = await api.get(`/api/ledgers/${id}`);
             if (res.ok) {
                 const data = await res.json();
                 setProfile(data);
             }
 
             // Fetch Recent Transactions
-            const txnsRes = await apiClient(`/api/ledgers/${id}/transactions?limit=20`);
+            const txnsRes = await api.get(`/api/ledgers/${id}/transactions?limit=20`);
             if (txnsRes.ok) {
                 const data = await txnsRes.json();
                 setTransactions(data.transactions || []);

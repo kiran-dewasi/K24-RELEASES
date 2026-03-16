@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lock, CheckCircle, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { API_CONFIG, apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 
 function ResetPasswordContent() {
     const router = useRouter();
@@ -45,13 +45,9 @@ function ResetPasswordContent() {
         setLoading(true);
 
         try {
-            const response = await apiClient("/api/auth/reset-password", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    access_token: accessToken,
-                    new_password: password
-                })
+            const response = await api.post("/api/auth/reset-password", {
+                access_token: accessToken,
+                new_password: password
             });
 
             if (response.ok) {

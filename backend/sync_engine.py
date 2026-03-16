@@ -549,6 +549,9 @@ class SyncEngine:
             vouchers = self.tally.fetch_vouchers(from_date=from_date, to_date=to_date).to_dict('records')
             logger.info(f"📥 Fetched {len(vouchers)} vouchers from Tally (tenant={tenant_id})")
 
+            # Track vouchers seen from Tally for reconciliation
+            tally_voucher_ids = set()
+
             for vch_data in vouchers:
                 try:
                     guid          = vch_data.get("guid", vch_data.get("GUID", "")) or ""
@@ -587,42 +590,35 @@ class SyncEngine:
                         logger.warning(f"Bad date '{date_raw}' for #{vch_number} — using sentinel 1900-01-01")
                         vch_date = datetime(1900, 1, 1)
 
-                    # ── LAYER 1: Match by GUID (most reliable, Tally's own unique key) ──
+                    # ── Deterministic Duplicate Guard: Match existing voucher before insert ──
+                    from sqlalchemy import cast
+                    from sqlalchemy.types import Date
+
                     existing = None
+                    match_path = None
+
+                    # Priority 1: tenant_id + guid (most reliable)
                     if guid:
-                        existing = db.query(Voucher).filter(Voucher.guid == guid).first()
-
-                    # ── LAYER 2: Match by (voucher_number + type + date, same day) ──
-                    # Relaxed: no tenant_id requirement + case-insensitive type
-                    # Catches locally-created vouchers that have no GUID yet
-                    if not existing and vch_number:
-                        from sqlalchemy import func, cast
-                        from sqlalchemy.types import Date
                         existing = db.query(Voucher).filter(
-                            Voucher.voucher_number == vch_number,
-                            Voucher.voucher_type.ilike(vch_type),
-                            cast(Voucher.date, Date) == vch_date.date(),
-                        ).first()
-
-                    # ── LAYER 3: Fingerprint match (date + amount + type, any tenant) ──
-                    # Catches blank-numbered vouchers or those with slight name differences
-                    if not existing and amount > 0:
-                        from sqlalchemy import cast
-                        from sqlalchemy.types import Date
-                        existing = db.query(Voucher).filter(
-                            Voucher.voucher_type.ilike(vch_type),
-                            Voucher.amount == amount,
-                            cast(Voucher.date, Date) == vch_date.date(),
-                        ).first()
-
-                    # ── LAYER 4: If we still didn't find it, try by GUID alone across all tenants ──
-                    # Handles edge case where tenant_id changed between creation and sync
-                    if not existing and guid:
-                        existing = db.query(Voucher).filter(
+                            Voucher.tenant_id == tenant_id,
                             Voucher.guid == guid
                         ).first()
+                        if existing:
+                            match_path = "guid_match"
+
+                    # Priority 2: tenant_id + voucher_number + type + date (composite key)
+                    if not existing and vch_number:
+                        existing = db.query(Voucher).filter(
+                            Voucher.tenant_id == tenant_id,
+                            Voucher.voucher_number == vch_number,
+                            Voucher.voucher_type == vch_type,
+                            cast(Voucher.date, Date) == vch_date.date()
+                        ).first()
+                        if existing:
+                            match_path = "composite_match"
 
                     if existing:
+                        # Update existing voucher
                         existing.tenant_id         = tenant_id
                         existing.voucher_type      = vch_type
                         existing.party_name        = party
@@ -639,7 +635,11 @@ class SyncEngine:
                             existing.inventory_entries = inv_entries
                         if led_entries:
                             existing.ledger_entries = led_entries
+                        logger.debug(f"Voucher #{vch_number} matched via {match_path}")
+                        # Track this voucher as seen from Tally
+                        tally_voucher_ids.add(existing.id)
                     else:
+                        # Insert new voucher
                         new_voucher = Voucher(
                             tenant_id          = tenant_id,
                             voucher_number     = vch_number,
@@ -655,11 +655,39 @@ class SyncEngine:
                             ledger_entries     = led_entries or None,
                         )
                         db.add(new_voucher)
+                        db.flush()  # Get ID for tracking
+                        logger.debug(f"Voucher #{vch_number} inserted_new")
+                        # Track this new voucher as seen from Tally
+                        tally_voucher_ids.add(new_voucher.id)
 
                     synced += 1
                 except Exception as e:
                     logger.warning(f"Error syncing voucher {vch_data}: {e}")
                     errors += 1
+
+            # Reconcile deletions: mark local vouchers in date range not in Tally as DELETED
+            from sqlalchemy import cast
+            from sqlalchemy.types import Date
+            d_start = datetime.strptime(from_date, "%Y%m%d")
+            d_end = datetime.strptime(to_date, "%Y%m%d")
+
+            local_vouchers = db.query(Voucher).filter(
+                Voucher.tenant_id == tenant_id,
+                Voucher.date >= d_start,
+                Voucher.date <= d_end,
+                Voucher.sync_status != "DELETED"
+            ).all()
+
+            deleted_count = 0
+            for local_v in local_vouchers:
+                if local_v.id not in tally_voucher_ids:
+                    local_v.sync_status = "DELETED"
+                    local_v.last_synced = datetime.now()
+                    deleted_count += 1
+                    logger.info(f"🗑️ Marked voucher #{local_v.voucher_number} as DELETED (not in Tally)")
+
+            if deleted_count > 0:
+                logger.info(f"🗑️ Reconciled {deleted_count} deleted vouchers")
 
             if close_db:
                 db.commit()

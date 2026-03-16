@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, ArrowLeft, CheckCircle } from "lucide-react";
 import Link from "next/link";
-import { API_CONFIG, apiClient } from "@/lib/api-config";
+import { api } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
@@ -20,11 +20,7 @@ export default function ForgotPasswordPage() {
         setError("");
 
         try {
-            const response = await apiClient("/api/auth/forgot-password", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email })
-            });
+            const response = await api.post("/api/auth/forgot-password", { email });
 
             if (response.ok) {
                 setSent(true);

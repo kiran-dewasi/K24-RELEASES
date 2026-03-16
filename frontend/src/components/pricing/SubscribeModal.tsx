@@ -212,7 +212,7 @@ function UpiStep({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={qrUrl}
-                            alt={`Scan to pay ${amountDisplay} to ${UPI_CONFIG.upi_id}`}
+                            alt={`Scan to pay ${fmtINR(totalWithGst)} to ${UPI_CONFIG.upi_id}`}
                             width={180}
                             height={180}
                             className="w-full h-full object-contain"

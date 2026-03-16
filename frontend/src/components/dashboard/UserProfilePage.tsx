@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { UserProfile, BusinessProfile } from '@/types'
-import { updateUserProfile, updateBusinessProfile } from '@/app/actions/profile'
+// import { updateUserProfile, updateBusinessProfile } from '@/app/actions/profile'
+// Mocks for static export
+const updateUserProfile = async (id: string, data: any) => {};
+const updateBusinessProfile = async (id: string, data: any) => {};
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'

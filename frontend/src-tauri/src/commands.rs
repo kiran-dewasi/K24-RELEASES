@@ -50,13 +50,13 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
     #[cfg(debug_assertions)]
     {
         let auth = BackendAuth {
-            port: 8000,
+            port: 8001,
             session_token: session_token.clone(),
         };
         *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
-        log::info!("Development mode: Using localhost:8000");
+        log::info!("Development mode: Using localhost:8001");
         return Ok(serde_json::json!({
-            "port": 8000,
+            "port": 8001,
             "session_token": session_token,
             "mode": "development"
         }));

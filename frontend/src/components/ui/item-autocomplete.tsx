@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { apiClient } from '@/lib/api-config';
+import { api } from "@/lib/api";
 import { Package, ChevronRight, AlertCircle } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ export function ItemAutocomplete({
         setIsLoading(true);
         setNoResults(false);
         try {
-            const res = await apiClient(`/api/items/search?q=${encodeURIComponent(q)}&limit=10`);
+            const res = await api.get(`/api/items/search?q=${encodeURIComponent(q)}&limit=10`);
             if (res.ok) {
                 const data = await res.json();
                 const items: StockItem[] = data.items || [];

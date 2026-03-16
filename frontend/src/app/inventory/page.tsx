@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { apiClient } from '@/lib/api-config';
+import { api } from "@/lib/api";
 import { InventoryTable } from '@/components/inventory/InventoryTable';
 import { InventoryStats } from '@/components/inventory/InventoryStats';
 import { InventoryFilters } from '@/components/inventory/InventoryFilters';
@@ -58,8 +58,8 @@ function InventoryListPage() {
             if (categoryFilter !== 'all') params.append("category", categoryFilter);
 
             const [itemsRes, summaryRes] = await Promise.all([
-                apiClient(`/api/inventory?${params.toString()}`),
-                apiClient('/api/inventory/summary')
+                api.get(`/api/inventory?${params.toString()}`),
+                api.get('/api/inventory/summary')
             ]);
 
             if (itemsRes.ok) {

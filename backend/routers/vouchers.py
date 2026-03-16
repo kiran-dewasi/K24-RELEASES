@@ -132,7 +132,7 @@ async def get_voucher_detail(
             raise HTTPException(status_code=404, detail=f"Voucher not found")
 
         logger.info(
-            f"Voucher detail: #{voucher_number} type={db_voucher.voucher_type} "
+            f"Voucher detail: #{db_voucher.voucher_number} type={db_voucher.voucher_type} "
             f"inv_items={len(db_voucher.inventory_entries or [])} "
             f"led_entries={len(db_voucher.ledger_entries or [])}"
         )
@@ -145,13 +145,13 @@ async def get_voucher_detail(
         # ── Step 3: If DB has no line items, try Tally live as fallback ──────
         source = "local_db"
         if not inv_entries and not led_entries:
-            logger.info(f"No line items in DB for #{voucher_number} — trying Tally live fallback")
+            logger.info(f"🔍 local_detail=empty for #{db_voucher.voucher_number} — trying Tally fallback")
             try:
                 voucher_date_str = db_voucher.date.strftime("%Y%m%d") if db_voucher.date else None
                 effective_guid = guid or db_voucher.guid
                 tally_detail = _get_tally_connector().fetch_voucher_with_line_items(
-                    voucher_number=voucher_number,
-                    voucher_type=voucher_type,
+                    voucher_number=db_voucher.voucher_number,
+                    voucher_type=db_voucher.voucher_type,
                     guid=effective_guid,
                     voucher_date=voucher_date_str,
                 )
@@ -160,8 +160,13 @@ async def get_voucher_detail(
                     led_entries = tally_detail.get("ledger_entries", [])
                     tax_breakdown = tally_detail.get("tax_breakdown", [])
                     source = "tally"
+                    logger.info(f"✅ tally_fallback_match for #{db_voucher.voucher_number}")
+                else:
+                    logger.warning(f"⚠️ tally_fallback_not_found for #{db_voucher.voucher_number}")
             except Exception as te:
-                logger.warning(f"Tally live fallback failed for #{voucher_number}: {te}")
+                logger.warning(f"❌ Tally live fallback failed for #{db_voucher.voucher_number}: {te}")
+        else:
+            logger.debug(f"✅ local_detail present for #{db_voucher.voucher_number}")
 
         return {
             "voucher_number": db_voucher.voucher_number,
@@ -240,7 +245,8 @@ async def get_vouchers(
         db_query = db.query(Voucher).filter(
             Voucher.tenant_id == tenant_id,
             Voucher.date >= d_start,
-            Voucher.date <= d_end
+            Voucher.date <= d_end,
+            Voucher.sync_status != "DELETED"
         )
 
         # Apply voucher type filter at DB level

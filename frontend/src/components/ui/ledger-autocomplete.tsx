@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { API_CONFIG, apiClient } from '@/lib/api-config';
+import { api } from "@/lib/api";
 
 /**
  * Ledger Autocomplete Component
@@ -78,7 +78,7 @@ export function LedgerAutocomplete({
 
         try {
             const typeParam = ledgerType && ledgerType !== 'all' ? `&ledger_type=${ledgerType}` : '';
-            const response = await apiClient(`/api/ledgers/search?q=${encodeURIComponent(query)}${typeParam}&limit=10`);
+            const response = await api.get(`/api/ledgers/search?q=${encodeURIComponent(query)}${typeParam}&limit=10`);
 
             if (response.ok) {
                 const data = await response.json();

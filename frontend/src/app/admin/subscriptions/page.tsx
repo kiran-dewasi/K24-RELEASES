@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Clock, CheckCircle, XCircle, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Search } from "lucide-react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "process.env.NEXT_PUBLIC_API_URL || 'process.env.NEXT_PUBLIC_API_URL || 'process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001'''";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "k24-secret-key-123";
 
 interface Intent {

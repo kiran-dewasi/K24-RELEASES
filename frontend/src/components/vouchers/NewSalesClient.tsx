@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
-import { apiClient } from "@/lib/api-config";
+import { api, apiClient } from "@/lib/api";
 import { LedgerAutocomplete } from "@/components/ui/ledger-autocomplete";
 import { ItemAutocomplete, StockItem } from "@/components/ui/item-autocomplete";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { apiClient } from "@/lib/api-config";
+import { apiRequest, apiClient } from "@/lib/api";
 import { DaybookFilterBar } from "@/components/daybook/DaybookFilterBar";
 import { DaybookTable } from "@/components/daybook/DaybookTable";
 import { VoucherDrawer } from "@/components/daybook/VoucherDrawer";
@@ -228,13 +228,8 @@ export default function DayBookClient() {
                 return;
             }
 
-            const res = await apiClient(`/api/vouchers/detail?${params.toString()}`);
-            if (res.ok) {
-                const data = await res.json();
-                setDetailData(data);
-            } else {
-                console.error("Failed to fetch. Status:", res.status);
-            }
+            const data = await apiRequest(`/api/vouchers/detail?${params.toString()}`);
+            setDetailData(data);
         } catch (err) {
             console.error("Failed to fetch voucher detail", err);
         } finally {

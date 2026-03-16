@@ -11,6 +11,7 @@ hidden_imports = []
 # Critical uvicorn imports that PyInstaller often misses
 hidden_imports += [
     'uvicorn',
+    'uvicorn.logging',
     'uvicorn.loops',
     'uvicorn.loops.auto',
     'uvicorn.protocols',
@@ -20,6 +21,37 @@ hidden_imports += [
     'uvicorn.protocols.websockets.auto',
     'uvicorn.lifespan',
     'uvicorn.lifespan.on',
+    # FastAPI / Starlette
+    'fastapi',
+    'starlette',
+    'starlette.routing',
+    'starlette.middleware',
+    'starlette.middleware.cors',
+    # App modules
+    'difflib',
+    'sqlite3',
+    'xml.etree.ElementTree',
+    # Data
+    'pandas',
+    'langchain',
+    'langchain_core',
+    'langchain_community',
+    # Supabase
+    'supabase',
+    'gotrue',
+    'postgrest',
+    'realtime',
+    'storage3',
+    # Pydantic
+    'pydantic',
+    'pydantic.deprecated',
+    'pydantic.v1',
+    # Email / reporting
+    'reportlab',
+    'email',
+    'email.mime',
+    'email.mime.text',
+    'email.mime.multipart',
 ]
 hidden_imports += collect_submodules('uvicorn')
 hidden_imports += collect_submodules('fastapi')
@@ -44,6 +76,7 @@ hidden_imports += collect_submodules('backend.gemini')
 
 # Data files to bundle
 datas = [
+    ('.env', '.'),
     ('config/cloud.json', 'config'),  # Bundle config file
 ]
 
@@ -56,7 +89,14 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'matplotlib',
+        'notebook',
+        'IPython',
+        'pytest',
+        'tkinter',
+        '_tkinter',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -75,10 +115,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
