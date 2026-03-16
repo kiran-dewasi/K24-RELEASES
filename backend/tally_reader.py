@@ -4,6 +4,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from xml.sax.saxutils import escape
+from backend.ledger_matcher import LedgerMatcher
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -194,49 +195,50 @@ class TallyReader:
 
     def check_ledger_exists(self, ledger_name: str) -> Optional[str]:
         """
-        Case-insensitive lookup in cache with smart fuzzy matching.
-        Returns: Actual Tally name if found, None otherwise.
+        Case-insensitive lookup in cache with smart fuzzy matching using LedgerMatcher.
+        Returns: Actual Tally name if found and safe to auto-match, None otherwise.
         """
         if not self.cache_populated:
             self.fetch_all_masters()
 
-        key = " ".join(ledger_name.split()).lower()
-
-        # 1. Exact match
-        if key in self.ledger_cache:
-            return self.ledger_cache[key]
-
-        # 2. Substring match (one contains the other)
-        for cached_key, cached_name in self.ledger_cache.items():
-            if key in cached_key or cached_key in key:
-                logger.info(f"Substring ledger match: '{ledger_name}' → '{cached_name}'")
-                return cached_name
-
-        # 3. difflib fuzzy match — handles typos like 'enterprises' vs 'enetrprises'
-        import difflib
-        all_keys = list(self.ledger_cache.keys())
-        close = difflib.get_close_matches(key, all_keys, n=1, cutoff=0.75)
-        if close:
-            matched_name = self.ledger_cache[close[0]]
-            logger.info(f"Fuzzy ledger match (difflib): '{ledger_name}' → '{matched_name}' (via key '{close[0]}')") 
-            return matched_name
-
-        # 4. Cache miss — do ONE live re-fetch in case the cache was stale
-        if self.cache_populated:
+        matcher = LedgerMatcher(list(self.ledger_cache.values()))
+        result = matcher.match(ledger_name)
+        
+        if result.status in ["exact", "auto_fuzzy"]:
+            # Safe to use automatically
+            return result.matched_name
+            
+        elif result.status == "needs_confirmation":
+            # For now, since we haven't implemented the UI for confirmation everywhere,
+            # we default to returning None (treating it as 'not safe to auto-use').
+            # The system will then proceed to create the requested ledger.
+            logger.warning(
+                f"Ledger matching needs confirmation for '{ledger_name}'. "
+                f"Close match found: '{result.matched_name}' (score: {result.score:.3f}). "
+                "Defaulting to treating as missing to prevent silent wrong matching."
+            )
+            return None
+            
+        # Cache miss — do ONE live re-fetch in case the cache was stale
+        if self.cache_populated and result.status == "no_match":
             logger.info(
                 f"Cache miss for ledger '{ledger_name}' — re-fetching from Tally once..."
             )
             self.cache_populated = False
             self.fetch_all_masters()
-            if key in self.ledger_cache:
-                return self.ledger_cache[key]
-            # Try difflib again with fresh cache
-            all_keys = list(self.ledger_cache.keys())
-            close = difflib.get_close_matches(key, all_keys, n=1, cutoff=0.75)
-            if close:
-                matched_name = self.ledger_cache[close[0]]
-                logger.info(f"Fuzzy ledger match (post-refetch): '{ledger_name}' → '{matched_name}'")
-                return matched_name
+            
+            # Try again with fresh cache
+            fresh_matcher = LedgerMatcher(list(self.ledger_cache.values()))
+            fresh_result = fresh_matcher.match(ledger_name)
+            
+            if fresh_result.status in ["exact", "auto_fuzzy"]:
+                return fresh_result.matched_name
+            elif fresh_result.status == "needs_confirmation":
+                logger.warning(
+                    f"[Post-fetch] Ledger matching needs confirmation for '{ledger_name}'. "
+                    f"Close match found: '{fresh_result.matched_name}' (score: {fresh_result.score:.3f}). "
+                )
+                return None
 
         return None
 
