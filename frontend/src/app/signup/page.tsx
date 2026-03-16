@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lock, Mail, User, Building, ArrowRight, CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiClient } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 export default function SignupPage() {
     const router = useRouter();
@@ -34,20 +34,7 @@ export default function SignupPage() {
                 username: formData.username || formData.email.split('@')[0]
             };
 
-            const response = await apiClient("/api/auth/register", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || "Registration failed. Please try again.");
-            }
-
-            const data = await response.json();
+            const data = await apiRequest("/api/auth/register", "POST", payload);
 
             // Auto-login logic
             if (data.access_token) {
