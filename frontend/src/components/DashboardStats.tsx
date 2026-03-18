@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -40,8 +41,8 @@ interface StockStats {
 }
 
 interface PartyStats {
-    top_customers: { name: string; value: number }[];
-    top_suppliers: { name: string; value: number }[];
+    top_customers: { name: string; value: number; ledger_id: number }[];
+    top_suppliers: { name: string; value: number; ledger_id: number }[];
 }
 
 function TrendBadge({ value }: { value: number }) {
@@ -222,17 +223,19 @@ export default function DashboardStats() {
                     </CardHeader>
                     <CardContent className="space-y-2">
                         {partyStats?.top_customers?.slice(0, 3).map((c, i) => (
-                            <div key={i} className="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2.5">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="h-7 w-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-bold">
-                                        {c.name.charAt(0).toUpperCase()}
+                            <Link key={i} href={`/parties?id=${c.ledger_id}`}>
+                                <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-3 py-2.5 hover:bg-emerald-100 transition-colors cursor-pointer">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="h-7 w-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-bold">
+                                            {c.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]">{c.name}</span>
                                     </div>
-                                    <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]">{c.name}</span>
+                                    <span className="text-sm font-bold text-emerald-700 shrink-0">
+                                        ₹{c.value.toLocaleString("en-IN", { notation: "compact", compactDisplay: "short" })}
+                                    </span>
                                 </div>
-                                <span className="text-sm font-bold text-emerald-700 shrink-0">
-                                    ₹{c.value.toLocaleString("en-IN", { notation: "compact", compactDisplay: "short" })}
-                                </span>
-                            </div>
+                            </Link>
                         )) ?? (
                                 <p className="text-sm text-slate-400 py-4 text-center">No customer data yet</p>
                             )}
@@ -246,17 +249,19 @@ export default function DashboardStats() {
                     </CardHeader>
                     <CardContent className="space-y-2">
                         {partyStats?.top_suppliers?.slice(0, 3).map((s, i) => (
-                            <div key={i} className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2.5">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="h-7 w-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">
-                                        {s.name.charAt(0).toUpperCase()}
+                            <Link key={i} href={`/parties?id=${s.ledger_id}`}>
+                                <div className="flex items-center justify-between bg-indigo-50 rounded-lg px-3 py-2.5 hover:bg-indigo-100 transition-colors cursor-pointer">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="h-7 w-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">
+                                            {s.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]">{s.name}</span>
                                     </div>
-                                    <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]">{s.name}</span>
+                                    <span className="text-sm font-bold text-indigo-700 shrink-0">
+                                        ₹{s.value.toLocaleString("en-IN", { notation: "compact", compactDisplay: "short" })}
+                                    </span>
                                 </div>
-                                <span className="text-sm font-bold text-indigo-700 shrink-0">
-                                    ₹{s.value.toLocaleString("en-IN", { notation: "compact", compactDisplay: "short" })}
-                                </span>
-                            </div>
+                            </Link>
                         )) ?? (
                                 <p className="text-sm text-slate-400 py-4 text-center">No supplier data yet</p>
                             )}
@@ -298,7 +303,14 @@ export default function DashboardStats() {
                             <TableBody>
                                 {stockStats?.items?.slice(0, 8).map((item, i) => (
                                     <TableRow key={i} className="hover:bg-slate-50/50">
-                                        <TableCell className="font-medium text-slate-700 text-sm py-3">{item.name}</TableCell>
+                                        <TableCell className="font-medium text-slate-700 text-sm py-3">
+                                            <Link
+                                                href={`/inventory?item=${encodeURIComponent(item.name)}`}
+                                                className="hover:text-blue-600 hover:underline cursor-pointer transition-colors"
+                                            >
+                                                {item.name}
+                                            </Link>
+                                        </TableCell>
                                         <TableCell className="text-right text-sm text-slate-600">{item.quantity.toLocaleString()}</TableCell>
                                         <TableCell className="text-right text-sm text-slate-600">₹{item.rate.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</TableCell>
                                         <TableCell className="text-right text-sm font-semibold text-slate-700">₹{item.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</TableCell>
