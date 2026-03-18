@@ -193,7 +193,7 @@ export default function NewSalesClient() {
                                     onChange={setPartyName}
                                     onSelect={handleLedgerSelect}
                                     placeholder="e.g. ABC Traders (type to search or create new)"
-                                    ledgerType="customer"
+                                    ledgerType="all"
                                     showBalance={true}
                                 />
                                 {selectedLedger && selectedLedger.gstin && (

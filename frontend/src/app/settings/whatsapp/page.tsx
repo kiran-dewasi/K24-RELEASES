@@ -146,13 +146,10 @@ function BotNumberCard() {
     const fetchBotNumber = async () => {
         setLoading(true);
         try {
-            const res = await api.get("/api/whatsapp/bot-number");
-            if (res.ok) {
-                const data = await res.json();
-                if (data.whatsapp_number) {
-                    setBotNumber(data.whatsapp_number);
-                    setSavedNumber(data.whatsapp_number);
-                }
+            const data = await api.get("/api/whatsapp/bot-number");
+            if (data.whatsapp_number) {
+                setBotNumber(data.whatsapp_number);
+                setSavedNumber(data.whatsapp_number);
             }
         } catch (e) {
             console.error("Failed to fetch bot number:", e);
@@ -285,11 +282,8 @@ export default function WhatsAppSettingsPage() {
 
     const fetchMappings = async () => {
         try {
-            const res = await api.get('/api/whatsapp/customers');
-            if (res.ok) {
-                const data = await res.json();
-                setMappings(data.mappings || []);
-            }
+            const data = await api.get('/api/whatsapp/customers');
+            setMappings(data.mappings || []);
         } catch (error) {
             console.error("Failed to fetch mappings:", error);
         } finally {

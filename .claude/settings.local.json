@@ -12,7 +12,10 @@
       "Bash(python:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(venv/Scripts/alembic.exe upgrade:*)",
+      "Bash(del:*)"
     ]
   }
 }

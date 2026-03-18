@@ -252,7 +252,9 @@ def get_transaction_summary(db: Session, party_name: str, tenant_id: str, start_
     query = db.query(Voucher).filter(
         Voucher.party_name == party_name,
         Voucher.tenant_id == tenant_id,
-    )
+        Voucher.is_deleted == False,
+        Voucher.sync_status != "DELETED"
+    ).distinct(Voucher.voucher_number, Voucher.voucher_type, Voucher.date)
     if start_date:
         query = query.filter(Voucher.date >= start_date)
     vouchers = query.all()
@@ -339,11 +341,13 @@ def get_aging_bucket(days: int) -> str:
 
 def get_recent_payments(db: Session, party_name: str, tenant_id: str, limit: int = 10) -> List[Dict]:
     """Get recent receipt vouchers"""
-    
+
     receipts = db.query(Voucher).filter(
         Voucher.party_name == party_name,
         Voucher.tenant_id == tenant_id,
-        Voucher.voucher_type.ilike("%receipt%")
+        Voucher.voucher_type.ilike("%receipt%"),
+        Voucher.is_deleted == False,
+        Voucher.sync_status != "DELETED"
     ).order_by(Voucher.date.desc()).limit(limit).all()
     
     return [
@@ -359,13 +363,31 @@ def get_recent_payments(db: Session, party_name: str, tenant_id: str, limit: int
 
 
 def get_recent_transactions(db: Session, party_name: str, tenant_id: str, limit: int = 20) -> List[Dict]:
-    """Get recent vouchers of all types"""
-    
-    vouchers = db.query(Voucher).filter(
-        Voucher.party_name == party_name,
-        Voucher.tenant_id == tenant_id
-    ).order_by(Voucher.date.desc()).limit(limit).all()
-    
+    """Get recent vouchers — deduplicated by voucher_number + voucher_type"""
+
+    from sqlalchemy import func
+
+    # Subquery: get the MIN id for each unique (voucher_number, voucher_type, date) combo
+    dedup_subquery = (
+        db.query(func.min(Voucher.id).label("min_id"))
+        .filter(
+            Voucher.party_name == party_name,
+            Voucher.tenant_id == tenant_id,
+            Voucher.is_deleted == False,
+            Voucher.sync_status != "DELETED"
+        )
+        .group_by(Voucher.voucher_number, Voucher.voucher_type, Voucher.date)
+        .subquery()
+    )
+
+    vouchers = (
+        db.query(Voucher)
+        .filter(Voucher.id.in_(dedup_subquery))
+        .order_by(Voucher.date.desc())
+        .limit(limit)
+        .all()
+    )
+
     return [
         {
             "id": v.id,

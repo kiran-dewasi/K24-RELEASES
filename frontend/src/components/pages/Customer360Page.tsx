@@ -118,7 +118,7 @@ function VoucherDetailModal({
                             )}
 
                             {/* Line Items */}
-                            {voucher.items.length > 0 ? (
+                            {(voucher.items?.length ?? 0) > 0 ? (
                                 <div>
                                     <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
                                         <Package className="h-4 w-4" /> Items ({voucher.items.length})
@@ -162,7 +162,7 @@ function VoucherDetailModal({
                             )}
 
                             {/* Ledger Entries */}
-                            {voucher.ledgers.length > 0 && (
+                            {(voucher.ledgers?.length ?? 0) > 0 && (
                                 <div>
                                     <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
                                         <CreditCard className="h-4 w-4" /> Accounting Entries
@@ -435,11 +435,8 @@ function Customer360Content() {
         setVoucherLoading(true);
         try {
             const params = new URLSearchParams({ voucher_number: voucherNumber, voucher_type: voucherType });
-            const res = await api.get(`/api/vouchers/detail?${params}`);
-            if (res.ok) {
-                const detail = await res.json();
-                setSelectedVoucher(detail);
-            }
+            const detail = await api.get(`/api/vouchers/detail?${params}`);
+            setSelectedVoucher(detail);
         } catch (err) {
             console.error('Failed to fetch voucher detail:', err);
         } finally {
@@ -451,19 +448,7 @@ function Customer360Content() {
         setLoading(true);
         setError(null);
         try {
-            const res = await api.get(`/api/customers/${id}/360`);
-
-            if (!res.ok) {
-                if (res.status === 404) {
-                    setError('Customer not found');
-                } else {
-                    const errBody = await res.json().catch(() => ({}));
-                    setError(errBody.detail || 'Failed to load customer data');
-                }
-                return;
-            }
-
-            const data = await res.json();
+            const data = await api.get(`/api/customers/${id}/360`);
             setData(data);
         } catch (err) {
             console.error('Error fetching customer 360:', err);

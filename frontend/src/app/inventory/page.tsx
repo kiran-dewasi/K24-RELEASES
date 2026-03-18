@@ -57,22 +57,16 @@ function InventoryListPage() {
             if (statusFilter !== 'all') params.append("status", statusFilter);
             if (categoryFilter !== 'all') params.append("category", categoryFilter);
 
-            const [itemsRes, summaryRes] = await Promise.all([
+            const [itemsData, summaryData] = await Promise.all([
                 api.get(`/api/inventory?${params.toString()}`),
                 api.get('/api/inventory/summary')
             ]);
 
-            if (itemsRes.ok) {
-                const data = await itemsRes.json();
-                setItems(data.items || []);
-                const uniqueCats = Array.from(new Set((data.items || []).map((i: any) => i.category || 'General')));
-                setCategories(uniqueCats as string[]);
-            }
+            setItems(itemsData.items || []);
+            const uniqueCats = Array.from(new Set((itemsData.items || []).map((i: any) => i.category || 'General')));
+            setCategories(uniqueCats as string[]);
 
-            if (summaryRes.ok) {
-                const data = await summaryRes.json();
-                setSummary(data);
-            }
+            setSummary(summaryData);
 
         } catch (error) {
             console.error("Failed to fetch inventory:", error);

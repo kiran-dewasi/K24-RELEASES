@@ -82,18 +82,12 @@ export function ItemAutocomplete({
         setIsLoading(true);
         setNoResults(false);
         try {
-            const res = await api.get(`/api/items/search?q=${encodeURIComponent(q)}&limit=10`);
-            if (res.ok) {
-                const data = await res.json();
-                const items: StockItem[] = data.items || [];
-                setSuggestions(items);
-                setShowDrop(true);
-                setActiveIdx(-1);
-                setNoResults(items.length === 0);
-            } else {
-                setSuggestions([]);
-                setNoResults(true);
-            }
+            const data = await api.get(`/api/items/search?q=${encodeURIComponent(q)}&limit=10`);
+            const items: StockItem[] = data.items || [];
+            setSuggestions(items);
+            setShowDrop(true);
+            setActiveIdx(-1);
+            setNoResults(items.length === 0);
         } catch {
             setSuggestions([]);
             setNoResults(false); // network error — don't show "no results"

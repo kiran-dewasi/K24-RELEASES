@@ -665,6 +665,14 @@ function ReportDetailContent({ slug }: { slug: string }) {
                                                                     >
                                                                         {val === "inflow" ? "↑ In" : "↓ Out"}
                                                                     </Badge>
+                                                                ) : (col.key === "party_name" || col.key === "name") && row.ledger_id ? (
+                                                                    <Link
+                                                                        href={`/parties?id=${row.ledger_id}`}
+                                                                        className="text-foreground font-medium hover:underline hover:text-primary transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        {val ?? "—"}
+                                                                    </Link>
                                                                 ) : (
                                                                     <span className={col.key === "party_name" || col.key === "name" ? "text-foreground font-medium" : ""}>
                                                                         {val ?? "—"}

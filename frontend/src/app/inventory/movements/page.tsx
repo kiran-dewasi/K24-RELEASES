@@ -19,13 +19,8 @@ export default function StockMovementsPage() {
     const fetchMovements = async () => {
         try {
             setLoading(true);
-            const res = await api.get(`/api/inventory/movements/all?days=30`);
-            if (res.ok) {
-                const data = await res.json();
-                setMovements(data.movements || []);
-            } else {
-                throw new Error("Failed to fetch movements");
-            }
+            const data = await api.get(`/api/inventory/movements/all?days=30`);
+            setMovements(data.movements || []);
         } catch (e) {
             console.error(e);
             toast({

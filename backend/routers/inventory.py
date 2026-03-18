@@ -4,8 +4,10 @@ from pydantic import BaseModel
 from datetime import datetime, date, timedelta
 import os
 import logging
+from sqlalchemy.orm import Session
 from backend.tally_reader import TallyReader
-from backend.dependencies import get_api_key
+from backend.dependencies import get_api_key, get_tenant_id
+from backend.database import get_db, StockItem
 
 # Initialize Router
 router = APIRouter(tags=["inventory"])
@@ -63,29 +65,38 @@ async def get_inventory_items(
     status: Optional[str] = None, # in_stock, low_stock, out_of_stock
     sort_by: Optional[str] = "name", # name, value, quantity
     page: int = 1,
-    limit: int = 50
+    limit: int = 50,
+    show_zero_stock: bool = False, # New parameter to show/hide zero stock items
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
 ):
     """
-    Fetch all inventory items from Tally (Stock Summary).
+    Fetch all inventory items from database.
     Supports search, filtering, and pagination.
+    By default, hides items with zero or negative stock.
     """
     try:
-        # 1. Fetch from Tally (using reader cache strategy)
-        # We use get_stock_summary which fetches live data or robust fallback
-        items = reader.get_stock_summary() or [] 
-        
+        # 1. Fetch from Database (synced by background service)
+        query = db.query(StockItem).filter(StockItem.tenant_id == tenant_id)
+
         # 2. Enrich & Filter
         results = []
-        
+
         total_value = 0.0
         low_stock_threshold = 10.0 # Placeholder, should be per-item configurable
-        
-        for i in items:
-            name = i.get("name")
-            qty = float(i.get("closing_balance", 0))
-            val = float(i.get("value", 0))
-            rate = float(i.get("rate", 0))
-            
+
+        items = query.all()
+
+        for item in items:
+            name = item.name or "Unknown"
+            qty = float(item.closing_balance or 0)
+            rate = float(item.rate or item.cost_price or 0)
+            val = qty * rate
+
+            # Skip zero/negative stock items unless explicitly requested
+            if not show_zero_stock and qty <= 0:
+                continue
+
             # Determine Status
             if qty <= 0:
                 s = "Out of Stock"
@@ -93,7 +104,7 @@ async def get_inventory_items(
                 s = "Low Stock"
             else:
                 s = "In Stock"
-                
+
             # Filter: Status
             if status:
                 st = status.lower().replace("_", " ") # in_stock -> in stock
@@ -105,17 +116,17 @@ async def get_inventory_items(
                 q = search.lower()
                 if q not in name.lower():
                     continue
-            
+
             # Filter: Category (Parent)
-            parent = i.get("parent", "")
-            if category and category.lower() not in parent.lower():
+            parent = item.parent or ""
+            if category and category.lower() != "all" and category.lower() not in parent.lower():
                 continue
 
             results.append({
                 "name": name,
                 "parent": parent,
                 "category": parent or "General", # Map parent to category
-                "units": i.get("units", "nos"),
+                "units": item.units or "nos",
                 "closing_balance": qty,
                 "value": val,
                 "rate": rate,
@@ -123,9 +134,9 @@ async def get_inventory_items(
                 "reorder_level": low_stock_threshold, # TODO: Load from DB
                 "last_updated": datetime.now().isoformat()
             })
-            
+
             total_value += val
-            
+
         # 3. Sort
         reverse = True if sort_by in ["value", "quantity"] else False
         key_map = {
@@ -133,16 +144,16 @@ async def get_inventory_items(
             "value": lambda x: x["value"],
             "quantity": lambda x: x["closing_balance"]
         }
-        
+
         if sort_by in key_map:
             results.sort(key=key_map[sort_by], reverse=reverse)
-            
+
         # 4. Pagination
         total_count = len(results)
         start = (page - 1) * limit
         end = start + limit
         paginated = results[start:end]
-        
+
         return {
             "items": paginated,
             "total": total_count,
@@ -159,19 +170,38 @@ async def get_inventory_items(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/inventory/summary", dependencies=[Depends(get_api_key)])
-async def get_inventory_summary():
-    """Returns aggregated stats for dashboard cards"""
+async def get_inventory_summary(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+):
+    """Returns aggregated stats for dashboard cards (excludes zero-stock items)"""
     try:
-        items = reader.get_stock_summary() or []
-        
-        total_value = sum(float(i.get("value", 0)) for i in items)
-        total_items = len(items)
-        low_stock_count = sum(1 for i in items if 0 < float(i.get("closing_balance", 0)) < 10)
-        out_of_stock_count = sum(1 for i in items if float(i.get("closing_balance", 0)) <= 0)
-        
+        items = db.query(StockItem).filter(StockItem.tenant_id == tenant_id).all()
+
+        total_value = 0.0
+        low_stock_count = 0
+        out_of_stock_count = 0
+        active_items_count = 0
+
+        for item in items:
+            qty = float(item.closing_balance or 0)
+
+            # Skip zero/negative stock items from counts and value
+            if qty <= 0:
+                out_of_stock_count += 1
+                continue
+
+            active_items_count += 1
+            rate = float(item.rate or item.cost_price or 0)
+            val = qty * rate
+            total_value += val
+
+            if qty < 10:
+                low_stock_count += 1
+
         return {
-            "totalItems": total_items,
-            "totalValue": total_value,
+            "totalItems": active_items_count,  # Only count items with stock > 0
+            "totalValue": round(total_value, 2),
             "lowStockCount": low_stock_count,
             "outOfStockCount": out_of_stock_count,
             "timestamp": datetime.now().isoformat()
@@ -246,17 +276,50 @@ async def get_all_movements(
          raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/inventory/{item_name}", dependencies=[Depends(get_api_key)])
-async def get_item_details(item_name: str):
+async def get_item_details(
+    item_name: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+):
     """Get single item details including stats."""
-    # decode item_name if url encoded? FastAPI handles it usually.
     try:
-        # Search in stock summary first
-        items = reader.get_stock_summary() or []
-        item = next((i for i in items if i["name"].lower() == item_name.lower()), None)
-        
-        if not item:
+        # Check database first for consistency with list view
+        db_item = db.query(StockItem).filter(
+            StockItem.tenant_id == tenant_id,
+            StockItem.name == item_name
+        ).first()
+
+        if not db_item:
             raise HTTPException(status_code=404, detail="Item not found")
-            
+
+        # Build response from database
+        qty = float(db_item.closing_balance or 0)
+        rate = float(db_item.rate or db_item.cost_price or 0)
+        val = qty * rate
+
+        # Determine Status
+        if qty <= 0:
+            status = "Out of Stock"
+        elif qty < 10.0:  # low_stock_threshold
+            status = "Low Stock"
+        else:
+            status = "In Stock"
+
+        item = {
+            "name": db_item.name,
+            "parent": db_item.parent or "",
+            "category": db_item.parent or "General",
+            "units": db_item.units or "nos",
+            "closing_balance": qty,
+            "value": val,
+            "rate": rate,
+            "status": status,
+            "hsn_code": db_item.hsn_code,
+            "gst_rate": db_item.gst_rate or 0.0,
+            "minimum_stock": db_item.minimum_stock,
+            "last_updated": db_item.last_synced.isoformat() if db_item.last_synced else None
+        }
+
         return {
             "item": item,
             "stats": {
@@ -309,7 +372,7 @@ async def get_item_movements(
                     rate = float(line.get("rate", 0))
                     amt = float(line.get("amount", 0))
                     
-                    v_type = txn.get("type", "").lower()
+                    v_type = txn.get("voucher_type", "").lower()
                     
                     # Logic: Purchase = In, Macintosh = In (usually), Sales = Out
                     # Tally signs: Debit (+), Credit (-)? Or check Voucher Type?

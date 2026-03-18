@@ -2,7 +2,7 @@
 K24 Shadow Database
 The high-speed local store that mirrors Tally.
 """
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint, Index
 
 # ... (rest of imports)
 
@@ -135,7 +135,13 @@ class Ledger(TenantMixin, Base):
 class Voucher(TenantMixin, Base):
     """Mirrors a Tally Voucher (Sales/Purchase)"""
     __tablename__ = "vouchers"
-    
+
+    # ── Enterprise-grade data integrity: duplicates physically impossible ──
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'guid', name='uq_voucher_tenant_guid'),
+        Index('ix_voucher_is_deleted', 'is_deleted'),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     guid = Column(String, index=True) # Removed unique constraint for multi-tenancy safe GUIDs
     voucher_number = Column(String)
@@ -144,7 +150,7 @@ class Voucher(TenantMixin, Base):
     party_name = Column(String) # Removed ForeignKey to decouple for now, or update logic later
     amount = Column(Float)
     narration = Column(String, nullable=True)
-    
+
     # Sync Status
     sync_status = Column(String, default="SYNCED") # SYNCED, PENDING, ERROR
     last_synced = Column(DateTime, default=datetime.now)
@@ -159,7 +165,7 @@ class Voucher(TenantMixin, Base):
     # Phase D: Unified Action Engine
     source = Column(String, default='web')  # web, whatsapp, api
     tally_voucher_id = Column(String, nullable=True) # Stores Tally's VchID
-    
+
     # Linked Ledger Reference
     ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=True)
 
@@ -168,6 +174,11 @@ class Voucher(TenantMixin, Base):
     # ledger_entries:    [{name, amount, is_tax}]
     inventory_entries = Column(JSON, nullable=True)
     ledger_entries = Column(JSON, nullable=True)
+
+    # ── Soft Delete (Enterprise-grade: never lose audit trail) ──
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_source = Column(String, nullable=True)  # "tally_sync", "user", "api"
 
 class AuditLog(TenantMixin, Base):
     """Immutable Audit Trail for MCA Compliance"""

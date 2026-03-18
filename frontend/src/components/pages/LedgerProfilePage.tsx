@@ -66,11 +66,8 @@ function LedgerProfileContent() {
         setLoading(true);
         try {
             // Fetch Details
-            const res = await api.get(`/api/ledgers/${ledger_id}`);
-            if (res.ok) {
-                const data = await res.json();
-                setLedger(data);
-            }
+            const data = await api.get(`/api/ledgers/${ledger_id}`);
+            setLedger(data);
         } catch (error) {
             console.error("Failed to fetch ledger details", error);
         } finally {

@@ -616,7 +616,7 @@ class ChatRequest(BaseModel):
     confirmation: bool = False
 
 @app.post("/api/chat")
-async def chat_with_memory(request: ChatRequest):
+async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_current_tenant_id)):
     """
     Chat endpoint WITH MEMORY.
     
@@ -666,10 +666,10 @@ async def chat_with_memory(request: ChatRequest):
             
             for msg in previous_messages_raw:
                 if msg['role'] == 'user':
-                    messages.append(HumanMessage(content=msg['content']))
+                    messages.append(HumanMessage(content=msg['message_content']))
                     print(f"   ✓ Loaded user message: {msg['content'][:60]}...")
                 else:
-                    messages.append(AIMessage(content=msg['content']))
+                    messages.append(AIMessage(content=msg['message_content']))
                     print(f"   ✓ Loaded agent response: {msg['content'][:60]}...")
             
             # Add current user message with DATE CONTEXT
@@ -694,9 +694,11 @@ async def chat_with_memory(request: ChatRequest):
                 role="user",
                 content=request.message,
                 source="ui",
-                user_id=request.user_id
+                user_id=request.user_id,
+                tenant_id=tenant_id
             )
-            
+            print(f"[SAVE] User msg saved: {user_msg}, tenant: {tenant_id}")
+
             user_msg_id = user_msg.get('id') if user_msg else "temp_id"
             print(f"   ✓ Saved with ID: {user_msg_id}")
             
@@ -773,9 +775,11 @@ async def chat_with_memory(request: ChatRequest):
                 role="assistant",
                 content=response_text,
                 source="ui",
-                user_id="agent"
+                user_id="agent",
+                tenant_id=tenant_id
             )
-            
+            print(f"[SAVE] Agent msg saved: {agent_msg}, tenant: {tenant_id}")
+
             agent_msg_id = agent_msg.get('id') if agent_msg else "temp_id"
             print(f"   ✓ Saved with ID: {agent_msg_id}")
             
@@ -1313,7 +1317,10 @@ def get_dashboard_kpi(db: Session = Depends(get_db), tenant_id: str = Depends(ge
 def get_daybook(db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant_id)):
     """Get today's transactions (Psychological: Dopamine/Activity)"""
     # For MVP, returning all. In real app, filter by date.
-    return db.query(Voucher).filter(Voucher.tenant_id == tenant_id).order_by(Voucher.date.desc()).all()
+    return db.query(Voucher).filter(
+        Voucher.tenant_id == tenant_id,
+        Voucher.is_deleted == False  # ← ENTERPRISE: Exclude soft-deleted vouchers
+    ).order_by(Voucher.date.desc()).all()
 
 @app.get("/search", dependencies=[Depends(get_api_key)])
 def global_search(q: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant_id)):

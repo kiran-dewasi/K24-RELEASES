@@ -405,6 +405,11 @@ class TallyEngine:
         self.search = TallySearch(tally_url)
 
     def ensure_ledger_exists(self, name: str, group: str, affects_stock: bool = False, is_duty: bool = False, gstin: str = None) -> Optional[str]:
+        # Guard against None/empty name
+        if not name:
+            logger.error("ensure_ledger_exists called with empty/None name")
+            return None
+
         # NORMALIZE: collapse multiple spaces, strip edges, title-case
         # e.g. "vinayak  enterprises" → "Vinayak Enterprises"
         name = " ".join(name.split()).strip()

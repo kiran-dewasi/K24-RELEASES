@@ -678,16 +678,23 @@ class SyncEngine:
                 Voucher.sync_status != "DELETED"
             ).all()
 
-            deleted_count = 0
-            for local_v in local_vouchers:
-                if local_v.id not in tally_voucher_ids:
-                    local_v.sync_status = "DELETED"
-                    local_v.last_synced = datetime.now()
-                    deleted_count += 1
-                    logger.info(f"🗑️ Marked voucher #{local_v.voucher_number} as DELETED (not in Tally)")
-
-            if deleted_count > 0:
-                logger.info(f"🗑️ Reconciled {deleted_count} deleted vouchers")
+            # Safety guard: never reconcile if Tally returned suspiciously few vouchers
+            MIN_EXPECTED = max(5, len(local_vouchers) // 2)
+            if len(tally_voucher_ids) < MIN_EXPECTED:
+                logger.warning(
+                    f"⚠️ RECONCILIATION SKIPPED: Tally returned {len(tally_voucher_ids)} "
+                    f"vouchers but DB has {len(local_vouchers)} in range. Partial sync detected."
+                )
+            else:
+                deleted_count = 0
+                for local_v in local_vouchers:
+                    if local_v.id not in tally_voucher_ids:
+                        local_v.sync_status = "DELETED"
+                        local_v.last_synced = datetime.now()
+                        deleted_count += 1
+                        logger.info(f"🗑️ Marked voucher #{local_v.voucher_number} as DELETED (not in Tally)")
+                if deleted_count > 0:
+                    logger.info(f"🗑️ Reconciled {deleted_count} deleted vouchers")
 
             if close_db:
                 db.commit()

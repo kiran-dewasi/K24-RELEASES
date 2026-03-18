@@ -1,0 +1,4 @@
+is_deleted: False
+deleted_at: False
+deleted_source: False
+All voucher columns: ['id', 'guid', 'voucher_number', 'date', 'voucher_type', 'party_name', 'amount', 'narration', 'sync_status', 'last_synced', 'status', 'tds_section', 'gst_reconciled', 'is_backdated', 'is_weekend_entry', 'source', 'tally_voucher_id', 'ledger_id', 'tenant_id', 'inventory_entries', 'ledger_entries']

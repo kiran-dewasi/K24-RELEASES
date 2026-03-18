@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/api";
+import Link from "next/link";
 
 import {
     Table,
@@ -122,7 +123,19 @@ export function InvoicesTable() {
                                     {t.type}
                                 </Badge>
                             </TableCell>
-                            <TableCell className="font-medium">{t.party}</TableCell>
+                            <TableCell className="font-medium">
+                                {t.ledger_id ? (
+                                    <Link
+                                        href={`/parties?id=${t.ledger_id}`}
+                                        className="hover:underline hover:text-primary transition-colors"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {t.party}
+                                    </Link>
+                                ) : (
+                                    <span>{t.party}</span>
+                                )}
+                            </TableCell>
                             <TableCell className="font-mono text-xs text-muted-foreground">{t.voucher_no}</TableCell>
                             <TableCell className="text-right font-semibold">
                                 ₹{t.amount.toLocaleString('en-IN')}

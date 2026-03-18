@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, and_
 from typing import List, Dict, Any, Optional
@@ -39,8 +39,11 @@ def _build_voucher_filters(
     party_name: Optional[str],
     tenant_id: str,
 ):
-    """Apply common filter conditions to a Voucher query."""
-    db_query = db_query.filter(Voucher.tenant_id == tenant_id)
+    """Apply common filter conditions to a Voucher query with deduplication."""
+    db_query = db_query.filter(
+        Voucher.tenant_id == tenant_id,
+        Voucher.is_deleted == False  # ← ENTERPRISE: Exclude soft-deleted vouchers
+    )
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
 
@@ -56,7 +59,40 @@ def _build_voucher_filters(
     if party_name:
         db_query = db_query.filter(Voucher.party_name.ilike(f"%{party_name}%"))
 
-    return db_query
+    # DEDUPLICATION: Ensure unique vouchers by (tenant_id, voucher_number, date, voucher_type)
+    session = db_query.session
+
+    # Build filters for subquery
+    filters = [
+        Voucher.tenant_id == tenant_id,
+        Voucher.is_deleted == False
+    ]
+    if d_from:
+        filters.append(Voucher.date >= datetime.combine(d_from, datetime.min.time()))
+    if d_to:
+        filters.append(Voucher.date <= datetime.combine(d_to, datetime.max.time()))
+    if voucher_types:
+        filters.append(Voucher.voucher_type.in_(voucher_types))
+    if party_name:
+        filters.append(Voucher.party_name.ilike(f"%{party_name}%"))
+
+    # Subquery: select MAX(id) per unique voucher identity to pick one representative
+    max_id_subq = (
+        session.query(func.max(Voucher.id).label('max_id'))
+        .filter(and_(*filters))
+        .group_by(
+            Voucher.tenant_id,
+            Voucher.voucher_number,
+            Voucher.date,
+            Voucher.voucher_type
+        )
+        .subquery()
+    )
+
+    # Return deduplicated query: only vouchers with IDs from subquery
+    return session.query(Voucher).filter(
+        Voucher.id.in_(session.query(max_id_subq.c.max_id))
+    )
 
 
 def _voucher_to_dict(v: Voucher) -> dict:
@@ -132,13 +168,15 @@ def get_sales_register(
     total_count = len(vouchers)
     tax_estimate = total_amount * 0.18
 
-    return {
+    response = JSONResponse(content={
         "total_amount": total_amount,
         "total_count": total_count,
         "tax_estimate": tax_estimate,
         "monthly_data": _build_monthly_data(vouchers, d_from, d_to),
         "vouchers": [_voucher_to_dict(v) for v in vouchers],
-    }
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -162,12 +200,14 @@ def get_purchase_register(
     total_amount = sum(v.amount or 0 for v in vouchers)
     total_count = len(vouchers)
 
-    return {
+    response = JSONResponse(content={
         "total_amount": total_amount,
         "total_count": total_count,
         "monthly_data": _build_monthly_data(vouchers, d_from, d_to),
         "vouchers": [_voucher_to_dict(v) for v in vouchers],
-    }
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -207,14 +247,16 @@ def get_cash_flow(
 
     all_vouchers.sort(key=lambda x: x["date_iso"] or "", reverse=True)
 
-    return {
+    response = JSONResponse(content={
         "total_inflow": total_inflow,
         "total_outflow": total_outflow,
         "net_flow": net_flow,
         "total_count": len(all_vouchers),
         "monthly_data": _build_monthly_data(inflows),  # chart shows inflows
         "vouchers": all_vouchers,
-    }
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -278,7 +320,7 @@ def get_profit_loss(
     total_purchases = sum(v.amount or 0 for v in purchase_vouchers)
     net_profit = total_sales - total_purchases
 
-    return {
+    response = JSONResponse(content={
         "total_count": len(sales_vouchers) + len(purchase_vouchers),
         "income": {"Sales Accounts": total_sales, "Direct Income": 0.0, "Indirect Income": 0.0},
         "expenses": {"Purchase Accounts": total_purchases, "Direct Expenses": 0.0, "Indirect Expenses": 0.0},
@@ -286,7 +328,9 @@ def get_profit_loss(
         "total_expenses": total_purchases,
         "net_profit": net_profit,
         "monthly_data": _build_monthly_data(sales_vouchers),
-    }
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -462,5 +506,6 @@ def export_report_pdf(
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Content-Length": str(len(pdf_bytes)),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
         },
     )

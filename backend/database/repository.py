@@ -37,8 +37,9 @@ class ChatRepository:
             return None
 
 
-    async def save_message(self, thread_id: str, role: str, content: str, 
-                          source: str = 'ui', user_id: Optional[str] = None) -> Optional[Dict]:
+    async def save_message(self, thread_id: str, role: str, content: str,
+                          source: str = 'ui', user_id: Optional[str] = None,
+                          tenant_id: Optional[str] = None) -> Optional[Dict]:
         """Save a message to chat_history table."""
         if not self.supabase:
             return None
@@ -50,10 +51,10 @@ class ChatRepository:
             insert_data = {
                 'thread_id': str(thread_id),
                 'role': role,
-                'content': content,
+                'message_content': content,
                 'source': source,
                 'user_id': user_id,
-                'tenant_id': "default",  # Default tenant for now
+                'tenant_id': tenant_id,
                 'created_at': datetime.utcnow().isoformat()
             }
             

@@ -36,7 +36,8 @@ def get_dashboard_stats(
         Voucher.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%sales%"),
         Voucher.date >= fy_start,
-        Voucher.sync_status != "DELETED"
+        Voucher.sync_status != "DELETED",
+        Voucher.is_deleted == False  # ← ENTERPRISE: Exclude soft-deleted vouchers
     ).scalar() or 0.0
 
     # Receivables: sum ABS of all debtor balances (handles sign inconsistencies from Tally)
@@ -118,6 +119,7 @@ def get_cashflow(
         Voucher.date >= start_dt,
         Voucher.date <= end_dt,
         Voucher.sync_status != "DELETED",
+        Voucher.is_deleted == False,  # ← ENTERPRISE: Exclude soft-deleted vouchers
         or_(
             Voucher.voucher_type.ilike("%receipt%"),
             Voucher.voucher_type.ilike("%payment%")
@@ -242,33 +244,43 @@ def get_dashboard_party(
 
     top_customers = db.query(
         Voucher.party_name,
+        Ledger.id.label("ledger_id"),
         func.sum(Voucher.amount).label("total")
+    ).join(
+        Ledger, Ledger.name == Voucher.party_name
     ).filter(
         Voucher.tenant_id == tenant_id,
+        Ledger.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%sales%"),
         Voucher.date >= fy_start,
         Voucher.party_name != None,
-        Voucher.sync_status != "DELETED"
-    ).group_by(Voucher.party_name).order_by(desc("total")).limit(5).all()
+        Voucher.sync_status != "DELETED",
+        Voucher.is_deleted == False  # ← ENTERPRISE: Exclude soft-deleted vouchers
+    ).group_by(Voucher.party_name, Ledger.id).order_by(desc("total")).limit(5).all()
 
     top_suppliers = db.query(
         Voucher.party_name,
+        Ledger.id.label("ledger_id"),
         func.sum(Voucher.amount).label("total")
+    ).join(
+        Ledger, Ledger.name == Voucher.party_name
     ).filter(
         Voucher.tenant_id == tenant_id,
+        Ledger.tenant_id == tenant_id,
         Voucher.voucher_type.ilike("%purchase%"),
         Voucher.date >= fy_start,
         Voucher.party_name != None,
-        Voucher.sync_status != "DELETED"
-    ).group_by(Voucher.party_name).order_by(desc("total")).limit(5).all()
+        Voucher.sync_status != "DELETED",
+        Voucher.is_deleted == False  # ← ENTERPRISE: Exclude soft-deleted vouchers
+    ).group_by(Voucher.party_name, Ledger.id).order_by(desc("total")).limit(5).all()
 
     return {
         "top_customers": [
-            {"name": r.party_name, "value": round(r.total or 0, 2)}
+            {"name": r.party_name, "value": round(r.total or 0, 2), "ledger_id": r.ledger_id}
             for r in top_customers
         ],
         "top_suppliers": [
-            {"name": r.party_name, "value": round(r.total or 0, 2)}
+            {"name": r.party_name, "value": round(r.total or 0, 2), "ledger_id": r.ledger_id}
             for r in top_suppliers
         ]
     }

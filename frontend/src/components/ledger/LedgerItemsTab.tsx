@@ -37,12 +37,9 @@ export function LedgerItemsTab({ ledgerId }: LedgerItemsTabProps) {
         const fetchItems = async () => {
             setLoading(true);
             try {
-                const res = await api.get(`/api/ledgers/${ledgerId}/items`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setItems(data.items || []);
-                    setFilteredItems(data.items || []);
-                }
+                const data = await api.get(`/api/ledgers/${ledgerId}/items`);
+                setItems(data.items || []);
+                setFilteredItems(data.items || []);
             } catch (error) {
                 console.error("Failed to fetch items", error);
             } finally {

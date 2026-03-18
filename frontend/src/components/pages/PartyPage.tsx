@@ -64,18 +64,12 @@ function PartyProfileContent() {
         setLoading(true);
         try {
             // Fetch Profile
-            const res = await api.get(`/api/ledgers/${id}`);
-            if (res.ok) {
-                const data = await res.json();
-                setProfile(data);
-            }
+            const data = await api.get(`/api/ledgers/${id}`);
+            setProfile(data);
 
             // Fetch Recent Transactions
-            const txnsRes = await api.get(`/api/ledgers/${id}/transactions?limit=20`);
-            if (txnsRes.ok) {
-                const data = await txnsRes.json();
-                setTransactions(data.transactions || []);
-            }
+            const txnsData = await api.get(`/api/ledgers/${id}/transactions?limit=20`);
+            setTransactions(txnsData.transactions || []);
 
         } catch (error) {
             console.error("Failed to fetch profile", error);

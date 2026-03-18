@@ -206,16 +206,15 @@ async def get_vouchers(
     Auth is optional: if a valid JWT exists, we use its tenant_id; 
     otherwise we fall back gracefully to 'default' (dev / local mode).
     """
-    # Graceful tenant resolution — JWT takes priority, fall back to shared resolver
-    from backend.dependencies import get_tenant_id as _resolve_tenant_id
-    tenant_id = _resolve_tenant_id()  # Reads from User table (synced from Supabase at login)
+    # Resolve tenant_id — DB lookup is most reliable fallback
+    tenant_id = "default"
     try:
         if request:
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]
                 from backend.auth import SECRET_KEY, ALGORITHM
-                from jose import jwt as _jwt, JWTError
+                from jose import jwt as _jwt
                 payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
                 username = payload.get("sub")
                 if username:
@@ -225,6 +224,13 @@ async def get_vouchers(
                         tenant_id = user.tenant_id
     except Exception:
         pass
+
+    # Final fallback — always get real tenant from DB active user
+    if tenant_id == "default":
+        from backend.database import User
+        fallback_user = db.query(User).filter(User.is_active == True).first()
+        if fallback_user and fallback_user.tenant_id and fallback_user.tenant_id != "default":
+            tenant_id = fallback_user.tenant_id
     try:
         # 1. Normalize dates
         today = date.today()
@@ -246,7 +252,8 @@ async def get_vouchers(
             Voucher.tenant_id == tenant_id,
             Voucher.date >= d_start,
             Voucher.date <= d_end,
-            Voucher.sync_status != "DELETED"
+            Voucher.sync_status != "DELETED",
+            Voucher.is_deleted == False  # ← ENTERPRISE: Exclude soft-deleted vouchers
         )
 
         # Apply voucher type filter at DB level
@@ -266,6 +273,7 @@ async def get_vouchers(
                 "amount": v.amount,
                 "narration": v.narration,
                 "guid": v.guid,
+                "ledger_id": v.ledger_id,
                 "source": "database"
             })
             
@@ -297,13 +305,12 @@ async def get_vouchers(
                 logger.warning(f"Tally fallback failed: {te}")
                 normalized_vouchers = []
 
-        # 3. Mandatory date-range filter (applies to ALL sources — DB and Tally)
-        # ⚙️  ROOT CAUSE FIX: Tally returns ALL historical vouchers; we must filter
-        # explicitly here so only the requested date range reaches the frontend.
-        normalized_vouchers = [
-            v for v in normalized_vouchers
-            if start_date <= (v.get("date") or "") <= end_date
-        ]
+        # 3. Post-filter only for Tally fallback (DB data already SQL-filtered)
+        if not local_data:  # Only filter when data came from Tally fallback
+            normalized_vouchers = [
+                v for v in normalized_vouchers
+                if start_date <= (v.get("date") or "") <= end_date
+            ]
 
         # 4. Apply search filter
         if search_query:
@@ -316,7 +323,26 @@ async def get_vouchers(
             ]
             
         normalized_vouchers.sort(key=lambda x: x["date"], reverse=True)
-        
+
+        # 🔗 ENRICH MISSING LEDGER_IDs from DB by party_name
+        # Some vouchers (especially from Tally fallback) may not have ledger_id set.
+        # This post-processing step looks up ledger_id by party_name for those cases.
+        party_names_missing = [
+            v["party_name"] for v in normalized_vouchers
+            if not v.get("ledger_id") and v.get("party_name")
+        ]
+        if party_names_missing:
+            ledger_map = {
+                l.name: l.id
+                for l in db.query(Ledger.name, Ledger.id).filter(
+                    Ledger.tenant_id == tenant_id,
+                    Ledger.name.in_(party_names_missing)
+                ).all()
+            }
+            for v in normalized_vouchers:
+                if not v.get("ledger_id") and v.get("party_name"):
+                    v["ledger_id"] = ledger_map.get(v["party_name"])
+
         # 4. Pagination
         total_count = len(normalized_vouchers)
         start_index = (page - 1) * limit

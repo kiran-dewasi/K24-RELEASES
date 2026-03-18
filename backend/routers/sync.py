@@ -70,7 +70,10 @@ def perform_sync_task(db: Session):
             # Upsert using simple check (SQLAlchemy merge is cleaner but manual check allows partial updates)
             existing = db.query(Ledger).filter(Ledger.name == name).first()
             if existing:
+                existing.tenant_id = tenant_id
+                existing.is_active = True
                 existing.parent = l.get("Parent")
+                existing.ledger_type = l_type
                 # Tally exports Dr balances as negative. Store abs() for debtors/bank.
                 # Creditors will also be stored positive — dashboard uses abs() for payables.
                 existing.closing_balance = abs(float(l.get("ClosingBalance") or 0))
@@ -102,7 +105,10 @@ def perform_sync_task(db: Session):
         
         logger.info(f"📡 Syncing Vouchers ({start_str} to {end_str})...")
         vouchers = reader.get_transactions(start_str, end_str) # Requires get_transactions in TallyReader
-        
+
+        # STEP A: Collect identifiers for reconciliation
+        tally_identifiers = set()
+
         count = 0
         updated = 0
         for v in vouchers:
@@ -130,6 +136,12 @@ def perform_sync_task(db: Session):
             # Wrap items/ledgers as JSON-serialisable lists
             inv_entries = v.get("items") or []
             led_entries = v.get("ledgers") or []
+
+            # Collect identifier for reconciliation (STEP A continued)
+            if v_guid:
+                tally_identifiers.add(v_guid)
+            else:
+                tally_identifiers.add(f"{v_num}|{v.get('voucher_type')}|{v_date.date()}")
 
             # Dedup: GUID first, then voucher_number+type+date, then fingerprint
             exists = None
@@ -163,34 +175,92 @@ def perform_sync_task(db: Session):
                 exists.amount = float(v.get("amount") or exists.amount or 0)
                 exists.narration = v.get("narration") or exists.narration
                 exists.guid = v.get("guid") or exists.guid
+                # Un-delete if it was soft-deleted (voucher reappeared in Tally)
+                if exists.is_deleted:
+                    exists.is_deleted = False
+                    exists.deleted_at = None
+                    exists.deleted_source = None
                 updated += 1
             else:
-                new_voucher = Voucher(
-                    tenant_id=tenant_id,
-                    voucher_number=v_num,
-                    date=v_date,
-                    voucher_type=v.get("voucher_type"),
-                    party_name=v.get("party_name"),
-                    amount=float(v.get("amount") or 0),
-                    narration=v.get("narration"),
-                    sync_status="SYNCED",
-                    source="tally_sync",
-                    guid=v.get("guid") or f"SYNC-{v_num}",
-                    inventory_entries=inv_entries,
-                    ledger_entries=led_entries,
-                )
-                db.add(new_voucher)
-                count += 1
+                # ── ATOMIC UPSERT: Try to insert, catch constraint violation ──
+                try:
+                    new_voucher = Voucher(
+                        tenant_id=tenant_id,
+                        voucher_number=v_num,
+                        date=v_date,
+                        voucher_type=v.get("voucher_type"),
+                        party_name=v.get("party_name"),
+                        amount=float(v.get("amount") or 0),
+                        narration=v.get("narration"),
+                        sync_status="SYNCED",
+                        source="tally_sync",
+                        guid=v.get("guid") or f"SYNC-{v_num}",
+                        inventory_entries=inv_entries,
+                        ledger_entries=led_entries,
+                    )
+                    db.add(new_voucher)
+                    db.flush()  # Catch constraint violation immediately
+                    count += 1
+                except Exception as insert_err:
+                    # Constraint violation (duplicate) — skip silently, DB blocked it
+                    db.rollback()
+                    logger.warning(f"⚠️ Duplicate voucher blocked by DB constraint: {v_num} (GUID: {v_guid})")
         
         db.commit()
         logger.info(f"✅ Synced {count} new Vouchers, refreshed line items on {updated} existing.")
 
+        # ── STEP B: SOFT-DELETE RECONCILIATION (Enterprise-grade: never lose audit trail) ──
+        logger.info("🔍 Reconciling vouchers with Tally (soft-deleting stale entries)...")
+
+        # Query all active (non-deleted) vouchers for this tenant
+        all_db_vouchers = db.query(Voucher).filter(
+            Voucher.tenant_id == tenant_id,
+            Voucher.is_deleted == False
+        ).all()
+
+        # Safety guard 1: Never reconcile if Tally returned suspiciously few vouchers
+        MIN_EXPECTED = max(10, len(all_db_vouchers) // 2)  # At least 50% of what we have
+        if len(tally_identifiers) < MIN_EXPECTED:
+            logger.warning(
+                f"⚠️ RECONCILIATION SKIPPED: Tally returned only {len(tally_identifiers)} "
+                f"identifiers but DB has {len(all_db_vouchers)} vouchers. "
+                f"Possible partial sync. Soft-delete aborted to protect data integrity."
+            )
+        else:
+            stale_count = 0
+            for db_voucher in all_db_vouchers:
+                voucher_missing_from_tally = False
+
+                if db_voucher.guid and db_voucher.guid.startswith("SYNC-"):
+                    fingerprint = f"{db_voucher.voucher_number}|{db_voucher.voucher_type}|{db_voucher.date.date()}"
+                    if fingerprint not in tally_identifiers:
+                        voucher_missing_from_tally = True
+                elif db_voucher.guid:
+                    if db_voucher.guid not in tally_identifiers:
+                        voucher_missing_from_tally = True
+                else:
+                    fingerprint = f"{db_voucher.voucher_number}|{db_voucher.voucher_type}|{db_voucher.date.date()}"
+                    if fingerprint not in tally_identifiers:
+                        voucher_missing_from_tally = True
+
+                if voucher_missing_from_tally:
+                    db_voucher.is_deleted = True
+                    db_voucher.deleted_at = datetime.now()
+                    db_voucher.deleted_source = "tally_sync"
+                    stale_count += 1
+
+            db.commit()
+            logger.info(f"🗑️ Soft-deleted {stale_count} stale vouchers (audit trail preserved).")
+
         # 3. RECALCULATE PROPER CLOSING BALANCES FROM VOUCHERS
         # (This fixes the issue where Tally doesn't export closing balances correctly for some ledgers)
         logger.info("🔄 Recalculating Ledger Balances from Vouchers...")
-        
-        # Get all vouchers for this tenant
-        all_vouchers = db.query(Voucher).filter(Voucher.tenant_id == tenant_id).all()
+
+        # Get all active (non-deleted) vouchers for this tenant
+        all_vouchers = db.query(Voucher).filter(
+            Voucher.tenant_id == tenant_id,
+            Voucher.is_deleted == False  # ← ENTERPRISE: Only use active vouchers for balance calculation
+        ).all()
         
         from collections import defaultdict
         party_balances = defaultdict(float)

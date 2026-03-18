@@ -123,7 +123,7 @@ class LedgerService:
         ledger = self.db.query(Ledger).filter(
             Ledger.tenant_id == tenant_id,
             func.lower(Ledger.name) == func.lower(name.strip()),
-            Ledger.is_active == True
+            Ledger.is_active != False
         ).first()
         
         if ledger:
@@ -133,7 +133,7 @@ class LedgerService:
         ledger = self.db.query(Ledger).filter(
             Ledger.tenant_id == tenant_id,
             func.lower(Ledger.alias) == func.lower(name.strip()),
-            Ledger.is_active == True
+            Ledger.is_active != False
         ).first()
         
         return ledger
@@ -289,7 +289,7 @@ class LedgerService:
         
         base_query = self.db.query(Ledger).filter(
             Ledger.tenant_id == tenant_id,
-            Ledger.is_active == True,
+            Ledger.is_active != False,
             Ledger.name.ilike(f"%{query}%")
         )
         

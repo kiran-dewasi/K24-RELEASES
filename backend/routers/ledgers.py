@@ -50,7 +50,7 @@ class LedgerSearchResponse(BaseModel):
 
 # --- Ledger Search & Autocomplete Endpoints ---
 
-from backend.dependencies import get_api_key
+from backend.dependencies import get_api_key, get_tenant_id
 
 @router.get("/ledgers/search", dependencies=[Depends(get_api_key)])
 async def search_ledgers_for_autocomplete(
@@ -58,7 +58,7 @@ async def search_ledgers_for_autocomplete(
     ledger_type: Optional[str] = Query(None, description="Filter by type: customer, supplier, etc."),
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
-    tenant_id: str = "default"  # Use default tenant for API key access
+    tenant_id: str = Depends(get_tenant_id)
 ):
     """
     🔍 LEDGER SEARCH FOR AUTOCOMPLETE

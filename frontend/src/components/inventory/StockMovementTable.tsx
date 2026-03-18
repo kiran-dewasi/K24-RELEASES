@@ -67,7 +67,14 @@ export function StockMovementTable({ movements, isLoading }: StockMovementTableP
                 </TableHeader>
                 <TableBody>
                     {movements.map((move, index) => (
-                        <TableRow key={index} className="hover:bg-muted/5">
+                        <TableRow
+                            key={index}
+                            className="hover:bg-muted/20 cursor-pointer transition-colors"
+                            onClick={() => {
+                                // TODO: Navigate to voucher detail page when available
+                                console.log('Voucher clicked:', move.reference);
+                            }}
+                        >
                             <TableCell className="font-medium text-xs text-muted-foreground">
                                 {formatDate(move.date)}
                             </TableCell>
@@ -88,7 +95,11 @@ export function StockMovementTable({ movements, isLoading }: StockMovementTableP
                                 <div className="flex flex-col">
                                     {move.item_name && <span className="text-sm font-semibold text-primary/80">{move.item_name}</span>}
                                     <span className="text-sm font-medium">{move.party || "Adjustment"}</span>
-                                    <span className="text-xs text-muted-foreground">{move.reference || "No Ref"}</span>
+                                    {move.reference && (
+                                        <span className="text-xs font-mono text-primary/70 hover:text-primary">
+                                            Voucher #{move.reference}
+                                        </span>
+                                    )}
                                 </div>
                             </TableCell>
                             <TableCell className="text-right font-medium">

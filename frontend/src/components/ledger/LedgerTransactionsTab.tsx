@@ -75,13 +75,10 @@ export function LedgerTransactionsTab({ ledgerId }: LedgerTransactionsTabProps) 
             if (voucherType !== 'all') query.append("voucher_type", voucherType);
             if (debouncedSearch) query.append("search", debouncedSearch);
 
-            const res = await api.get(`/api/ledgers/${ledgerId}/transactions?${query.toString()}`);
-            if (res.ok) {
-                const data = await res.json();
-                processTransactions(data.transactions, data.opening_balance);
-                setCounts(data.count);
-                setOpeningBal(data.opening_balance);
-            }
+            const data = await api.get(`/api/ledgers/${ledgerId}/transactions?${query.toString()}`);
+            processTransactions(data.transactions, data.opening_balance);
+            setCounts(data.count);
+            setOpeningBal(data.opening_balance);
         } catch (error) {
             console.error(error);
         } finally {

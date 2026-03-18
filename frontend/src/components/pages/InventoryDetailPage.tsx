@@ -34,21 +34,12 @@ function InventoryDetailContent() {
             try {
                 setLoading(true);
                 // Fetch Item Details
-                const itemRes = await api.get(`/api/inventory/${encodeURIComponent(itemName)}`);
-
-                if (itemRes.ok) {
-                    const data = await itemRes.json();
-                    setItem(data.item);
-                } else {
-                    throw new Error("Item not found");
-                }
+                const data = await api.get(`/api/inventory/${encodeURIComponent(itemName)}`);
+                setItem(data.item);
 
                 // Fetch Movements
-                const moveRes = await api.get(`/api/inventory/${encodeURIComponent(itemName)}/movements`);
-                if (moveRes.ok) {
-                    const mData = await moveRes.json();
-                    setMovements(mData.movements || []);
-                }
+                const mData = await api.get(`/api/inventory/${encodeURIComponent(itemName)}/movements`);
+                setMovements(mData.movements || []);
 
             } catch (error) {
                 console.error(error);

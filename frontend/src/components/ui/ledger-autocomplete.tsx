@@ -78,17 +78,10 @@ export function LedgerAutocomplete({
 
         try {
             const typeParam = ledgerType && ledgerType !== 'all' ? `&ledger_type=${ledgerType}` : '';
-            const response = await api.get(`/api/ledgers/search?q=${encodeURIComponent(query)}${typeParam}&limit=10`);
-
-            if (response.ok) {
-                const data = await response.json();
-                setSuggestions(data.ledgers || []);
-                setShowDropdown(true);
-                setSelectedIndex(-1);
-            } else {
-                console.error('Ledger search failed:', response.status);
-                setSuggestions([]);
-            }
+            const data = await api.get(`/api/ledgers/search?q=${encodeURIComponent(query)}${typeParam}&limit=10`);
+            setSuggestions(data.ledgers || []);
+            setShowDropdown(true);
+            setSelectedIndex(-1);
         } catch (err) {
             console.error('Ledger search error:', err);
             setError('Failed to search ledgers');

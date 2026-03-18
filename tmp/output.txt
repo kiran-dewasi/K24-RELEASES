@@ -1,0 +1,7 @@
+March 15 total: 6
+  Vch#25 | is_deleted=True | guid=d3b3ef8c-95f5-4294-923d-ab7b57a5de98-000001ba
+  Vch#65 | is_deleted=True | guid=d3b3ef8c-95f5-4294-923d-ab7b57a5de98-000001bb
+  Vch#26 | is_deleted=True | guid=d3b3ef8c-95f5-4294-923d-ab7b57a5de98-000001bc
+  Vch#66 | is_deleted=True | guid=d3b3ef8c-95f5-4294-923d-ab7b57a5de98-000001bd
+  Vch#27 | is_deleted=True | guid=d3b3ef8c-95f5-4294-923d-ab7b57a5de98-000001be
+  Vch#67 | is_deleted=True | guid=d3b3ef8c-95f5-4294-923d-ab7b57a5de98-000001c4
