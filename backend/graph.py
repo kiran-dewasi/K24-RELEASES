@@ -73,7 +73,12 @@ def agent_node(state: AgentState):
     else:
         current_instructions += "\n\nNOTE: For reports (Stock, Receivables), use the `check_...` tools and ALWAYS present the JSON data as a Markdown Table."
 
-    final_messages = [SystemMessage(content=current_instructions)] + messages
+    # Limit history to last 6 messages to reduce token usage
+    if len(messages) > 6:
+        limited_messages = messages[-6:]  # type: ignore
+    else:
+        limited_messages = messages
+    final_messages = [SystemMessage(content=current_instructions)] + limited_messages
     
     # ANALYZE COMPLEXITY
     # Check for images in the messages
@@ -258,7 +263,7 @@ async def run_agent(message_text: str, thread_id: str = "default", user_id: str 
 
     config = {
         "configurable": {"thread_id": thread_id, "user_id": user_id},
-        "recursion_limit": 10  # Prevent runaway loops
+        "recursion_limit": 3  # Reduced from 10 to minimize token usage
     }
 
     try:

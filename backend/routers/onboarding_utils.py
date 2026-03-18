@@ -106,8 +106,12 @@ async def handle_onboarding(db: Session, phone: str, message_text: str) -> str:
     step = state.current_step
     data = state.temp_data or {}
     msg = message_text.strip()
-    
+
     logger.info(f"Onboarding flow for {phone}: Step={step}, Input='{msg}'")
+
+    # Skip onboarding if already complete
+    if step == STEP_COMPLETE:
+        return "You're already onboarded! Ask me anything about your Tally data."
 
     # --- RESET ---
     if msg.lower() in ["reset", "restart", "start"]:
