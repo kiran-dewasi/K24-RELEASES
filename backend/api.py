@@ -274,14 +274,7 @@ from backend.sync.sync_monitor import monitor as sync_monitor
 
 # Initialize Orchestrator
 orchestrator = None
-if GOOGLE_API_KEY:
-    try:
-        orchestrator = K24Orchestrator(api_key=GOOGLE_API_KEY)
-        logger.info("Orchestrator initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to init Orchestrator: {e}")
-else:
-    logger.warning("GOOGLE_API_KEY not found. Chat will not work.")
+# Lazy init — created on first /chat request only
 @app.get("/audit/run", dependencies=[Depends(get_api_key)])
 def run_pre_audit():
     """
@@ -309,7 +302,7 @@ from typing import List
 init_db()
 print("DEBUG: Database Tables Checked/Created.")
 
-# Global Orchestrator instance
+# Global Orchestrator instance (lazy initialization)
 orchestrator = None
 
 # Global FollowUpManager for conversation state
@@ -319,10 +312,8 @@ follow_up_mgr = FollowUpManager()
 # startup_event is now called by lifespan
 async def startup_event():
     global orchestrator
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        logger.warning("GOOGLE_API_KEY not set. Orchestrator will fail.")
-    orchestrator = K24Orchestrator(api_key=api_key or "dummy")
+    # Orchestrator initialization is now lazy - will be created on first use
+    # This reduces startup API calls to Gemini
     
 
     # Initialize AI Agent Orchestrator
@@ -646,6 +637,8 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
     print(f"{'='*70}")
 
     async def event_generator():
+        import time
+        t0 = time.time()
         try:
             # ====================================================================
             # STEP 1: LOAD PREVIOUS MESSAGES (THIS IS THE MEMORY!)
@@ -681,6 +674,8 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
             messages.append(HumanMessage(content=enhanced_message))
             print(f"\n   Total messages agent will see: {len(messages)}")
             
+            print(f"[PERF] History loaded: {time.time()-t0:.2f}s")
+            
             # Stream: Status update
             yield f"data: {json.dumps({'type': 'status', 'content': f'Processing with {len(messages)} messages in context...', 'thread_id': thread_id, 'context_size': len(messages)})}\n\n"
             
@@ -701,6 +696,8 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
 
             user_msg_id = user_msg.get('id') if user_msg else "temp_id"
             print(f"   ✓ Saved with ID: {user_msg_id}")
+            
+            print(f"[PERF] User msg saved: {time.time()-t0:.2f}s")
             
             # ====================================================================
             # STEP 3: CALL AGENT WITH FULL MESSAGE HISTORY
@@ -762,6 +759,8 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
                     print(f"   ✗ Agent error: {agent_error}")
                     response_text = f"Error processing request: {str(agent_error)}"
             
+            print(f"[PERF] Agent responded: {time.time()-t0:.2f}s")
+            
             # Stream: Agent response in progress
             yield f"data: {json.dumps({'type': 'status', 'content': 'Agent processed. Saving response...', 'thread_id': thread_id})}\n\n"
             
@@ -782,6 +781,8 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
 
             agent_msg_id = agent_msg.get('id') if agent_msg else "temp_id"
             print(f"   ✓ Saved with ID: {agent_msg_id}")
+            
+            print(f"[PERF] Agent msg saved: {time.time()-t0:.2f}s")
             
             # ====================================================================
             # STEP 5: STREAM RESPONSE TO FRONTEND
@@ -1198,8 +1199,14 @@ async def chat_endpoint(request: ChatRequest):
     Delegates to the K24Orchestrator ("The Director").
     """
     try:
-        if not orchestrator:
-            raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+        # Lazy initialization of orchestrator on first use
+        global orchestrator
+        if orchestrator is None:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured")
+            orchestrator = K24Orchestrator(api_key=api_key)
+            logger.info("Orchestrator initialized lazily on first request")
 
         # Pass request to the Director
         response_data = await orchestrator.process_message(
@@ -1207,7 +1214,7 @@ async def chat_endpoint(request: ChatRequest):
             message=request.message,
             active_draft=request.active_draft
         )
-        
+
         return response_data
 
     except Exception as e:
