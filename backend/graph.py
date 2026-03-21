@@ -53,6 +53,8 @@ def agent_node(state: AgentState):
     The Brain. Decides what to do (call tool or respond).
     Uses ModelRouter to select Flash vs Pro.
     """
+    import time
+    print(f"[AGENT_NODE] {time.strftime('%H:%M:%S')} — iteration start")
     messages = state["messages"]
     source = state.get("source_pipeline", "CHAT")
     

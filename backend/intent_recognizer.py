@@ -165,14 +165,16 @@ class IntentRecognizer:
     ) -> Intent:
         """
         Recognize intent from user message
-        
+
         Args:
             user_message: User's natural language input
             context: Optional conversation context
-            
+
         Returns:
             Intent object with action, entity, parameters, and confidence
         """
+        import time
+        print(f"[INTENT_CALL] {time.strftime('%H:%M:%S')} — query: {user_message[:30]}")
         # Build prompt with context
         prompt = self._build_prompt(user_message, context)
         

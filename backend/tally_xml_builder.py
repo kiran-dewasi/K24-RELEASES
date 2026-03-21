@@ -141,9 +141,7 @@ def _wrap_envelope(company_name: str, report_name: str, payload: str) -> str:
         "    <IMPORTDATA>\n"
         "      <REQUESTDESC>\n"
         f"        <REPORTNAME>{_escape(report_name)}</REPORTNAME>\n"
-        "        <STATICVARIABLES>\n"
-        f"          <SVCURRENTCOMPANY>{_escape(company_name)}</SVCURRENTCOMPANY>\n"
-        "        </STATICVARIABLES>\n"
+
         "      </REQUESTDESC>\n"
         "      <REQUESTDATA>\n"
         "        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">\n"
@@ -520,50 +518,24 @@ class InventoryEntry:
     actual_qty: str
     billed_qty: str
     ledger_name: str  # Generic name (Sales Account or Purchase Account)
-    
+
     # Optional fields
     discount: Optional[Decimal] = None
-    
-    # Backward compatibility alias (if needed by old code, though we should update callers)
-    # We'll map sales_ledger_name in __init__ if strictly needed, but dataclass makes it hard.
-    # We update the caller instead.
 
-def format_tally_amount(amount: float, is_debit: bool) -> tuple[str, str]:
-    """
-    Helper to enforce Tally XML Rules:
-    Debit (Yes/Purchase) -> Negative Amount
-    Credit (No/Sales) -> Positive Amount
-    """
-    abs_amt = abs(amount)
-    if is_debit:
-        # Debit: ISDEEMEDPOSITIVE="Yes", Amount needs to be NEGATIVE
-        return "Yes", _format_decimal(-abs_amt)
-    else:
-        # Credit: ISDEEMEDPOSITIVE="No", Amount needs to be POSITIVE
-        return "No", _format_decimal(abs_amt)
-
-class InventoryEntry:
-    # ... previous code ...
-    
     def render(self, is_deemed_positive: bool = False, indent: str = "          ") -> str:
         """
         Renders the Inventory Entry.
-        is_deemed_positive: 
+        is_deemed_positive:
            - False for Sales (Credit) - Default
            - True for Purchase (Debit)
         """
-        # Logically Determine Sign using Helper
-        # is_deemed_positive directly maps to is_debit here
         is_debit = is_deemed_positive
-        
-        pos_str, amt_str = format_tally_amount(self.amount, is_debit)
-        
-        # Determine signs and flags - Centralized
+        pos_str, amt_str = format_tally_amount(float(self.amount), is_debit)
+
         stock_item_is_positive_str = pos_str
         allocation_is_positive_str = pos_str
         tally_amount_str = amt_str
 
-        # Accounting Allocation (Sales/Purchase Ledger)
         alloc_indent = indent + "  "
         allocation_xml = (
             f"{indent}<ACCOUNTINGALLOCATIONS.LIST>\n"
@@ -580,15 +552,31 @@ class InventoryEntry:
             f"{indent}<AMOUNT>{tally_amount_str}</AMOUNT>",
             f"{indent}<ACTUALQTY>{_escape(self.actual_qty)}</ACTUALQTY>",
             f"{indent}<BILLEDQTY>{_escape(self.billed_qty)}</BILLEDQTY>",
-            allocation_xml
+            allocation_xml,
         ]
-        
+
         joined_lines = "\n".join(lines)
         return (
             f"        <ALLINVENTORYENTRIES.LIST>\n"
             f"{joined_lines}\n"
             f"        </ALLINVENTORYENTRIES.LIST>"
         )
+
+def format_tally_amount(amount: float, is_debit: bool) -> tuple[str, str]:
+    """
+    Helper to enforce Tally XML Rules:
+    Debit (Yes/Purchase) -> Negative Amount
+    Credit (No/Sales) -> Positive Amount
+    """
+    abs_amt = abs(amount)
+    if is_debit:
+        # Debit: ISDEEMEDPOSITIVE="Yes", Amount needs to be NEGATIVE
+        return "Yes", _format_decimal(-abs_amt)
+    else:
+        # Credit: ISDEEMEDPOSITIVE="No", Amount needs to be POSITIVE
+        return "No", _format_decimal(abs_amt)
+
+
 
 
 def build_invoice_xml(
@@ -642,30 +630,27 @@ def build_invoice_xml(
         #Or we interpret? Let's rely on caller 'is_debit' flag if present.
         #Default: If Purchase, charges are Debit? If Sales, charges are Credit?
         #Let's trust the flag or default to Context.
-        
+
         if "is_debit" in entry:
             is_debit = bool(entry.get("is_debit"))
         else:
             is_debit = True if is_purchase else False # Default context
-            
+
         if not lname: continue
-            
-        # Amount Sign Logic
-        # Tally convention: Always negative number in XML amount?
-        tally_amount = -abs(amount) 
-        
-        is_positive_str = "Yes" if is_debit else "No"
-        
+
+        # Amount Sign Logic - use format_tally_amount() helper
+        is_positive_str, tally_amount = format_tally_amount(float(amount), is_debit)
+
         if is_debit:
             total_other_debits += abs(amount)
         else:
             total_other_credits += abs(amount)
-            
+
         additional_entries_xml.append(
             f"        <LEDGERENTRIES.LIST>\n"
             f"{indent}<LEDGERNAME>{_escape(lname)}</LEDGERNAME>\n"
             f"{indent}<ISDEEMEDPOSITIVE>{is_positive_str}</ISDEEMEDPOSITIVE>\n"
-            f"{indent}<AMOUNT>{_format_decimal(tally_amount)}</AMOUNT>\n"
+            f"{indent}<AMOUNT>{tally_amount}</AMOUNT>\n"
             f"        </LEDGERENTRIES.LIST>"
         )
 
@@ -708,15 +693,15 @@ def build_invoice_xml(
     inventory_xml_list = [item.render(is_deemed_positive=inv_is_deemed_positive) for item in inventory_items]
     inventory_block = "\n".join(inventory_xml_list)
     additional_block = "\n".join(additional_entries_xml)
-    
-    party_sign_str = "Yes" if party_is_debit else "No"
-    party_tally_amount = -abs(party_amount) # Convention
-    
+
+    # Party Ledger - use format_tally_amount() helper for consistent sign logic
+    party_sign_str, party_tally_amount = format_tally_amount(float(party_amount), party_is_debit)
+
     party_entry_xml = (
         f"        <LEDGERENTRIES.LIST>\n"
         f"{indent}<LEDGERNAME>{_escape(party_ledger_name)}</LEDGERNAME>\n"
         f"{indent}<ISDEEMEDPOSITIVE>{party_sign_str}</ISDEEMEDPOSITIVE>\n"
-        f"{indent}<AMOUNT>{_format_decimal(party_tally_amount)}</AMOUNT>\n"
+        f"{indent}<AMOUNT>{party_tally_amount}</AMOUNT>\n"
         f"        </LEDGERENTRIES.LIST>"
     )
     

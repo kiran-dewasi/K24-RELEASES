@@ -30,8 +30,10 @@ def get_gemini_llm() -> ChatGoogleGenerativeAI:
     Lazy initialization of Gemini LLM.
     Only creates the instance when first called, not at import time.
     """
+    import time
+    print(f"[GEMINI_INIT] {time.strftime('%H:%M:%S')} — LLM created")
     global _gemini_llm
-    
+
     # Return cached instance if exists
     if _gemini_llm is not None:
         return _gemini_llm

@@ -87,6 +87,7 @@ class GeminiOrchestrator:
             ValueError: If response validation fails.
             RuntimeError: If all retries fail due to other errors.
         """
+        print(f"[GEMINI_CALL] {time.strftime('%H:%M:%S')} — caller: {__name__}")
         last_exception = None
 
         for attempt in range(1, max_attempts + 1):

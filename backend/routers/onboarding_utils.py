@@ -22,11 +22,15 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
-async def check_intelligently(user_input: str, current_prompt: str) -> dict:
+async def check_intelligently(user_input: str, current_prompt: str, is_onboarding_active: bool = True) -> dict:
     """
     Uses Gemini to decide if the user is answering the prompt or asking a question.
     Returns: {"type": "ANSWER" | "QUESTION", "response": "..."}
     """
+    # Guard: Skip Gemini call if not in active onboarding flow
+    if not is_onboarding_active:
+        return {"type": "ANSWER", "response": None}
+
     if not GOOGLE_API_KEY:
         return {"type": "ANSWER", "response": None}
 
@@ -142,8 +146,9 @@ async def handle_onboarding(db: Session, phone: str, message_text: str) -> str:
     elif step == STEP_AWAITING_BUSINESS_NAME:
         # --- INTELLIGENT INTERVENTION ---
         # Don't check for very short inputs to avoid API spam, but for sentences:
+        # Pass is_onboarding_active=True since we're in active onboarding
         if len(msg) > 4:
-            analysis = await check_intelligently(msg, "What is your Business Name?")
+            analysis = await check_intelligently(msg, "What is your Business Name?", is_onboarding_active=True)
             if analysis.get("type") == "QUESTION":
                 return analysis.get("reply", "Please enter your Business Name to continue.")
         # -------------------------------
