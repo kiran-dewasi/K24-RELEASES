@@ -37,15 +37,26 @@ logger = logging.getLogger("whatsapp_cloud")
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp-cloud"])
 
 # ─────────────────────────────────────────────────────────────
-# Production defaults — baked in so zero config needed on Railway
+# Environment-only configuration — NO hardcoded fallbacks
 # ─────────────────────────────────────────────────────────────
-_PROD_SUPABASE_URL         = "https://gxukvnoiyzizienswgni.supabase.co"
-_PROD_SUPABASE_SERVICE_KEY = "sb_secret_qJuJk2q0_hO144oQLmSYxA_6WB_qtkRYunw86tZY1LM9TgYvFoqhda8"
-_PROD_BAILEYS_SECRET       = "EDkEu8si6PveFOrgRAt32TZcLa1o0tqr1T2LzU3KILg"
 
-SUPABASE_URL         = os.getenv("SUPABASE_URL")         or _PROD_SUPABASE_URL
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or _PROD_SUPABASE_SERVICE_KEY
-BAILEYS_SECRET       = os.getenv("BAILEYS_SECRET")       or _PROD_BAILEYS_SECRET
+def _get_required_env(key: str) -> str:
+    """
+    Fetch environment variable or raise startup error.
+    No silent fallbacks — if it's missing, the service MUST NOT start.
+    """
+    value = os.environ.get(key)
+    if not value:
+        raise RuntimeError(
+            f"❌ FATAL: Required environment variable '{key}' is not set. "
+            f"Service cannot start. Please configure Railway environment."
+        )
+    return value
+
+
+SUPABASE_URL         = _get_required_env("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = _get_required_env("SUPABASE_SERVICE_KEY")
+BAILEYS_SECRET       = _get_required_env("BAILEYS_SECRET")
 
 
 # ─────────────────────────────────────────────────────────────

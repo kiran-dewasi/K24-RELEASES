@@ -116,6 +116,7 @@ class CreateIntentRequest(BaseModel):
     email:        str
     phone:        str
     gst_number:   Optional[str] = None
+    existing_tenant_id: Optional[str] = None
 
     @field_validator("plan_id")
     @classmethod
@@ -188,6 +189,7 @@ async def create_intent(req: CreateIntentRequest):
         "email":        req.email,
         "phone":        req.phone,
         "gst_number":   req.gst_number,
+        "existing_tenant_id": req.existing_tenant_id,
         "status":       "pending_payment",
     }
 

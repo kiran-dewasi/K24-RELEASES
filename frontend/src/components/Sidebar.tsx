@@ -118,7 +118,7 @@ export default function Sidebar() {
 
     const handleSignOut = () => {
         if (window.confirm("Sign out?")) {
-            ["k24_license_key", "k24_device_id", "k24_tenant_id", "k24_user_id", "k24_token", "k24_user"]
+            ["k24_license_key", "k24_device_id", "k24_user_id", "k24_token", "k24_user"]
                 .forEach(k => localStorage.removeItem(k));
             window.location.href = "/login";
         }

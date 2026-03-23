@@ -165,38 +165,41 @@ if is_desktop_mode():
 else:
     print("[SECURITY] Development mode - API accessible without desktop token")
 
+from backend.auth import check_subscription_active
+protected_deps = [Depends(check_subscription_active)]
+
 # Include Routers
 app.include_router(auth.router)          # Auth first (no API key required)
-app.include_router(whatsapp_binding.router)  # WhatsApp Binding
+app.include_router(whatsapp_binding.router, dependencies=protected_deps)  # WhatsApp Binding
 app.include_router(whatsapp_cloud.router)    # ← Cloud Incoming (Baileys → Queue)
 
 # Include Routers
-app.include_router(whatsapp.router)
+app.include_router(whatsapp.router, dependencies=protected_deps)
 # app.include_router(invoices.router) # Phase D: Unified Invoices - Deprecated infavor of vouchers.py
 app.include_router(baileys.router) # Phase E: Baileys Integration
-app.include_router(vouchers.router, prefix="/api") # Phase F: Vouchers Refactor
-app.include_router(ledgers.router, prefix="/api") # Phase G: Ledgers Profile
-app.include_router(inventory.router, prefix="/api") # Phase H: Inventory
-app.include_router(items.router) # Phase I: Items 360° Profile (No prefix, handles own paths)
-app.include_router(customers.router, prefix="/api") # Phase I: Customer 360° Profile
+app.include_router(vouchers.router, prefix="/api", dependencies=protected_deps) # Phase F: Vouchers Refactor
+app.include_router(ledgers.router, prefix="/api", dependencies=protected_deps) # Phase G: Ledgers Profile
+app.include_router(inventory.router, prefix="/api", dependencies=protected_deps) # Phase H: Inventory
+app.include_router(items.router, dependencies=protected_deps) # Phase I: Items 360° Profile (No prefix, handles own paths)
+app.include_router(customers.router, prefix="/api", dependencies=protected_deps) # Phase I: Customer 360° Profile
 
 
 # Restoring routers preserved from previous versions
-app.include_router(contacts.router) 
-app.include_router(reports.router)
-app.include_router(operations.router)
-app.include_router(gst.router)
-app.include_router(setup.router)
-app.include_router(debug.router)
-app.include_router(compliance.router, prefix="/api")
-app.include_router(sync.router)   
-app.include_router(bills.router)
-app.include_router(dashboard.router, prefix="/api")
-app.include_router(search.router, prefix="/api")
-app.include_router(settings.router) # Phase ?: User Settings
-app.include_router(agent.router) # Ensure agent router is here too if not duplicate
-app.include_router(query.router, prefix="/api") # Day 5: Smart Query API
-app.include_router(devices.router, prefix="/api/devices") # Licensing
+app.include_router(contacts.router, dependencies=protected_deps) 
+app.include_router(reports.router, dependencies=protected_deps)
+app.include_router(operations.router, dependencies=protected_deps)
+app.include_router(gst.router, dependencies=protected_deps)
+app.include_router(setup.router, dependencies=protected_deps)
+app.include_router(debug.router, dependencies=protected_deps)
+app.include_router(compliance.router, prefix="/api", dependencies=protected_deps)
+app.include_router(sync.router, dependencies=protected_deps)   
+app.include_router(bills.router, dependencies=protected_deps)
+app.include_router(dashboard.router, prefix="/api", dependencies=protected_deps)
+app.include_router(search.router, prefix="/api", dependencies=protected_deps)
+app.include_router(settings.router, dependencies=protected_deps) # Phase ?: User Settings
+app.include_router(agent.router, dependencies=protected_deps) # Ensure agent router is here too if not duplicate
+app.include_router(query.router, prefix="/api", dependencies=protected_deps) # Day 5: Smart Query API
+app.include_router(devices.router, prefix="/api/devices", dependencies=protected_deps) # Licensing
 # ── Credit & Usage system ─────────────────────────────────────────────────
 app.include_router(usage_router.router)   # POST /internal/usage/event
 app.include_router(admin_router.router)   # GET  /admin/tenants etc.
@@ -275,7 +278,7 @@ from backend.sync.sync_monitor import monitor as sync_monitor
 # Initialize Orchestrator
 orchestrator = None
 # Lazy init — created on first /chat request only
-@app.get("/audit/run", dependencies=[Depends(get_api_key)])
+@app.get("/audit/run", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 def run_pre_audit():
     """
     Run Pre-Audit Compliance Check (Section 44AB)
@@ -456,7 +459,7 @@ class ModifyRequest(BaseModel):
 class ImportXMLRequest(BaseModel):
     xml_input: str
 
-@app.post("/import-tally/", dependencies=[Depends(get_api_key)])
+@app.post("/import-tally/", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 def import_tally(req: ImportXMLRequest):
     global dataframe
     xml_text = req.xml_input
@@ -477,8 +480,7 @@ def import_tally(req: ImportXMLRequest):
 class AgentQuery(BaseModel):
     query: str
 
-@app.post("/ask-agent/", dependencies=[Depends(get_api_key)])
-@app.post("/ask-agent/", dependencies=[Depends(get_api_key)])
+@app.post("/ask-agent/", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 def ask_agent(request: AgentQuery):
     try:
         df = _ensure_dataframe()
@@ -496,7 +498,7 @@ def ask_agent(request: AgentQuery):
 class CustomerDetailsRequest(BaseModel):
     name: str
 
-@app.post("/customer-details/", dependencies=[Depends(get_api_key)])
+@app.post("/customer-details/", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 def customer_details(req: CustomerDetailsRequest):
     df = _ensure_dataframe()
     details = get_customer_details(df, req.name)
@@ -506,7 +508,7 @@ def customer_details(req: CustomerDetailsRequest):
 
 # Endpoint moved to backend/routers/vouchers.py
 
-@app.get("/api/reports/outstanding", dependencies=[Depends(get_api_key)])
+@app.get("/api/reports/outstanding", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 async def get_outstanding_bills():
     """Fetch outstanding bills"""
     try:
@@ -518,7 +520,7 @@ async def get_outstanding_bills():
         logger.exception("Failed to fetch outstanding bills")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/ledgers/search", dependencies=[Depends(get_api_key)])
+@app.get("/api/ledgers/search", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 async def search_ledgers(query: str):
     """Search ledgers for autocomplete"""
     try:
@@ -583,8 +585,7 @@ def health_check():
     supabase_status = "connected" if supabase_http_service.client else "disabled"
     return {"status": "ok", "supabase": supabase_status, "k24": "running"}
 
-@app.post("/audit", dependencies=[Depends(get_api_key)])
-@app.post("/audit", dependencies=[Depends(get_api_key)])
+@app.post("/audit", dependencies=[Depends(get_api_key), Depends(check_subscription_active)])
 def audit_entry(request: AuditRequest):
     try:
         df = _ensure_dataframe()
@@ -607,7 +608,7 @@ class ChatRequest(BaseModel):
     confirmation: bool = False
 
 @app.post("/api/chat")
-async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_current_tenant_id)):
+async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_current_tenant_id), _sub = Depends(check_subscription_active)):
     """
     Chat endpoint WITH MEMORY.
     
@@ -628,6 +629,11 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
     
     # Ensure thread exists in DB (fix for FK violation)
     await chat_repo.create_thread(thread_id, request.user_id)
+
+    from backend.credit_engine.engine import check_credits_available
+    from fastapi import HTTPException
+    if not check_credits_available(tenant_id, "MESSAGE"):
+        raise HTTPException(status_code=402, detail="Credit limit reached")
 
     print(f"\n{'='*70}")
     print(f"📨 CHAT REQUEST")
@@ -790,6 +796,13 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
             print(f"\n📤 STREAMING RESPONSE TO FRONTEND...")
             
             yield f"data: {json.dumps({'type': 'response', 'content': response_text, 'message_id': agent_msg_id, 'thread_id': thread_id})}\n\n"
+            
+            from backend.credit_engine import record_event
+            record_event(
+                tenant_id=tenant_id,
+                event_type="MESSAGE",
+                event_subtype="action"
+            )
             
             # Stream: Complete
             yield f"data: {json.dumps({'type': 'complete', 'thread_id': thread_id, 'user_message_id': user_msg_id, 'agent_message_id': agent_msg_id, 'total_messages': len(messages) + 1})}\n\n"

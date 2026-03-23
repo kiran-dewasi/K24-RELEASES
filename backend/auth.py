@@ -147,7 +147,6 @@ def require_role(required_role: str):
                 detail=f"Insufficient permissions. Required role: {required_role}"
             )
         return current_user
-        return current_user
     return role_checker
 
 def get_current_tenant_id(current_user: User = Depends(get_current_active_user)) -> str:
@@ -187,3 +186,43 @@ def get_optional_current_user(
 
     user = db.query(User).filter(User.username == username).first()
     return user  # Could be None if user was deleted
+
+def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
+    """
+    Dependency to check if the tenant's subscription is active or in a valid trial.
+    """
+    from backend.services.supabase_service import supabase_http_service
+    from datetime import datetime, timezone
+    import httpx
+
+    if not supabase_http_service.client or tenant_id in [None, "", "default", "offline-default"]:
+        return tenant_id
+
+    try:
+        headers = supabase_http_service._get_headers(use_service_key=True)
+        response = httpx.get(
+            f"{supabase_http_service.url}/rest/v1/tenant_config?tenant_id=eq.{tenant_id}&select=subscription_status,trial_ends_at&limit=1",
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                config = data[0]
+                status_str = config.get("subscription_status")
+                trial_ends_str = config.get("trial_ends_at")
+
+                if status_str == "expired":
+                    raise HTTPException(status_code=403, detail="Subscription expired")
+
+                if trial_ends_str:
+                    try:
+                        trial_ends_dt = datetime.fromisoformat(trial_ends_str.replace('Z', '+00:00'))
+                        if datetime.now(timezone.utc) > trial_ends_dt:
+                            raise HTTPException(status_code=403, detail="Subscription expired")
+                    except ValueError:
+                        pass
+    except httpx.RequestError as e:
+        print(f"Subscription check network error: {e}")
+
+    return tenant_id

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import ConnectDevice from "./ConnectDevice";
 import { Loader2 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://weare-production.up.railway.app";
 
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
@@ -86,8 +86,8 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
                 // Clear all activation-related localStorage
                 localStorage.removeItem("k24_license_key");
                 localStorage.removeItem("k24_device_id");
-                localStorage.removeItem("k24_tenant_id");
                 localStorage.removeItem("k24_user_id");
+                localStorage.removeItem("k24_user");
 
                 // Alert user and reload
                 alert("✅ Device activation reset! Showing ConnectDevice screen.");

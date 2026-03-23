@@ -20,7 +20,7 @@ function SearchContent() {
     useEffect(() => {
         if (query) {
             setLoading(true);
-            fetch(`http://127.0.0.1:8000/search?q=${query}`)
+            fetch(`http://127.0.0.1:8001/search?q=${query}`)
                 .then(res => res.json())
                 .then(data => {
                     setResults({

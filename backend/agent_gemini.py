@@ -586,6 +586,12 @@ def extract_bill_data(
         max_retries = 3
         retry_delay = 2  # start with 2 seconds backoff
         
+        if tenant_id:
+            from backend.credit_engine.engine import check_credits_available
+            from fastapi import HTTPException
+            if not check_credits_available(tenant_id, "DOCUMENT"):
+                raise HTTPException(status_code=402, detail="Credit limit reached")
+        
         response = None
         for attempt in range(max_retries):
             try:

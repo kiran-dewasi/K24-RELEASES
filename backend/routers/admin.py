@@ -554,43 +554,70 @@ async def update_intent_status(intent_id: str, req: IntentStatusUpdate):
     }
 
     if req.status == "activated":
-        plan_id    = intent["plan_id"]
-        short_uid  = uuid.uuid4().hex[:8].upper()
-        tenant_id  = f"TENANT-{short_uid}"
-        period_end = now + timedelta(days=30)
+        plan_id           = intent["plan_id"]
+        existing_tenant   = intent.get("existing_tenant_id")
+        period_end        = now + timedelta(days=365)  # Annual subscription
 
-        # A: Create tenant record
-        tenant_data = {
-            "id":           tenant_id,
-            "company_name": intent.get("company_name", ""),
-        }
-        _post("tenants", tenant_data)
+        if existing_tenant:
+            # ── UPGRADE EXISTING TENANT ──
+            tenant_id = existing_tenant
 
-        # B: Create/update tenant_config (the auth gate the backend reads)
-        config_data = {
-            "tenant_id":            tenant_id,
-            "user_email":           intent.get("email", ""),
-            "company_name":         intent.get("company_name", ""),
-            "whatsapp_number":      intent.get("phone", ""),
-            "subscription_status":  "active",
-            "trial_ends_at":        period_end.isoformat(),
-            "subscription_ends_at": period_end.isoformat(),
-        }
-        _post("tenant_config", config_data)
+            # Update tenant_config with new expiry
+            _patch("tenant_config", f"tenant_id=eq.{tenant_id}", {
+                "subscription_status":  "active",
+                "subscription_ends_at": period_end.isoformat(),
+                "updated_at":           now.isoformat(),
+            })
 
-        # C: Create tenant_plans (credit engine)
-        _post("tenant_plans", {
-            "tenant_id":            tenant_id,
-            "plan_id":              plan_id,
-            "status":               "active",
-            "current_period_start": now.isoformat(),
-            "current_period_end":   period_end.isoformat(),
-        })
+            # Cancel old plan and create new one
+            _patch("tenant_plans", f"tenant_id=eq.{tenant_id}", {"status": "cancelled"})
+            _post("tenant_plans", {
+                "tenant_id":            tenant_id,
+                "plan_id":              plan_id,
+                "status":               "active",
+                "current_period_start": now.isoformat(),
+                "current_period_end":   period_end.isoformat(),
+            })
+
+            logger.info(f"[AdminRouter] Intent {intent_id} UPGRADED → tenant={tenant_id} plan={plan_id}")
+
+        else:
+            # ── CREATE NEW TENANT ──
+            short_uid  = uuid.uuid4().hex[:8].upper()
+            tenant_id  = f"TENANT-{short_uid}"
+
+            # A: Create tenant record
+            tenant_data = {
+                "id":           tenant_id,
+                "company_name": intent.get("company_name", ""),
+            }
+            _post("tenants", tenant_data)
+
+            # B: Create/update tenant_config (the auth gate the backend reads)
+            config_data = {
+                "tenant_id":            tenant_id,
+                "user_email":           intent.get("email", ""),
+                "company_name":         intent.get("company_name", ""),
+                "whatsapp_number":      intent.get("phone", ""),
+                "subscription_status":  "active",
+                "trial_ends_at":        period_end.isoformat(),
+                "subscription_ends_at": period_end.isoformat(),
+            }
+            _post("tenant_config", config_data)
+
+            # C: Create tenant_plans (credit engine)
+            _post("tenant_plans", {
+                "tenant_id":            tenant_id,
+                "plan_id":              plan_id,
+                "status":               "active",
+                "current_period_start": now.isoformat(),
+                "current_period_end":   period_end.isoformat(),
+            })
+
+            logger.info(f"[AdminRouter] Intent {intent_id} ACTIVATED → tenant={tenant_id} plan={plan_id}")
 
         update_data["activated_tenant_id"] = tenant_id
         update_data["activated_at"]        = now.isoformat()
-
-        logger.info(f"[AdminRouter] Intent {intent_id} ACTIVATED → tenant={tenant_id} plan={plan_id}")
 
     else:
         logger.info(f"[AdminRouter] Intent {intent_id} REJECTED. Note: {req.admin_note}")

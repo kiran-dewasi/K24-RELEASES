@@ -47,8 +47,8 @@ export default function AuditDashboard() {
     const fetchData = async () => {
         try {
             const [logsRes, statsRes] = await Promise.all([
-                fetch("http://127.0.0.1:8000/compliance/audit-logs"),
-                fetch("http://127.0.0.1:8000/compliance/dashboard-stats")
+                fetch("https://weare-production.up.railway.app/compliance/audit-logs"),
+                fetch("https://weare-production.up.railway.app/compliance/dashboard-stats")
             ]);
 
             const logsData = await logsRes.json();

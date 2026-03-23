@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import ClientLayout from "./ClientLayout";
-
+import AutoUpdater from "@/components/AutoUpdater";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -25,6 +25,7 @@ export default function RootLayout({
         className={`${inter.variable} antialiased min-h-screen bg-gray-50 font-sans`}
         suppressHydrationWarning
       >
+        <AutoUpdater />
         <ClientLayout>
           {children}
         </ClientLayout>

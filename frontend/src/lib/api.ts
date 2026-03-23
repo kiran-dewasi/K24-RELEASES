@@ -18,12 +18,15 @@ const isTauri = () => {
 // In Tauri DEV mode (npx tauri dev), Next.js runs on localhost so backend is
 // the external uvicorn on port 8001 — use direct HTTP, not Rust invoke().
 // In PRODUCTION Tauri build, use Rust invoke('backend_request') for security.
+// IMPORTANT: Check process.env.NODE_ENV only (not window.location) to avoid false positives
 const isTauriDev = () => {
-    return isTauri() && (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost');
+    // In production build, NODE_ENV is 'production' at build time
+    // Only return true if we're actually in development mode
+    return isTauri() && process.env.NODE_ENV === 'development';
 };
 
 // Development fallback configuration
-const DEV_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+const DEV_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
 
 // API key for local backend routes that use Depends(get_api_key)
 // This matches API_KEY in backend/dependencies.py (env: API_KEY, default: 'k24-secret-key-123')
@@ -65,8 +68,7 @@ export async function apiRequest<T = any>(
                 endpoint,
                 method,
                 body: body ? JSON.stringify(body) : null,
-                authToken,
-                apiKey: LOCAL_API_KEY
+                authToken
             });
 
             try {
@@ -134,9 +136,22 @@ export async function apiRequest<T = any>(
  */
 function handleAuthError() {
     if (typeof window !== 'undefined') {
+        // Import toast dynamically to show notification
+        import('@/components/ui/use-toast').then(({ toast }) => {
+            toast({
+                title: "Session expired",
+                description: "Please login again.",
+                variant: "destructive",
+            });
+        });
+
         localStorage.removeItem('k24_token');
         localStorage.removeItem('k24_user');
-        window.location.href = '/login';
+
+        // Delay redirect slightly to allow toast to be visible
+        setTimeout(() => {
+            window.location.href = '/login';
+        }, 1500);
     }
 }
 

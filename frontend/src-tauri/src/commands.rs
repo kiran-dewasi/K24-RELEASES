@@ -148,17 +148,31 @@ pub async fn backend_request(
     body: Option<String>,
     auth_token: Option<String>,
 ) -> Result<String, String> {
-    let backend_url = get_backend_url().ok_or("Backend not started")?;
-    let session_token = get_session_token().ok_or("No session token")?;
-    let url = format!("{}{}", backend_url, endpoint);
+    let is_tally_endpoint = endpoint.starts_with("/api/tally") || 
+                            endpoint.starts_with("/api/vouchers") || 
+                            endpoint.starts_with("/api/ledgers") || 
+                            endpoint.starts_with("/api/reports") || 
+                            endpoint.starts_with("/api/sync");
+
+    let base_url = if is_tally_endpoint {
+        "http://127.0.0.1:8001"
+    } else {
+        "https://weare-production.up.railway.app"
+    };
+
+    let url = format!("{}{}", base_url, endpoint);
     let client = reqwest::Client::new();
     let method_parsed: reqwest::Method = method.parse()
         .map_err(|_| format!("Invalid HTTP method: {}", method))?;
     
     let mut request = client.request(method_parsed, &url)
         .header("Content-Type", "application/json")
-        .header("X-Desktop-Token", &session_token);
-    
+        .header("x-api-key", "k24-secret-key-123");
+
+    if let Some(session_token) = get_session_token() {
+        request = request.header("X-Desktop-Token", &session_token);
+    }
+
     if let Some(token) = auth_token {
         request = request.header("Authorization", format!("Bearer {}", token));
     }

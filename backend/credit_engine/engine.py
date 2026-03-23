@@ -395,3 +395,28 @@ def _fallback_decision(
         usage            = UsageSummary(tenant_id=tenant_id),
         message          = "Usage recorded (billing cycle unavailable).",
     )
+
+
+def check_credits_available(tenant_id: str, event_type: str) -> bool:
+    """
+    1. Get current billing_cycle for tenant
+    2. Check credits_used_total < max_credits
+    3. Return True if credits available, False if blocked
+    """
+    cycle = find_or_create_active_cycle(tenant_id)
+    if not cycle:
+        return True
+        
+    billing_cycle_id = cycle["id"]
+    max_credits = cycle.get("max_credits", 500)
+    
+    tenant_plan = get_tenant_plan(tenant_id)
+    enforcement_mode = "HARD_CAP"
+    if tenant_plan and tenant_plan.get("plans"):
+        enforcement_mode = tenant_plan["plans"].get("enforcement_mode", "HARD_CAP")
+        
+    current_summary = _get_current_summary(tenant_id, billing_cycle_id)
+    current_used = current_summary.get("credits_used_total", 0.0) if current_summary else 0.0
+    
+    status = _compute_status(current_used, max_credits, enforcement_mode)
+    return status != CreditStatus.BLOCKED

@@ -87,9 +87,8 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
         try {
             setStatus("validating");
 
-            // Get dynamic port
-            const backendPort = sessionStorage.getItem("k24_backend_port") || "8000";
-            const backendUrl = `http://127.0.0.1:${backendPort}`;
+            // CLOUD: Use Railway URL for device activation (auth/subscription)
+            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://weare-production.up.railway.app";
 
             // Build headers - only include dev bypass in development builds
             const headers: Record<string, string> = {
@@ -135,10 +134,14 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
             const activatedTenantId = data.tenant_id;
             const activatedUserId = data.user_id;
 
-            // Store activation details
-            if (activatedTenantId) {
-                localStorage.setItem("k24_tenant_id", activatedTenantId);
-            }
+            // Store activation details in k24_user as single source of truth
+            const userData = {
+                user_id: activatedUserId,
+                tenant_id: activatedTenantId
+            };
+            localStorage.setItem("k24_user", JSON.stringify(userData));
+
+            // Keep legacy k24_user_id for backward compatibility if needed
             if (activatedUserId) {
                 localStorage.setItem("k24_user_id", activatedUserId);
             }

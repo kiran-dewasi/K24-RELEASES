@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X, Copy, Check, ArrowLeft, Loader2, CheckCircle, Smartphone, AlertCircle } from "lucide-react";
 import { type Plan, UPI_CONFIG } from "@/lib/plans-config";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://weare-production.up.railway.app";
 
 type Step = "form" | "upi" | "done";
 
@@ -365,10 +365,26 @@ export default function SubscribeModal({ plan, onClose }: Props) {
         setLoading(true);
         setError(null);
         try {
+            // Read existing tenant_id from localStorage
+            let existingTenantId: string | null = null;
+            try {
+                const userData = localStorage.getItem("k24_user");
+                if (userData) {
+                    const parsed = JSON.parse(userData);
+                    existingTenantId = parsed.tenant_id || null;
+                }
+            } catch (e) {
+                // Ignore localStorage errors
+            }
+
             const res = await fetch(`${BACKEND_URL}/public/subscribe/intent`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ plan_id: plan.id, ...data }),
+                body: JSON.stringify({
+                    plan_id: plan.id,
+                    ...data,
+                    existing_tenant_id: existingTenantId
+                }),
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.detail || "Something went wrong. Please try again.");

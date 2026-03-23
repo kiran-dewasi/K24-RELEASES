@@ -562,6 +562,12 @@ def create_voucher_safely(
         inventory_items=line_items,
         taxes=taxes
     )
+    
+    if tenant_id:
+        from backend.credit_engine.engine import check_credits_available
+        if not check_credits_available(tenant_id, "VOUCHER"):
+            raise Exception("Credit limit reached. Please recharge.")
+
     response = post_to_tally(xml_payload)
 
     # ── Credit event hook ────────────────────────────────────────────────────

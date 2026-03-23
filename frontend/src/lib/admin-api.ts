@@ -4,7 +4,7 @@
  * Uses the internal K24 backend API directly.
  */
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://weare-production.up.railway.app";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "k24-secret-key-123";
 
 const headers = {

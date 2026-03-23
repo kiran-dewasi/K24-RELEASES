@@ -25,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' http://127.0.0.1:8001 ws://127.0.0.1:8001"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' http://127.0.0.1:8001 ws://127.0.0.1:8001 https://weare-production.up.railway.app wss://weare-production.up.railway.app"
     }
   },
   "bundle": {
@@ -64,6 +64,12 @@
     },
     "shell": {
       "open": true
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/kiran-dewasi/weare/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDMzRCQkZBREZDOTg3N0MKUldSOGg4bmYrcnMwL1BhMTUvRE5jTm1ZM3hhb1NiejB4eGRXSmwrOGNLMHBnSEtaa1lheWYycjUK"
     }
   }
 }

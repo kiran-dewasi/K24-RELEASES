@@ -30,6 +30,7 @@ interface Transaction {
     type: "Invoice" | "Receipt" | "Payment" | "Sales";
     voucher_no: string;
     party: string;
+    ledger_id?: string;
     amount: number;
     status: "Paid" | "Unpaid" | "Overdue" | "Draft";
     gst_compliant: boolean;

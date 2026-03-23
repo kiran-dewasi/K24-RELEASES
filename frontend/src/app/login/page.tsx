@@ -24,7 +24,7 @@ export default function LoginPage() {
         setError("");
 
         try {
-            // apiRequest uses NEXT_PUBLIC_API_URL → http://127.0.0.1:8000 in dev
+            // apiRequest uses NEXT_PUBLIC_API_URL → https://weare-production.up.railway.app in dev
             const data = await apiRequest<{ access_token: string; user: any }>(
                 "/api/auth/login",
                 "POST",
