@@ -37,7 +37,7 @@ export default function SignupPage() {
             console.log("IS TAURI:", typeof window !== 'undefined' && 
               !!(window as any).__TAURI_INTERNALS__)
             console.log("IS TAURI DEV:", process.env.NODE_ENV)
-            console.log("CALLING URL:", process.env.NEXT_PUBLIC_BACKEND_URL)
+            console.log("CALLING URL:", "https://weare-production.up.railway.app")
 
             const data = await apiRequest("/api/auth/register", "POST", payload);
 

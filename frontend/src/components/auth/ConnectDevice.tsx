@@ -42,9 +42,7 @@ type DeviceRegisterResponse = {
     tenant_id?: string | null;
 };
 
-const CLOUD_API =
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "https://weare-production.up.railway.app";
+const CLOUD_API = "https://weare-production.up.railway.app";
 
 const APP_VERSION = "1.0.1";
 

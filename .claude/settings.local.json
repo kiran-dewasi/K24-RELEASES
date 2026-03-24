@@ -22,7 +22,18 @@
       "Bash(find backend/ -type d -name \"__pycache__\" -exec rm -rf {} +)",
       "Bash(git add -A)",
       "Bash(git commit -m \"fix: remove all __pycache__ and .pyc files with backend. imports\")",
-      "Bash(git push origin main)"
+      "Bash(git push origin main)",
+      "Bash(cat backend/routers/auth.py)",
+      "Bash(cat railway.json)",
+      "Bash(cat railway.toml)",
+      "Bash(git add Dockerfile)",
+      "Bash(git commit -m \"fix: correct Dockerfile - copy backend/ contents directly to /app/\")",
+      "Bash(git add Dockerfile railway.toml)",
+      "Bash(git commit -m \"fix: force cache bust + add railway.toml\")",
+      "Bash(for f:*)",
+      "Bash(do sed:*)",
+      "Bash(done)",
+      "Bash(find cloud-backend:*)"
     ]
   }
 }
