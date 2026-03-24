@@ -44,3 +44,4 @@ nest_asyncio>=1.6.0
 # Testing (development)
 pytest>=7.4.0
 httpx>=0.26.0  # Already listed above, but required for TestClient
+psycopg2-binary==2.9.9
