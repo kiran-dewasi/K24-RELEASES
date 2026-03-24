@@ -240,7 +240,7 @@ async def _push_to_tally_internal(voucher: Dict, tenant_id: Optional[str]) -> Di
     Internal helper to push voucher to Tally.
     """
     try:
-        from backend.tally_live_update import create_voucher_safely
+        from tally_live_update import create_voucher_safely
         import json
         from datetime import datetime
         

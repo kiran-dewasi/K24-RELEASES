@@ -576,7 +576,7 @@ def build_catalog_from_db(db_session) -> List[ItemCatalogEntry]:
         catalog = build_catalog_from_db(db)
         result  = normalize_and_map_item("MDH Jeera", 1, "kg", catalog, settings)
     """
-    from backend.database import StockItem  # local import to avoid circular
+    from database import StockItem  # local import to avoid circular
 
     items = db_session.query(StockItem).filter(StockItem.is_active == True).all()
     return [

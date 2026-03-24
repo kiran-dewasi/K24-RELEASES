@@ -34,8 +34,8 @@ class K24SocketManager:
         """
         Handle incoming Sync Data from Client Agent.
         """
-        from backend.database import SessionLocal, Voucher, Ledger
-        from backend.tally_connector import TallyConnector
+        from database import SessionLocal, Voucher, Ledger
+        from tally_connector import TallyConnector
         from datetime import datetime
         
         # 1. Identify Tenant
@@ -150,7 +150,7 @@ class K24SocketManager:
         
         # Phase 2: Try to verify as signed JWT first
         try:
-            from backend.auth import decode_socket_token
+            from auth import decode_socket_token
             
             payload = decode_socket_token(token)
             if payload:

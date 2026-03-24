@@ -7,9 +7,9 @@ from datetime import datetime, date
 import calendar
 import io
 
-from backend.database import get_db, Voucher, Ledger, Bill
-from backend.dependencies import get_api_key, get_tenant_id
-from backend.utils.pdf_generator import generate_report_pdf
+from database import get_db, Voucher, Ledger, Bill
+from dependencies import get_api_key, get_tenant_id
+from utils.pdf_generator import generate_report_pdf
 import os
 
 router = APIRouter(prefix="/reports", tags=["reports"])

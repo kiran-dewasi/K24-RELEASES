@@ -118,7 +118,7 @@ if __name__ == "__main__":
         
         # NOW import the FastAPI app (after env vars are set)
         import uvicorn
-        from backend.api import app
+        from api import app
         
         # Run Uvicorn usage
         uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info", loop="asyncio")

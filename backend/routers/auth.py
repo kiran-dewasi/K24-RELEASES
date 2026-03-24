@@ -3,8 +3,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from backend.database import User, Company, UserSettings, get_db
-from backend.auth import (
+from database import User, Company, UserSettings, get_db
+from auth import (
     get_password_hash,
     verify_password,
     create_access_token,
@@ -60,8 +60,8 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     """
     Register new user in Supabase + create local session (Hybrid approach)
     """
-    from backend.services.supabase_service import supabase_service, supabase_http_service
-    from backend.services.tenant_service import tenant_service
+    from services.supabase_service import supabase_service, supabase_http_service
+    from services.tenant_service import tenant_service
     import uuid
 
     # 1. Supabase Registration (Cloud Master)
@@ -233,8 +233,8 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     2. Sync/Verify Local User (Business Replica)
     3. Return Local Session Token
     """
-    from backend.services.supabase_service import supabase_service, supabase_http_service
-    from backend.services.tenant_service import tenant_service
+    from services.supabase_service import supabase_service, supabase_http_service
+    from services.tenant_service import tenant_service
     
     # 1. Supabase Authentication (Priority)
     # -------------------------------------
@@ -391,7 +391,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
 
     response_dict = {
         "id": current_user.id,
@@ -408,7 +408,7 @@ def get_current_user_info(current_user: User = Depends(get_current_active_user))
     }
 
     # Append trial / subscription info from Supabase (fail silently)
-    from backend.services.supabase_service import supabase_http_service
+    from services.supabase_service import supabase_http_service
     if current_user.tenant_id and supabase_http_service.client:
         try:
             import httpx
@@ -457,7 +457,7 @@ async def update_profile(
     tenant_id = current_user.tenant_id
 
     try:
-        from backend.services.supabase_service import supabase_http_service
+        from services.supabase_service import supabase_http_service
         if supabase_http_service.client:
             import httpx
             headers = supabase_http_service._get_headers(use_service_key=True)
@@ -596,7 +596,7 @@ async def forgot_password(request: ForgotPasswordRequest):
     Send password reset email via Supabase.
     Always returns success to prevent email enumeration.
     """
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
     
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
@@ -633,7 +633,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
     Reset password using token from Supabase email.
     Frontend extracts token from URL after user clicks email link.
     """
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
     
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
@@ -671,7 +671,7 @@ async def get_subscription_status(current_user: User = Depends(get_current_activ
     """
     Get current user's subscription status from Supabase.
     """
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
     
     if not supabase_service.client:
         # Return default free status if cloud unavailable
@@ -729,7 +729,7 @@ async def verify_email_callback(token: str, type: str, db: Session = Depends(get
     Handle email verification callback from Supabase.
     Supabase redirects here after user clicks verification link.
     """
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
     
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
@@ -767,7 +767,7 @@ async def resend_verification_email(request: ResendVerificationRequest):
     """
     Resend email verification link.
     """
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
     
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")

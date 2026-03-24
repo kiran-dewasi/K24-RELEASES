@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
-from backend.database import get_db, Ledger, Voucher, StockItem
-from backend.auth import get_current_tenant_id
+from database import get_db, Ledger, Voucher, StockItem
+from auth import get_current_tenant_id
+from dependencies import get_api_key
 
 router = APIRouter(tags=["search"])
 
-from backend.dependencies import get_api_key
 
 @router.get("/search/global")
 async def global_search(

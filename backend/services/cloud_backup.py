@@ -3,8 +3,8 @@ import shutil
 import logging
 from datetime import datetime
 from pathlib import Path
-from backend.database import get_db_path
-from backend.database.encryption import encryptor
+from database import get_db_path
+from database.encryption import encryptor
 import requests
 
 logger = logging.getLogger("cloud_backup")

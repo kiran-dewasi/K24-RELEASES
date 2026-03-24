@@ -8,8 +8,8 @@ from datetime import datetime
 import os
 import sys
 
-from backend.database import get_db, StockItem
-from backend.dependencies import get_api_key
+from database import get_db, StockItem
+from dependencies import get_api_key
 
 router = APIRouter()
 logger = logging.getLogger("items")

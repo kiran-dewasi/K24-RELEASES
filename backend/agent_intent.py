@@ -7,7 +7,7 @@ import logging
 import re
 import os
 import json
-from backend.gemini.gemini_orchestrator import GeminiOrchestrator
+from gemini.gemini_orchestrator import GeminiOrchestrator
 
 logger = logging.getLogger(__name__)
 

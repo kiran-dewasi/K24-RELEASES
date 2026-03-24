@@ -6,9 +6,9 @@ from typing import Dict, Any, List, Tuple, Optional
 import logging
 from datetime import datetime
 import re
-from backend.tally_connector import TallyConnector
-from backend.agent_errors import AgentError, K24ErrorCode, create_error
-from backend.compliance.india import validate_india
+from tally_connector import TallyConnector
+from agent_errors import AgentError, K24ErrorCode, create_error
+from compliance.india import validate_india
 from backend.compliance.india.india_validation_engine import ValidationResult as IndiaValidationResult
 
 logger = logging.getLogger(__name__)

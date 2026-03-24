@@ -3,8 +3,8 @@ from pydantic import BaseModel
 import sqlite3
 from typing import Optional
 
-from backend.auth import get_current_user
-from backend.database.encryption import encryptor
+from auth import get_current_user
+from database.encryption import encryptor
 
 router = APIRouter(tags=["settings"])
 
@@ -188,7 +188,7 @@ async def verify_whatsapp_code(code: str, phone: str):
 # API KEY MANAGEMENT (Secured with Encryption)
 # ==============================================================================
 
-from backend.database import get_db, UserSettings as UserSettingsDB
+from database import get_db, UserSettings as UserSettingsDB
 from sqlalchemy.orm import Session
 
 class ApiKeyRequest(BaseModel):

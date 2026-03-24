@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 import os
 import logging
 
-from backend.database import get_db, User
-from backend.auth import get_current_active_user
+from database import get_db, User
+from auth import get_current_active_user
 
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp-binding"])
 logger = logging.getLogger("whatsapp-binding")
@@ -68,7 +68,7 @@ def verify_whatsapp_webhook(
         raise HTTPException(status_code=404, detail="Invalid or expired verification code")
     
     # 3. Phase 3 Security: Check if WhatsApp number is already bound to ANOTHER tenant
-    from backend.database import Tenant
+    from database import Tenant
     
     existing_binding = db.query(User).filter(
         User.whatsapp_number == sender,

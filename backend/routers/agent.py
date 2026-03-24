@@ -12,8 +12,8 @@ import os
 from datetime import datetime
 
 # LangGraph & Persistence
-from backend.graph import build_graph
-from backend.memory import get_checkpointer as _get_checkpointer_cm
+from graph import build_graph
+from memory import get_checkpointer as _get_checkpointer_cm
 from langchain_core.messages import HumanMessage, AIMessage
 
 logger = logging.getLogger(__name__)

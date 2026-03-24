@@ -4,8 +4,8 @@ from sqlalchemy import func, extract
 from typing import List, Dict, Any
 from datetime import datetime
 
-from backend.database import get_db, Voucher
-from backend.dependencies import get_api_key
+from database import get_db, Voucher
+from dependencies import get_api_key
 
 router = APIRouter(prefix="/reports", tags=["gst"])
 

@@ -5,8 +5,8 @@ import uuid
 import hashlib
 import random
 
-from backend.database import get_db, DeviceLicense
-from backend.dependencies import get_api_key
+from database import get_db, DeviceLicense
+from dependencies import get_api_key
 
 router = APIRouter()
 
@@ -25,8 +25,8 @@ async def register_device(
     Register device after web authentication.
     Returns a SIGNED socket_token (JWT) for secure Socket.IO auth.
     """
-    from backend.auth import create_socket_token
-    from backend.database import User
+    from auth import create_socket_token
+    from database import User
     
     device_id = payload.get("device_id")
     user_id = payload.get("user_id")
@@ -129,7 +129,7 @@ async def activate_device(
     import socket
     from desktop.services.device_service import get_device_id
     from desktop.services.token_storage import save_tokens
-    from backend.services.config_service import get_cloud_url
+    from services.config_service import get_cloud_url
     
     # Use standard requests for activation (no tokens yet)
     import requests
@@ -263,7 +263,7 @@ async def get_device_status():
         Device and subscription status from cloud
     """
     import logging
-    from backend.middleware.auth_client import get_cloud_client
+    from middleware.auth_client import get_cloud_client
     
     logger = logging.getLogger(__name__)
     

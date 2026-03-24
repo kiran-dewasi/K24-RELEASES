@@ -14,9 +14,9 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
-from backend.credit_engine import record_event, get_tenant_usage, CreditDecision
-from backend.credit_engine.models import EventType, EventSubtype
-from backend.dependencies import get_api_key
+from credit_engine import record_event, get_tenant_usage, CreditDecision
+from credit_engine.models import EventType, EventSubtype
+from dependencies import get_api_key
 
 logger = logging.getLogger(__name__)
 

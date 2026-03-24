@@ -1,7 +1,7 @@
 
 from celery import shared_task
 import asyncio
-from backend.logic import (
+from logic import (
     logic_create_ledger_async,
     logic_create_voucher_async,
     logic_process_whatsapp_message

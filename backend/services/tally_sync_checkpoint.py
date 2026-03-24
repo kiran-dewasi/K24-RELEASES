@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from contextlib import contextmanager
 import logging
-from backend.database import get_db_path
+from database import get_db_path
 import os
 
 # Configure logging

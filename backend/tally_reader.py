@@ -4,7 +4,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from xml.sax.saxutils import escape
-from backend.ledger_matcher import LedgerMatcher
+from ledger_matcher import LedgerMatcher
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

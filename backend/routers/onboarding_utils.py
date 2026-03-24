@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from backend.database import OnboardingState, Tenant, WhatsAppMapping, Ledger
+from database import OnboardingState, Tenant, WhatsAppMapping, Ledger
 
 import os
 from dotenv import load_dotenv

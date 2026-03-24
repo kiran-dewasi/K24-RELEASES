@@ -70,8 +70,8 @@ class BulkBillProcessor:
                     }
                 
                 # ============ AUTO-EXECUTION LOGIC ============
-                from backend.services.auto_executor import process_with_auto_execution
-                from backend.services.confidence_scorer import calculate_overall_confidence
+                from services.auto_executor import process_with_auto_execution
+                from services.confidence_scorer import calculate_overall_confidence
                 
                 confidence = calculate_overall_confidence(bill_data)
                 

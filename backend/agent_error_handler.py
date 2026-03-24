@@ -15,7 +15,7 @@ from tenacity import (
     retry_if_exception_type,
     RetryError
 )
-from backend.agent_errors import (
+from agent_errors import (
     AgentError,
     K24ErrorCode,
     ErrorSeverity,

@@ -2,16 +2,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import pandas as pd
 from typing import Union, Dict, Any, List
 import os
-from backend.tally_connector import TallyConnector, get_customer_details
-from backend.tally_live_update import create_voucher_safely, TallyResponse
-from backend.tally_xml_builder import TallyXMLValidationError
+from tally_connector import TallyConnector, get_customer_details
+from tally_live_update import create_voucher_safely, TallyResponse
+from tally_xml_builder import TallyXMLValidationError
 from dotenv import load_dotenv
 
 # New LangChain Imports
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
-from backend.tools import TOOLS
-from backend.ai_engine.router import router
+from tools import TOOLS
+from ai_engine.router import router
 import json
 
 load_dotenv()

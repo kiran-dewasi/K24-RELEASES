@@ -36,55 +36,55 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, Iterable
 import pandas as pd
-from backend.loader import LedgerLoader
-from backend.agent import TallyAuditAgent
-from backend.tally_connector import TallyConnector, get_customer_details
-from backend import crud
-from backend.tally_live_update import (
+from loader import LedgerLoader
+from agent import TallyAuditAgent
+from tally_connector import TallyConnector, get_customer_details
+import crud
+from tally_live_update import (
     dispatch_tally_update,
     TallyAPIError,
     TallyIgnoredError,
 )
-from backend.tally_xml_builder import TallyXMLValidationError
-from backend.orchestration.workflows.update_gstin import update_gstin_workflow
-from backend.audit_engine import AuditEngine
-from backend.compliance.gst_engine import GSTEngine
+from tally_xml_builder import TallyXMLValidationError
+from orchestration.workflows.update_gstin import update_gstin_workflow
+from audit_engine import AuditEngine
+from compliance.gst_engine import GSTEngine
 import io
 import logging
 from fastapi.encoders import jsonable_encoder
 
 
 from fastapi.security.api_key import APIKeyHeader
-from backend.dependencies import get_api_key
+from dependencies import get_api_key
 
 # Import new components
-from backend.database.repository import ChatRepository, AuditRepository, TaskRepository
-# from backend.tasks import create_ledger_async, create_voucher_async
-# from backend.celery_app import app as celery_app
-from backend.background_jobs import job_manager
+from database.repository import ChatRepository, AuditRepository, TaskRepository
+# from tasks import create_ledger_async, create_voucher_async
+# from celery_app import app as celery_app
+from background_jobs import job_manager
 
 
 # Initialize repositories
 chat_repo = ChatRepository()
 audit_repo = AuditRepository()
 task_repo = TaskRepository()
-from backend.auth import get_current_tenant_id
+from auth import get_current_tenant_id
 
 
 from fastapi.middleware.cors import CORSMiddleware
 # Explicitly import routers to avoid namespace issues
-from backend.routers import (
+from routers import (
     reports, operations, gst, setup, debug, compliance, 
     auth, agent, sync, bills, contacts, whatsapp, baileys, whatsapp_binding,
     whatsapp_cloud, dashboard, vouchers, ledgers, search, inventory,
     customers, items, settings, query, devices
 )
 # Credit / Usage system routers (Phase: Usage + Admin portal)
-from backend.routers import usage as usage_router
-from backend.routers import admin as admin_router
+from routers import usage as usage_router
+from routers import admin as admin_router
 
 
-from backend.compliance.audit_service import AuditService
+from compliance.audit_service import AuditService
 from typing import Optional
 
 @asynccontextmanager
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
     # Start Tally Sync Service
     try:
         import asyncio
-        from backend.services.tally_sync_service import start_sync_service, stop_sync_service
+        from services.tally_sync_service import start_sync_service, stop_sync_service
         asyncio.create_task(start_sync_service())
         logger.info("✅ Tally Sync Service Auto-Started")
     except Exception as e:
@@ -109,7 +109,7 @@ async def lifespan(app: FastAPI):
 
     # Start WhatsApp Poller Service
     try:
-        from backend.services.whatsapp_poller import start_whatsapp_poller
+        from services.whatsapp_poller import start_whatsapp_poller
         asyncio.create_task(start_whatsapp_poller())
         logger.info("✅ WhatsApp Poller Auto-Started")
     except Exception as e:
@@ -119,14 +119,14 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     try:
-        from backend.services.tally_sync_service import stop_sync_service
+        from services.tally_sync_service import stop_sync_service
         await stop_sync_service()
         logger.info("🛑 Tally Sync Service Stopped")
     except Exception as e:
         logger.error(f"Error stopping Tally Sync Service: {e}")
 
     try:
-        from backend.services.whatsapp_poller import stop_whatsapp_poller
+        from services.whatsapp_poller import stop_whatsapp_poller
         await stop_whatsapp_poller()
         logger.info("🛑 WhatsApp Poller Stopped")
     except Exception as e:
@@ -148,7 +148,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Desktop Security Middleware (validates X-Desktop-Token in production)
 # IMPORTANT: Added BEFORE CORSMiddleware so in Starlette's reverse stack order,
 # CORS runs first (outermost), then security — ensuring CORS headers are ALWAYS present.
-from backend.middleware.desktop_security import DesktopSecurityMiddleware, is_desktop_mode
+from middleware.desktop_security import DesktopSecurityMiddleware, is_desktop_mode
 app.add_middleware(DesktopSecurityMiddleware)
 
 # Enable CORS — must be added AFTER DesktopSecurityMiddleware so it wraps outside it
@@ -165,7 +165,7 @@ if is_desktop_mode():
 else:
     print("[SECURITY] Development mode - API accessible without desktop token")
 
-from backend.auth import check_subscription_active
+from auth import check_subscription_active
 protected_deps = [Depends(check_subscription_active)]
 
 # Include Routers
@@ -204,7 +204,7 @@ app.include_router(devices.router, prefix="/api/devices", dependencies=protected
 app.include_router(usage_router.router)   # POST /internal/usage/event
 app.include_router(admin_router.router)   # GET  /admin/tenants etc.
 # ── Public subscription (UPI payment flow) ────────────────────────────────
-from backend.routers import subscribe as subscribe_router
+from routers import subscribe as subscribe_router
 app.include_router(subscribe_router.router)  # POST /public/subscribe/intent etc.
 # Auth router is already included at line 83
 # Global simulated in-memory dataframe (single-user MVP)
@@ -268,12 +268,12 @@ tally = TallyConnector(url=TALLY_URL, company_name=TALLY_COMPANY)
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tally_api")
-from backend.orchestrator import K24Orchestrator
-from backend.database import init_db, get_db, Ledger, StockItem, Bill, Voucher
+from orchestrator import K24Orchestrator
+from database import init_db, get_db, Ledger, StockItem, Bill, Voucher
 from sqlalchemy.orm import Session
-from backend.orchestration.response_builder import ResponseBuilder, ResponseType
-from backend.orchestration.follow_up_manager import FollowUpManager
-from backend.sync.sync_monitor import monitor as sync_monitor
+from orchestration.response_builder import ResponseBuilder, ResponseType
+from orchestration.follow_up_manager import FollowUpManager
+from sync.sync_monitor import monitor as sync_monitor
 
 # Initialize Orchestrator
 orchestrator = None
@@ -294,7 +294,7 @@ def run_pre_audit():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Global Sync Instance
-from backend.sync_engine import SyncEngine # Assuming SyncEngine is a class
+from sync_engine import SyncEngine # Assuming SyncEngine is a class
 sync_engine = SyncEngine()
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -323,7 +323,7 @@ async def startup_event():
     try:
         # Load API Key from DB (User Settings) if available
         # This allows BYOK (Bring Your Own Key) feature
-        from backend.services.key_manager import get_google_api_key
+        from services.key_manager import get_google_api_key
         # We try to get key for default user or just general find
         try:
             # Load key for default_user (Migration target)
@@ -339,7 +339,7 @@ async def startup_event():
         # Verify License (Task 1.4)
         # This prevents unauthorized copying of the application
         try:
-            from backend.services.license_service import license_service
+            from services.license_service import license_service
             status = license_service.validate_license()
             if not status["valid"]:
                 logger.error(f"LICENSE ERROR: {status['reason']}")
@@ -353,7 +353,7 @@ async def startup_event():
         # Capture Main Loop for Socket Manager Thread-Safety
         import asyncio
         loop = asyncio.get_running_loop()
-        from backend.socket_manager import socket_manager
+        from socket_manager import socket_manager
         socket_manager.set_main_loop(loop)
         
         agent.init_orchestrator()
@@ -369,7 +369,7 @@ async def startup_event():
             logger.warning("[WARNING] No cached Tally data found. AI Brain starts empty.")
         
         # Initialize LangGraph Persistence 
-        from backend.memory import get_database_url
+        from memory import get_database_url
         # from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         from langgraph.checkpoint.memory import MemorySaver
         
@@ -581,7 +581,7 @@ def tally_health_check():
 @app.get("/health")
 def health_check():
     """Health check endpoint for container/orchestrator - Updated"""
-    from backend.services.supabase_service import supabase_http_service
+    from services.supabase_service import supabase_http_service
     supabase_status = "connected" if supabase_http_service.client else "disabled"
     return {"status": "ok", "supabase": supabase_status, "k24": "running"}
 
@@ -630,7 +630,7 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
     # Ensure thread exists in DB (fix for FK violation)
     await chat_repo.create_thread(thread_id, request.user_id)
 
-    from backend.credit_engine.engine import check_credits_available
+    from credit_engine.engine import check_credits_available
     from fastapi import HTTPException
     if not check_credits_available(tenant_id, "MESSAGE"):
         raise HTTPException(status_code=402, detail="Credit limit reached")
@@ -714,7 +714,7 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
             # Import your existing agent
             # We import here to ensure we get the latest if module reloading is trippy, 
             # though standard import is cached. 
-            from backend.agent import agent as memory_agent
+            from agent import agent as memory_agent
             
             response_text = ""
             agent_msg_id = ""
@@ -797,7 +797,7 @@ async def chat_with_memory(request: ChatRequest, tenant_id: str = Depends(get_cu
             
             yield f"data: {json.dumps({'type': 'response', 'content': response_text, 'message_id': agent_msg_id, 'thread_id': thread_id})}\n\n"
             
-            from backend.credit_engine import record_event
+            from credit_engine import record_event
             record_event(
                 tenant_id=tenant_id,
                 event_type="MESSAGE",
@@ -1112,7 +1112,7 @@ def live_load(company: Optional[str] = Form(None), load_type: str = Form("ledger
 
 @app.post("/tally/push", dependencies=[Depends(get_api_key)])
 async def push_tally(xml_data: str = Body(..., embed=True)):
-    from backend.tally_connector import push_to_tally
+    from tally_connector import push_to_tally
     result = push_to_tally(xml_data)
     if result is None:
         return {"status": "error", "detail": "Tally push failed"}
@@ -1136,7 +1136,7 @@ async def execute_workflow(request: WorkflowRequest):
     Currently supports:
     - invoice_reconciliation: Detect and fix invoice discrepancies
     """
-    from backend.orchestration.workflows.invoice_reconciliation import reconcile_invoices_workflow
+    from orchestration.workflows.invoice_reconciliation import reconcile_invoices_workflow
     
     if request.workflow_name == "invoice_reconciliation":
         try:
@@ -1174,8 +1174,8 @@ async def list_workflows():
 # CONVERSATIONAL AI ENDPOINTS (KITTU)
 # ============================================================================
 
-from backend.context_manager import ContextManager
-from backend.intent_recognizer import IntentRecognizer, IntentType
+from context_manager import ContextManager
+from intent_recognizer import IntentRecognizer, IntentType
 
 # Initialize components
 # Use fallback if Redis is not available
@@ -1428,5 +1428,5 @@ def root():
     return {"status": "ok", "message": "K24 Backend with KITTU Orchestration & Conversational AI"}
 
 # Mount Socket.IO App (WebSocket) as FINAL fallback
-from backend.socket_manager import socket_manager
+from socket_manager import socket_manager
 app.mount("/socket.io", socket_manager.app)

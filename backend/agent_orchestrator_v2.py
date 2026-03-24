@@ -12,16 +12,16 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 # K24 Components
-from backend.agent_state import AgentState, create_initial_state, update_state_with_audit, TransactionStatus
-from backend.agent_intent import IntentClassifier, normalize_party_name, validate_intent_parameters
-from backend.agent_validator import ValidatorAgent
-from backend.agent_gemini import GeminiXMLAgent
-from backend.agent_error_handler import AgentErrorHandler, FallbackStrategies, retry_with_backoff
-from backend.agent_transaction import TransactionManager
-from backend.agent_errors import K24ErrorCode, create_error
-from backend.tally_connector import TallyConnector
-from backend.classification.intents import IntentCategory, INTENT_TO_CATEGORY, Intent
-from backend.gemini.gemini_orchestrator import GeminiOrchestrator
+from agent_state import AgentState, create_initial_state, update_state_with_audit, TransactionStatus
+from agent_intent import IntentClassifier, normalize_party_name, validate_intent_parameters
+from agent_validator import ValidatorAgent
+from agent_gemini import GeminiXMLAgent
+from agent_error_handler import AgentErrorHandler, FallbackStrategies, retry_with_backoff
+from agent_transaction import TransactionManager
+from agent_errors import K24ErrorCode, create_error
+from tally_connector import TallyConnector
+from classification.intents import IntentCategory, INTENT_TO_CATEGORY, Intent
+from gemini.gemini_orchestrator import GeminiOrchestrator
 
 logger = logging.getLogger(__name__)
 

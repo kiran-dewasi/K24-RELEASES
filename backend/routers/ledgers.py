@@ -5,11 +5,11 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
-from backend.database import get_db, Ledger, Voucher
-from backend.auth import get_current_tenant_id
-from backend.tally_connector import TallyConnector
-from backend.routers.data_utils import normalize_tally_voucher
-from backend.services.ledger_service import LedgerService
+from database import get_db, Ledger, Voucher
+from auth import get_current_tenant_id
+from tally_connector import TallyConnector
+from routers.data_utils import normalize_tally_voucher
+from services.ledger_service import LedgerService
 
 import os
 import logging
@@ -50,7 +50,8 @@ class LedgerSearchResponse(BaseModel):
 
 # --- Ledger Search & Autocomplete Endpoints ---
 
-from backend.dependencies import get_api_key, get_tenant_id
+from database import get_db, StockItem
+from dependencies import get_api_key, get_tenant_id
 
 @router.get("/ledgers/search", dependencies=[Depends(get_api_key)])
 async def search_ledgers_for_autocomplete(
@@ -395,7 +396,7 @@ async def get_ledger_transactions(
         "opening_balance": opening_bal # Balance before the first transaction in this list (or start_date)
     }
 
-from backend.database import InventoryEntry, StockItem
+from database import InventoryEntry, StockItem
 
 @router.get("/ledgers/{ledger_id}/items")
 async def get_ledger_items(

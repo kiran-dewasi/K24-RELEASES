@@ -5,13 +5,12 @@ Salesforce-style complete customer view with all interactions, transactions, and
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_, desc
+from database import get_db, Ledger, Voucher, StockItem, Bill, SessionLocal, User
+from dependencies import get_api_key, get_tenant_id, get_optional_current_user
+from auth import get_current_tenant_id
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-
-from backend.database import get_db, Ledger, Voucher, Bill, StockMovement, StockItem, User
-from backend.auth import get_current_tenant_id, get_optional_current_user
-from backend.dependencies import get_api_key
 
 import logging
 

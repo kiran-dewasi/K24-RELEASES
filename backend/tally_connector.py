@@ -7,7 +7,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from backend.tally_response_parser import parse_tally_response
+from tally_response_parser import parse_tally_response
 
 # Retry logic for resilient connections
 try:

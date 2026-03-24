@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, and_, or_
 
-from backend.database import (
+from database import (
     get_db, Ledger, Voucher, StockItem, Bill, SessionLocal, StockMovement
 )
 
@@ -248,7 +248,7 @@ class QueryOrchestrator:
         
         # ============ TRY LLM-BASED RECOGNITION FIRST ============
         try:
-            from backend.intent_recognizer import classify_intent, IntentType
+            from intent_recognizer import classify_intent, IntentType
             
             api_key = os.getenv("GOOGLE_API_KEY")
             if api_key:
@@ -1098,7 +1098,7 @@ class QueryOrchestrator:
     
     def _handle_export_pdf(self, parsed: ParsedQuery) -> OrchestrationResult:
         """Handle PDF export request - generates actual PDF file"""
-        from backend.services.export_service import ExportService
+        from services.export_service import ExportService
         
         export_service = ExportService(self.db, self.tenant_id)
         

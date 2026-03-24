@@ -502,7 +502,7 @@ class WhatsAppPoller:
         Returns None if no user is logged in yet (poller skips that cycle).
         """
         try:
-            from backend.dependencies import get_tenant_id
+            from dependencies import get_tenant_id
             tid = get_tenant_id()
             if tid and tid != "default":
                 return tid

@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 import logging
 import os
 
-from backend.database import get_db, Ledger, Voucher, StockItem, Bill, SessionLocal
-from backend.dependencies import get_api_key, get_tenant_id
+from database import get_db, Ledger, Voucher, StockItem, Bill, SessionLocal
+from dependencies import get_api_key, get_tenant_id
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 logger = logging.getLogger("dashboard")

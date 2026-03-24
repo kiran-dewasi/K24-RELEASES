@@ -5,9 +5,9 @@ from datetime import datetime, date, timedelta
 import os
 import logging
 from sqlalchemy.orm import Session
-from backend.tally_reader import TallyReader
-from backend.dependencies import get_api_key, get_tenant_id
-from backend.database import get_db, StockItem
+from tally_reader import TallyReader
+from dependencies import get_api_key, get_tenant_id
+from database import get_db, StockItem
 
 # Initialize Router
 router = APIRouter(tags=["inventory"])

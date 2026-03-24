@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
-from backend.dependencies import get_api_key
-from backend.tally_connector import TallyConnector
+from dependencies import get_api_key
+from tally_connector import TallyConnector
 # Reuse global tally instance logic or new one
 # Ideally we import 'tally' from api.py but that causes circular import.
 # We'll instantiate a connector or use a service.

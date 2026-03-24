@@ -4,9 +4,9 @@ from typing import List, Dict, Any
 from datetime import datetime
 import os
 
-from backend.database import get_db, Voucher, Ledger
-from backend.dependencies import get_api_key
-from backend.sync_engine import sync_engine
+from database import get_db, Voucher, Ledger
+from dependencies import get_api_key
+from sync_engine import sync_engine
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 

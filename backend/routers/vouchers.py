@@ -8,15 +8,15 @@ from datetime import datetime
 import os
 import logging
 
-from backend.database import get_db, Voucher, Ledger
-from backend.tally_connector import TallyConnector
-from backend.compliance.audit_service import AuditService
-from backend.compliance.gst_engine import GSTEngine
-from backend.dependencies import get_api_key
-from backend.auth import get_current_tenant_id
-from backend.sync_engine import sync_engine
-from backend.tally_engine import TallyEngine
-from backend.services.ledger_service import LedgerService, get_or_create_ledger
+from database import get_db, Voucher, Ledger
+from tally_connector import TallyConnector
+from compliance.audit_service import AuditService
+from compliance.gst_engine import GSTEngine
+from dependencies import get_api_key
+from auth import get_current_tenant_id
+from sync_engine import sync_engine
+from tally_engine import TallyEngine
+from services.ledger_service import LedgerService, get_or_create_ledger
 
 # Initialize Router (No prefix to allow flexible paths like /ledgers/.../vouchers)
 router = APIRouter(tags=["vouchers"])
@@ -89,8 +89,8 @@ class VoucherDraft(BaseModel):
 # --- Endpoints ---
 
 from datetime import date, timedelta
-from backend.tally_reader import TallyReader
-from backend.routers.data_utils import normalize_tally_voucher
+from tally_reader import TallyReader
+from routers.data_utils import normalize_tally_voucher
 import time
 
 # --- In-memory Tally Voucher Cache ---
@@ -213,12 +213,12 @@ async def get_vouchers(
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]
-                from backend.auth import SECRET_KEY, ALGORITHM
+                from auth import SECRET_KEY, ALGORITHM
                 from jose import jwt as _jwt
                 payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
                 username = payload.get("sub")
                 if username:
-                    from backend.database import User
+                    from database import User
                     user = db.query(User).filter(User.username == username).first()
                     if user and user.tenant_id and user.tenant_id != "default":
                         tenant_id = user.tenant_id
@@ -227,7 +227,7 @@ async def get_vouchers(
 
     # Final fallback — always get real tenant from DB active user
     if tenant_id == "default":
-        from backend.database import User
+        from database import User
         fallback_user = db.query(User).filter(User.is_active == True).first()
         if fallback_user and fallback_user.tenant_id and fallback_user.tenant_id != "default":
             tenant_id = fallback_user.tenant_id

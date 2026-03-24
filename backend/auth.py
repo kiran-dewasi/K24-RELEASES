@@ -5,7 +5,7 @@ import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from backend.database import User, get_db
+from database import User, get_db
 
 # Security configuration
 import os
@@ -191,7 +191,7 @@ def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
     """
     Dependency to check if the tenant's subscription is active or in a valid trial.
     """
-    from backend.services.supabase_service import supabase_http_service
+    from services.supabase_service import supabase_http_service
     from datetime import datetime, timezone
     import httpx
 

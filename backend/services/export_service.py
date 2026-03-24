@@ -40,7 +40,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 
-from backend.database import (
+from database import (
     SessionLocal, Ledger, Voucher, StockItem, Bill, StockMovement
 )
 

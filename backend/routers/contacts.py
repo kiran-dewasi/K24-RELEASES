@@ -4,9 +4,9 @@ from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 
-from backend.database import get_db, Ledger, Voucher
-from backend.dependencies import get_api_key
-from backend.auth import get_current_tenant_id
+from database import get_db, Ledger, Voucher
+from dependencies import get_api_key
+from auth import get_current_tenant_id
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 

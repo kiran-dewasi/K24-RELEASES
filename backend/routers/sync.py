@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from backend.dependencies import get_api_key
-from backend.tally_reader import TallyReader
-from backend.database import get_db, Ledger, Voucher, StockItem
+from dependencies import get_api_key
+from tally_reader import TallyReader
+from database import get_db, Ledger, Voucher, StockItem
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from datetime import datetime, timedelta
@@ -10,7 +10,7 @@ from typing import Optional, Literal
 import logging
 
 # Import new comprehensive sync service
-from backend.services import (
+from services import (
     tally_sync_service,
     sync_now,
     get_sync_status as get_comprehensive_sync_status
@@ -44,7 +44,7 @@ def perform_sync_task(db: Session):
 
     # Resolve tenant_id from the first active local user (single-installation desktop app).
     # Never hardcode — every row written to the DB must carry the real user's tenant_id.
-    from backend.database import User as _User
+    from database import User as _User
     _user = db.query(_User).filter(_User.is_active == True).first()
     tenant_id = _user.tenant_id if (_user and _user.tenant_id) else "default"
     if tenant_id == "default":
@@ -318,7 +318,7 @@ async def get_sync_status():
     Used by Frontend Navbar to show connectivity indicator.
     """
     # Simple check: Try to reach Tally
-    from backend.socket_manager import socket_manager
+    from socket_manager import socket_manager
     tally_connected = False
     try:
         # Check if Tally URL is reachable
@@ -494,7 +494,7 @@ async def health_check():
     """
     🆕 Quick health check for monitoring
     """
-    from backend.services.supabase_service import supabase_service
+    from services.supabase_service import supabase_service
     
     try:
         # Check basic sync status (Tally)

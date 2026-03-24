@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 import logging
 import os
 
-from backend.database import get_db
-from backend.auth import get_current_tenant_id
-from backend.services.query_orchestrator import (
+from database import get_db
+from auth import get_current_tenant_id
+from services.query_orchestrator import (
     QueryOrchestrator,
     process_user_query,
     QueryIntent
@@ -121,7 +121,7 @@ async def download_export_file(
     After generating a report via /ask, use this endpoint to download the file.
     """
     # Get exports directory
-    from backend.services.export_service import get_exports_dir
+    from services.export_service import get_exports_dir
     exports_dir = get_exports_dir()
     
     file_path = exports_dir / filename

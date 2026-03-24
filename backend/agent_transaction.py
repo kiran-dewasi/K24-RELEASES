@@ -6,8 +6,8 @@ from typing import Dict, Any, Optional, Tuple
 import logging
 from datetime import datetime
 import uuid
-from backend.tally_connector import TallyConnector
-from backend.agent_errors import AgentError, K24ErrorCode, create_error
+from tally_connector import TallyConnector
+from agent_errors import AgentError, K24ErrorCode, create_error
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +328,7 @@ class TransactionManager:
 
 # Example usage
 if __name__ == "__main__":
-    from backend.tally_connector import TallyConnector
+    from tally_connector import TallyConnector
     
     tally = TallyConnector()
     manager = TransactionManager(tally)

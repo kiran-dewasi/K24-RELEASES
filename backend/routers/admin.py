@@ -23,10 +23,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
-from backend.database.supabase_client import supabase
-from backend.credit_engine import get_tenant_usage
-from backend.credit_engine.rating import invalidate_rule_cache
-from backend.dependencies import get_api_key
+from database.supabase_client import supabase
+from credit_engine import get_tenant_usage
+from credit_engine.rating import invalidate_rule_cache
+from dependencies import get_api_key
 
 logger = logging.getLogger(__name__)
 

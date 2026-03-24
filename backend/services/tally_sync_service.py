@@ -21,11 +21,11 @@ if sys.platform.startswith("win"):
         # For older python versions or weird environments
         pass
 
-from backend.sync_engine import sync_engine
-from backend.tally_connector import TallyConnector
-from backend.database import SessionLocal
-from backend.services.tally_sync_checkpoint import checkpoint
-from backend.services.cloud_backup import backup_service
+from sync_engine import sync_engine
+from tally_connector import TallyConnector
+from database import SessionLocal
+from services.tally_sync_checkpoint import checkpoint
+from services.cloud_backup import backup_service
 
 logger = logging.getLogger(__name__)
 

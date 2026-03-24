@@ -28,7 +28,7 @@ def _fire_voucher_credit_event(
         logger.debug("[CreditHook] No tenant_id — skipping voucher credit event.")
         return
     try:
-        from backend.credit_engine import record_event
+        from credit_engine import record_event
         decision = record_event(
             tenant_id     = tenant_id,
             event_type    = "VOUCHER",
@@ -194,7 +194,7 @@ class TallyXMLBuilder:
         """
         # Use golden XML builder for inventory vouchers (Sales/Purchase)
         if voucher_type in ["Sales", "Purchase"] and inventory_items:
-            from backend.tally_golden_xml import create_purchase_xml, create_sales_xml
+            from tally_golden_xml import create_purchase_xml, create_sales_xml
             if voucher_type == "Purchase":
                 return create_purchase_xml(
                     company=company,
@@ -213,7 +213,7 @@ class TallyXMLBuilder:
         
         # Use golden XML builder for Receipt/Payment
         if voucher_type in ["Receipt", "Payment"]:
-            from backend.tally_golden_xml import create_receipt_xml, create_payment_xml
+            from tally_golden_xml import create_receipt_xml, create_payment_xml
             # Find the cash/bank ledger and party from line items
             bank_ledger = "Cash"
             party_name = party
@@ -381,7 +381,7 @@ async def post_to_tally_async(xml_payload: str, tally_url: str = TALLY_URL) -> T
     
     # 1. Try Socket.IO Agent First
     try:
-        from backend.socket_manager import socket_manager
+        from socket_manager import socket_manager
         
         if socket_manager.active_tenants:
             tenant_id = list(socket_manager.active_tenants.keys())[0]
@@ -448,7 +448,7 @@ def post_to_tally(xml_payload: str, tally_url: str = TALLY_URL, wait: bool = Tru
     
     # 1. Try Socket.IO Agent First
     try:
-        from backend.socket_manager import socket_manager
+        from socket_manager import socket_manager
         import asyncio
         
         if socket_manager.active_tenants:
@@ -564,7 +564,7 @@ def create_voucher_safely(
     )
     
     if tenant_id:
-        from backend.credit_engine.engine import check_credits_available
+        from credit_engine.engine import check_credits_available
         if not check_credits_available(tenant_id, "VOUCHER"):
             raise Exception("Credit limit reached. Please recharge.")
 

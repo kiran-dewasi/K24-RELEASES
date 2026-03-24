@@ -3,8 +3,8 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from backend.database import SessionLocal, Ledger, Voucher, StockItem, Bill, StockMovement
-from backend.tally_connector import TallyConnector
+from database import SessionLocal, Ledger, Voucher, StockItem, Bill, StockMovement
+from tally_connector import TallyConnector
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import requests
 
@@ -13,7 +13,7 @@ TALLY_URL = os.getenv("TALLY_URL", "http://localhost:9000")
 
 logger = logging.getLogger(__name__)
 
-from backend.tally_live_update import (
+from tally_live_update import (
     create_voucher_in_tally, 
     create_ledger_safely, 
     PushResult,
@@ -30,7 +30,7 @@ class SyncEngine:
         This is the single source of truth for all data written to the DB.
         Never returns a hardcoded value — logs a warning if no user is found.
         """
-        from backend.database import User as _User
+        from database import User as _User
         user = db.query(_User).filter(_User.is_active == True).first()
         if user and user.tenant_id:
             return user.tenant_id

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
-from backend.dependencies import get_api_key
-from backend.tally_connector import TallyConnector
-from backend.tally_diagnostics import TallyDiagnostics, DiagnosticResult
+from dependencies import get_api_key
+from tally_connector import TallyConnector
+from tally_diagnostics import TallyDiagnostics, DiagnosticResult
 import logging
 import os
 from datetime import datetime
@@ -146,7 +146,7 @@ class SQLRequest(BaseModel):
 @router.post("/execute_sql")
 async def execute_raw_sql(req: SQLRequest):
     """Execute raw SQL (DANGER: Admin only)"""
-    from backend.database import engine
+    from database import engine
     from sqlalchemy import text
     try:
         with engine.connect() as conn:

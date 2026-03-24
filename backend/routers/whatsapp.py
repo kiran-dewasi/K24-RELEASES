@@ -6,9 +6,9 @@ import sqlite3
 import uuid
 from datetime import datetime
 
-from backend.database import get_db, Tenant, WhatsAppMapping, Ledger
-from backend.dependencies import get_api_key
-from backend.auth import get_current_tenant_id, get_current_user
+from database import get_db, Tenant, WhatsAppMapping, Ledger
+from dependencies import get_api_key
+from auth import get_current_tenant_id, get_current_user
 
 router = APIRouter(tags=["whatsapp"])
 
@@ -195,7 +195,7 @@ async def update_whatsapp_settings(
     if not tenant:
         # Auto-create if missing (Self-healing)
         # In real app, Tenant should exist on registration.
-        from backend.database import Company
+        from database import Company
         # Try to find company name
         # This is a bit disjointed due to MVP schema evolution.
         # Ideally fetch name from User's company.
@@ -369,7 +369,7 @@ async def create_customer_mapping(
 
     # ── Sync to Supabase (non-blocking) ──────────────────────────────────────
     try:
-        from backend.services.supabase_service import supabase_http_service
+        from services.supabase_service import supabase_http_service
         if supabase_http_service.client:
             import httpx
             headers = supabase_http_service._get_headers(use_service_key=True)
@@ -498,7 +498,7 @@ async def delete_customer_mapping(
 
     # ── Sync delete to Supabase (soft-delete: set is_active = false) ─────────
     try:
-        from backend.services.supabase_service import supabase_http_service
+        from services.supabase_service import supabase_http_service
         if supabase_http_service.client:
             import httpx
             httpx.patch(

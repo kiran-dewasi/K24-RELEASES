@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from backend.database import get_db, Voucher, AuditLog
-from backend.compliance.audit_service import AuditService
-from backend.compliance.engine import ComplianceEngine
+from database import get_db, Voucher, AuditLog
+from compliance.audit_service import AuditService
+from compliance.engine import ComplianceEngine
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
