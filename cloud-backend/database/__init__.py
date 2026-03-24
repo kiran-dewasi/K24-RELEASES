@@ -4,6 +4,7 @@ Cloud Backend Database Module
 Provides Supabase client and database utilities for cloud services.
 """
 from .supabase_client import get_supabase_client, reset_client
+from .models import Base, User, Company, UserSettings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 import os
@@ -37,4 +38,5 @@ def get_db():
     finally:
         db.close()
 
-__all__ = ["get_supabase_client", "reset_client", "get_db"]
+__all__ = ["get_supabase_client", "reset_client", "get_db",
+           "User", "Company", "UserSettings", "Base"]

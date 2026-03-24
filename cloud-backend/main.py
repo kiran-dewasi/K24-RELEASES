@@ -79,11 +79,10 @@ app.add_middleware(
 from routers import whatsapp_cloud
 from routers import devices
 from routers import webhooks
-# from routers import auth  # TODO: needs User/Company models in cloud database
+from routers import auth
 
 # Include routers
-# TODO: Uncomment these after extracting shared modules from backend/
-# app.include_router(auth.router)
+app.include_router(auth.router)
 app.include_router(devices.router, prefix="/api/devices", tags=["Devices"]) 
 # app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
 app.include_router(whatsapp_cloud.router, prefix="/api/whatsapp/cloud", tags=["WhatsApp Cloud"])
