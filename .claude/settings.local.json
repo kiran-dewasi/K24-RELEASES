@@ -17,7 +17,12 @@
       "Bash(venv/Scripts/alembic.exe upgrade:*)",
       "Bash(del:*)",
       "Bash(dir /s /b *.msi *.exe)",
-      "Bash(railway variables --service backend)"
+      "Bash(railway variables --service backend)",
+      "Bash(find backend/ -type f -name \"*.pyc\" -delete)",
+      "Bash(find backend/ -type d -name \"__pycache__\" -exec rm -rf {} +)",
+      "Bash(git add -A)",
+      "Bash(git commit -m \"fix: remove all __pycache__ and .pyc files with backend. imports\")",
+      "Bash(git push origin main)"
     ]
   }
 }
