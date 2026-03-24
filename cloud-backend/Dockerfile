@@ -15,6 +15,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Debug - show what got copied
+RUN echo "=== /app contents ===" && ls -la /app/
+RUN echo "=== auth.py line 6 ===" && sed -n '6p' /app/routers/auth.py
+
+
 # Expose port
 EXPOSE 8080
 
