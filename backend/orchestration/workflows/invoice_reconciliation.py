@@ -1,4 +1,4 @@
-"""
+﻿"""
 Invoice Reconciliation Workflow
 Autonomous workflow to detect and fix invoice discrepancies
 """
@@ -6,9 +6,9 @@ from typing import Dict, Any, List
 import pandas as pd
 import logging
 import os
-from backend.orchestration.base_workflow import BaseWorkflow, WorkflowResult
-from backend.tally_connector import TallyConnector
-from backend.tally_live_update import dispatch_tally_update, TallyAPIError
+from orchestration.base_workflow import BaseWorkflow, WorkflowResult
+from tally_connector import TallyConnector
+from tally_live_update import dispatch_tally_update, TallyAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +196,4 @@ def reconcile_invoices_workflow(party_name: str, company: str = "SHREE JI SALES"
         response.update(result.data)
     
     return response
+

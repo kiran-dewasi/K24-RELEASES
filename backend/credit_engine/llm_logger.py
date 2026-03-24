@@ -1,14 +1,14 @@
-"""
-Credit Engine — LLM Call Logger
+﻿"""
+Credit Engine â€” LLM Call Logger
 ================================
 Lightweight fire-and-forget logging of LLM API calls.
-Used ONLY for cost analytics and model tuning — NOT for billing.
+Used ONLY for cost analytics and model tuning â€” NOT for billing.
 
 Call log_llm_call() anywhere you invoke an LLM API, passing the token counts
 and a workflow name so you can analyse cost per workflow type.
 
 Example usage in agent_gemini.py:
-    from backend.credit_engine import log_llm_call
+    from credit_engine import log_llm_call
 
     response = model.generate_content(prompt)
     log_llm_call(
@@ -26,7 +26,7 @@ import asyncio
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.database.supabase_client import supabase
+from database.supabase_client import supabase
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def _write_llm_call_to_db(
     duration_ms:     Optional[int],
     usage_event_id:  Optional[str],
 ) -> None:
-    """Synchronous DB write — runs in the thread pool."""
+    """Synchronous DB write â€” runs in the thread pool."""
     try:
         supabase.table("llm_calls").insert({
             "tenant_id":         tenant_id,
@@ -99,7 +99,7 @@ def log_llm_call(
     """
     Log an LLM API call for cost analytics. Non-blocking.
 
-    This function is fire-and-forget — it submits the DB write to a
+    This function is fire-and-forget â€” it submits the DB write to a
     background thread and returns immediately. Callers are never blocked.
 
     Args:
@@ -121,7 +121,7 @@ def log_llm_call(
         model, tokens_input, tokens_output
     )
 
-    # Submit to background thread — never blocks the request path
+    # Submit to background thread â€” never blocks the request path
     _log_executor.submit(
         _write_llm_call_to_db,
         tenant_id,
@@ -139,3 +139,4 @@ def log_llm_call(
         f"in={tokens_input} out={tokens_output} workflow={workflow} "
         f"cost=${estimated_cost:.6f}"
     )
+

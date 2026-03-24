@@ -1,11 +1,11 @@
-"""
+﻿"""
 One-time script to deduplicate existing voucher rows in local DB.
 """
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from backend.database import SessionLocal, Voucher, get_db_path
+from database import SessionLocal, Voucher, get_db_path
 from sqlalchemy import func
 from datetime import datetime
 
@@ -82,3 +82,4 @@ def dedupe_vouchers():
 
 if __name__ == "__main__":
     dedupe_vouchers()
+

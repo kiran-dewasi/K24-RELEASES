@@ -1,5 +1,5 @@
-"""
-Credit Engine — Core Engine
+﻿"""
+Credit Engine â€” Core Engine
 ============================
 The single function all business flows must call: record_event().
 
@@ -8,7 +8,7 @@ Flow inside record_event():
   2. Get/create billing cycle via cycle_manager.find_or_create_active_cycle()
   3. Insert usage_event row (immutable audit log)
   4. Atomically increment tenant_usage_summary via Postgres function
-  5. Evaluate against plan limit → CreditStatus (ALLOWED/NEAR_LIMIT/OVER_LIMIT/BLOCKED)
+  5. Evaluate against plan limit â†’ CreditStatus (ALLOWED/NEAR_LIMIT/OVER_LIMIT/BLOCKED)
   6. Return CreditDecision (callers decide how to act based on .status)
 
 CRITICAL: No code outside this module should write to usage_events or
@@ -20,8 +20,8 @@ import uuid
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
-from backend.database.supabase_client import supabase
-from backend.credit_engine.models import (
+from database.supabase_client import supabase
+from credit_engine.models import (
     UsageEventIn,
     CreditDecision,
     CreditStatus,
@@ -29,12 +29,12 @@ from backend.credit_engine.models import (
     EventType,
     EventSubtype,
 )
-from backend.credit_engine.rating import compute_credits
-from backend.credit_engine.cycle_manager import find_or_create_active_cycle, get_tenant_plan
+from credit_engine.rating import compute_credits
+from credit_engine.cycle_manager import find_or_create_active_cycle, get_tenant_plan
 
 logger = logging.getLogger(__name__)
 
-# ── Threshold for NEAR_LIMIT warning (80% of plan limit) ──────────────────
+# â”€â”€ Threshold for NEAR_LIMIT warning (80% of plan limit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 NEAR_LIMIT_THRESHOLD = 0.80
 
 
@@ -136,9 +136,9 @@ def _compute_status(
     Determine the credit decision status based on current usage vs plan limit.
 
     enforcement_mode:
-      HARD_CAP        → BLOCKED when over limit
-      SOFT_CAP        → OVER_LIMIT (allowed but flagged) when over limit
-      NO_CAP_LOG_ONLY → Always ALLOWED, just track
+      HARD_CAP        â†’ BLOCKED when over limit
+      SOFT_CAP        â†’ OVER_LIMIT (allowed but flagged) when over limit
+      NO_CAP_LOG_ONLY â†’ Always ALLOWED, just track
     """
     if max_credits <= 0:
         return CreditStatus.ALLOWED  # Enterprise / custom plan with no limit
@@ -151,7 +151,7 @@ def _compute_status(
     if ratio < 1.0:
         return CreditStatus.NEAR_LIMIT
 
-    # Over limit — enforcement_mode decides the outcome
+    # Over limit â€” enforcement_mode decides the outcome
     if enforcement_mode == "HARD_CAP":
         return CreditStatus.BLOCKED
     elif enforcement_mode == "SOFT_CAP":
@@ -197,7 +197,7 @@ def record_event(
 
     Returns:
         CreditDecision with status, usage snapshot, and event_id.
-        Always returns a decision — never raises (failures are logged).
+        Always returns a decision â€” never raises (failures are logged).
 
     Example:
         decision = record_event(
@@ -212,28 +212,28 @@ def record_event(
     """
     metadata = metadata or {}
 
-    # ── Step 1: Rate the event ───────────────────────────────────────────────
+    # â”€â”€ Step 1: Rate the event â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     credits_consumed = compute_credits(event_type, event_subtype, metadata)
 
-    # ── Step 2: Get/create billing cycle ────────────────────────────────────
+    # â”€â”€ Step 2: Get/create billing cycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     cycle = find_or_create_active_cycle(tenant_id)
 
     if not cycle:
-        # Fallback: can't determine cycle — allow but log error
-        logger.error(f"[CreditEngine] No billing cycle for {tenant_id} — allowing event (ALLOWED).")
+        # Fallback: can't determine cycle â€” allow but log error
+        logger.error(f"[CreditEngine] No billing cycle for {tenant_id} â€” allowing event (ALLOWED).")
         return _fallback_decision(tenant_id, credits_consumed, event_type)
 
     billing_cycle_id = cycle["id"]
     max_credits      = cycle.get("max_credits", 500)
 
-    # ── Step 3: Get enforcement mode from plan ───────────────────────────────
+    # â”€â”€ Step 3: Get enforcement mode from plan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     tenant_plan      = get_tenant_plan(tenant_id)
     enforcement_mode = "HARD_CAP"  # safe default
     plan_id          = cycle.get("plan_id", "starter")
     if tenant_plan and tenant_plan.get("plans"):
         enforcement_mode = tenant_plan["plans"].get("enforcement_mode", "HARD_CAP")
 
-    # ── Step 4: Pre-check for BLOCKED (HARD_CAP only, before writing) ───────
+    # â”€â”€ Step 4: Pre-check for BLOCKED (HARD_CAP only, before writing) â”€â”€â”€â”€â”€â”€â”€
     # Fetch current summary to check if already at limit BEFORE consuming credits
     current_summary = _get_current_summary(tenant_id, billing_cycle_id)
     current_used    = current_summary.get("credits_used_total", 0.0) if current_summary else 0.0
@@ -250,7 +250,7 @@ def record_event(
             tenant_id, billing_cycle_id, cycle, current_summary, plan_id, enforcement_mode
         )
         return CreditDecision(
-            event_id         = str(uuid.uuid4()),   # Pseudo ID — no DB row created
+            event_id         = str(uuid.uuid4()),   # Pseudo ID â€” no DB row created
             tenant_id        = tenant_id,
             credits_consumed = 0,
             status           = CreditStatus.BLOCKED,
@@ -258,7 +258,7 @@ def record_event(
             message          = _build_status_message(CreditStatus.BLOCKED, current_used, max_credits),
         )
 
-    # ── Step 5: Insert usage_event row (audit log) ───────────────────────────
+    # â”€â”€ Step 5: Insert usage_event row (audit log) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     event_id = _insert_usage_event(
         tenant_id         = tenant_id,
         company_id        = company_id,
@@ -271,7 +271,7 @@ def record_event(
         status            = pre_status.value,  # Will be updated after atomic increment
     )
 
-    # ── Step 6: Atomically increment usage summary ───────────────────────────
+    # â”€â”€ Step 6: Atomically increment usage summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     updated_summary_row = _call_increment_atomic(
         tenant_id        = tenant_id,
         billing_cycle_id = billing_cycle_id,
@@ -279,7 +279,7 @@ def record_event(
         credits          = credits_consumed,
     )
 
-    # ── Step 7: Compute final status from updated totals ─────────────────────
+    # â”€â”€ Step 7: Compute final status from updated totals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     final_used = 0.0
     if updated_summary_row:
         final_used = float(updated_summary_row.get("credits_used_total", current_used + credits_consumed))
@@ -332,7 +332,7 @@ def get_tenant_usage(tenant_id: str) -> UsageSummary:
     )
 
 
-# ── Private helpers ──────────────────────────────────────────────────────────
+# â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _get_current_summary(
     tenant_id: str, billing_cycle_id: str
@@ -420,3 +420,4 @@ def check_credits_available(tenant_id: str, event_type: str) -> bool:
     
     status = _compute_status(current_used, max_credits, enforcement_mode)
     return status != CreditStatus.BLOCKED
+

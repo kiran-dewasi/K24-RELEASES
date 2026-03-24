@@ -1,11 +1,11 @@
-"""
+﻿"""
 Verify deduplication worked - check a known duplicate set.
 """
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from backend.database import SessionLocal, Voucher
+from database import SessionLocal, Voucher
 from datetime import datetime
 
 db = SessionLocal()
@@ -37,3 +37,4 @@ if rows2:
         print(f"  ID: {row.id}, has_inventory: {bool(row.inventory_entries)}, has_ledger: {bool(row.ledger_entries)}, last_synced: {row.last_synced}")
 
 db.close()
+

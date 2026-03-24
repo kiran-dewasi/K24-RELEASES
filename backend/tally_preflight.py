@@ -1,5 +1,5 @@
-import requests
-from backend.xml_generator import generate_ledger_xml
+﻿import requests
+from xml_generator import generate_ledger_xml
 import logging
 
 logger = logging.getLogger("tally_preflight")
@@ -108,3 +108,4 @@ def ensure_all_prerequisites(party_name: str) -> bool:
             return False
             
     return True
+

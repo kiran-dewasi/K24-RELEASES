@@ -1,4 +1,4 @@
-"""
+﻿"""
 Bulk Bill Processor for K24
 ============================
 Processes 10-15 bills in parallel using asyncio with rate limiting.
@@ -51,7 +51,7 @@ class BulkBillProcessor:
                 
                 # Run blocking Gemini call in thread pool
                 loop = asyncio.get_event_loop()
-                from backend.agent_gemini import extract_bill_data
+                from agent_gemini import extract_bill_data
                 
                 bill_data = await loop.run_in_executor(
                     None,  # Use default thread pool
@@ -187,8 +187,8 @@ class BulkBillProcessor:
         
         logger.info("=" * 60)
         logger.info(f"COMPLETED: {success_count}/{len(image_paths)} bills in {elapsed:.1f}s")
-        logger.info(f"  ✅ Auto-posted: {auto_posted} | Auto-created: {auto_created}")
-        logger.info(f"  ⚠️ Needs review: {needs_review} | ❓ Needs clarification: {needs_clarification}")
+        logger.info(f"  âœ… Auto-posted: {auto_posted} | Auto-created: {auto_created}")
+        logger.info(f"  âš ï¸ Needs review: {needs_review} | â“ Needs clarification: {needs_clarification}")
         logger.info("=" * 60)
         
         return summary
@@ -211,3 +211,4 @@ def process_bills_sync(
 
 # Singleton for reuse
 bulk_processor = BulkBillProcessor(max_concurrent=10)
+

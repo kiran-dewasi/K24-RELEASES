@@ -1,4 +1,4 @@
-
+﻿
 """
 Background Jobs Abstraction Layer
 This module provides a unified way to enqueue background tasks.
@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks
 USE_CELERY = os.getenv("USE_REDIS_QUEUE", "false").lower() == "true"
 
 # Import Logic
-from backend.logic import (
+from logic import (
     logic_create_ledger_async,
     logic_create_voucher_async, 
     logic_process_whatsapp_message
@@ -37,7 +37,7 @@ class BackgroundJobManager:
         """
         if self.mode == "CELERY":
             # Lazy Import to avoid crashes in Desktop Mode
-            from backend.tasks import create_voucher_async as celery_task
+            from tasks import create_voucher_async as celery_task
             # Note: The task in tasks.py is async, but Celery wraps it. 
             # We assume tasks.py is updated to wrap logic.py
             celery_task.delay(voucher_data, user_id, thread_id)
@@ -60,7 +60,7 @@ class BackgroundJobManager:
         Enqueue a ledger creation task.
         """
         if self.mode == "CELERY":
-            from backend.tasks import create_ledger_async as celery_task
+            from tasks import create_ledger_async as celery_task
             celery_task.delay(ledger_data, user_id, thread_id)
             return "queued_celery"
         else:
@@ -77,7 +77,7 @@ class BackgroundJobManager:
         Enqueue WhatsApp message processing.
         """
         if self.mode == "CELERY":
-            from backend.tasks import process_whatsapp_message
+            from tasks import process_whatsapp_message
             process_whatsapp_message.delay(from_phone, message_text, message_id, webhook_timestamp)
             return "queued_celery"
         else:
@@ -93,3 +93,4 @@ class BackgroundJobManager:
 
 # Global Instance
 job_manager = BackgroundJobManager()
+

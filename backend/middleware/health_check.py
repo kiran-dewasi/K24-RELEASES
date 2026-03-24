@@ -1,10 +1,10 @@
-import os
+﻿import os
 import logging
 import time
 import asyncio
 from typing import Dict, Tuple, Optional, Any
 from sqlalchemy import text
-from backend.database import SessionLocal
+from database import SessionLocal
 import google.generativeai as genai
 import httpx
 
@@ -123,3 +123,4 @@ class HealthCheck:
             "redis": {"healthy": redis_ok, "message": redis_msg},
             "overall_healthy": db_ok and gemini_ok # Tally/Redis might be optional depending on config
         }
+

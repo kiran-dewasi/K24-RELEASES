@@ -1,4 +1,4 @@
-"""
+﻿"""
 TALLY SYNC CRASH DIAGNOSTIC
 ============================
 This script diagnoses WHY Tally goes offline during K24 sync.
@@ -46,7 +46,7 @@ print("[PHASE 2] TallyConnector Configuration")
 print("-" * 50)
 
 try:
-    from backend.tally_connector import TallyConnector, TALLY_API_URL, DEFAULT_COMPANY
+    from tally_connector import TallyConnector, TALLY_API_URL, DEFAULT_COMPANY
     
     print(f"  Tally URL: {TALLY_API_URL}")
     print(f"  Default Company: {DEFAULT_COMPANY}")
@@ -196,7 +196,7 @@ print("[PHASE 7] Sync Engine Test")
 print("-" * 50)
 
 try:
-    from backend.sync_engine import SyncEngine
+    from sync_engine import SyncEngine
     
     sync_engine = SyncEngine()
     print(f"  SyncEngine loaded: SUCCESS")
@@ -295,7 +295,7 @@ print("[PHASE 10] Tally Sync Service Status")
 print("-" * 50)
 
 try:
-    from backend.services.tally_sync_service import tally_sync_service
+    from services.tally_sync_service import tally_sync_service
     
     print(f"  Service instance: {tally_sync_service}")
     print(f"  Is running: {tally_sync_service.is_running}")
@@ -332,3 +332,4 @@ To test the actual sync endpoint, run:
 """)
 
 print("Diagnostic complete!")
+

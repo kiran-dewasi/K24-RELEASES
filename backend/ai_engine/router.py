@@ -1,7 +1,7 @@
-from typing import Optional
+﻿from typing import Optional
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from backend.tools import TOOLS
+from tools import TOOLS
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,11 +30,11 @@ class ModelRouter:
         
         # Rule 1 & 2: Images or High Complexity -> Use PRO
         if has_image or complexity == "high":
-            print(f"🧠 ModelRouter: Selecting PREMIUM model ({self.PRO_MODEL}) - Reason: {'Image Input' if has_image else 'High Complexity'}")
+            print(f"ðŸ§  ModelRouter: Selecting PREMIUM model ({self.PRO_MODEL}) - Reason: {'Image Input' if has_image else 'High Complexity'}")
             return self._create_llm(self.PRO_MODEL)
             
         # Default: Use FLASH
-        print(f"⚡ ModelRouter: Selecting FAST model ({self.FLASH_MODEL})")
+        print(f"âš¡ ModelRouter: Selecting FAST model ({self.FLASH_MODEL})")
         return self._create_llm(self.FLASH_MODEL)
 
     def _create_llm(self, model_name: str) -> ChatGoogleGenerativeAI:
@@ -57,13 +57,14 @@ class ModelRouter:
             # Bind tools dynamically so the agent can always use them
             return llm.bind_tools(TOOLS)
         except Exception as e:
-            print(f"❌ Error initializing {model_name}: {e}")
+            print(f"âŒ Error initializing {model_name}: {e}")
             # Fallback to Flash if Pro fails (rudimentary fallback)
             if model_name != self.FLASH_MODEL:
-                print("⚠️ Falling back to Flash model...")
+                print("âš ï¸ Falling back to Flash model...")
                 return self._create_llm(self.FLASH_MODEL)
             raise e
 
 
 # Create a singleton instance for easy import
 router = ModelRouter()
+

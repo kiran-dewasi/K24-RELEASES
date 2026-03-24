@@ -1,4 +1,4 @@
-# K24 AI Agent - Gemini XML Generator
+﻿# K24 AI Agent - Gemini XML Generator
 # ====================================
 # Uses Gemini to generate Tally-compliant XML for vouchers
 # Integrated with GeminiOrchestrator for robust handling
@@ -126,9 +126,9 @@ class GeminiXMLAgent:
 VOUCHER DETAILS:
 - Type: {voucher_type}
 - Party Name: {party_name}
-- Amount: ₹{amount:.2f}
-- {'Tax: ' + str(tax_rate) + '% GST (₹' + str(tax_amount) + ')' if tax_rate > 0 else 'No Tax'}
-- {'Total Amount: ₹' + str(total_amount) if tax_rate > 0 else ''}
+- Amount: â‚¹{amount:.2f}
+- {'Tax: ' + str(tax_rate) + '% GST (â‚¹' + str(tax_amount) + ')' if tax_rate > 0 else 'No Tax'}
+- {'Total Amount: â‚¹' + str(total_amount) if tax_rate > 0 else ''}
 - Date: {date} (YYYYMMDD format)
 - Narration: {narration or 'Created via K24'}
 - {'Deposit To: ' + deposit_to if voucher_type in ['Receipt', 'Payment'] else ''}
@@ -542,8 +542,8 @@ def validate_and_fix_extraction(data: dict) -> dict:
 def extract_bill_data(
     image_path: str,
     api_key: str,
-    tenant_id: Optional[str] = None,    # ← for credit + LLM tracking
-    page_count: int = 1,                 # ← how many pages in this document
+    tenant_id: Optional[str] = None,    # â† for credit + LLM tracking
+    page_count: int = 1,                 # â† how many pages in this document
 ) -> dict:
     """
     Optimized for large invoices with many items.
@@ -614,12 +614,12 @@ def extract_bill_data(
         if not response:
              raise Exception("Failed to get response from Gemini")
 
-        # ── LLM call logging + DOCUMENT credit event ─────────────────────────────────────
+        # â”€â”€ LLM call logging + DOCUMENT credit event â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         usage_event_id = None
         if tenant_id:
             try:
                 # 1. Fire credit event for document processing
-                from backend.credit_engine import record_event
+                from credit_engine import record_event
                 decision = record_event(
                     tenant_id     = tenant_id,
                     event_type    = "DOCUMENT",
@@ -634,7 +634,7 @@ def extract_bill_data(
 
             try:
                 # 2. Log LLM token usage
-                from backend.credit_engine import log_llm_call
+                from credit_engine import log_llm_call
                 usage_meta = response.usage_metadata
                 log_llm_call(
                     tenant_id      = tenant_id,
@@ -646,7 +646,7 @@ def extract_bill_data(
                 )
             except Exception as le:
                 logger.warning(f"[LLMLogger] Token logging failed (non-fatal): {le}")
-        # ─────────────────────────────────────────────────────────────────────────────
+        # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
         # Parse response
         text = response.text.strip()
@@ -667,3 +667,4 @@ def extract_bill_data(
     except Exception as e:
         logger.error(f"Extraction failed: {e}")
         return {"items": [], "error": str(e)}
+

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test Suite for Gemini 2.0 Flash Orchestrator.
 
 This module contains comprehensive tests for the GeminiOrchestrator class,
@@ -12,9 +12,9 @@ import os
 from unittest.mock import MagicMock, patch, AsyncMock
 from typing import AsyncGenerator, List
 
-from backend.gemini.gemini_orchestrator import GeminiOrchestrator
-from backend.gemini.gemini_prompts import KITTU_SYSTEM_PROMPT
-from backend.gemini.response_validator import validate_gemini_response
+from gemini.gemini_orchestrator import GeminiOrchestrator
+from gemini.gemini_prompts import KITTU_SYSTEM_PROMPT
+from gemini.response_validator import validate_gemini_response
 
 # ============================================================================
 # FIXTURES
@@ -316,3 +316,4 @@ async def test_various_exceptions(orchestrator, exception_type):
 
 if __name__ == "__main__":
     pytest.main([__file__])
+

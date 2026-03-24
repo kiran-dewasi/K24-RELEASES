@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Indian Compliance - Validation Rules
 =========================================
 21+ India-specific tax and regulatory validation rules for SMBs.
@@ -6,7 +6,7 @@ K24 Indian Compliance - Validation Rules
 
 from typing import Tuple, Optional, Dict, Any
 from datetime import date, datetime, timedelta
-from backend.database import SessionLocal, Voucher, Ledger
+from database import SessionLocal, Voucher, Ledger
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,9 +17,9 @@ SEVERITY_WARN = "WARN"
 SEVERITY_INFO = "INFO"
 
 # GST thresholds (2025)
-GST_THRESHOLD_GOODS = 40_00_000  # ₹40 lakhs
-GST_THRESHOLD_SERVICES = 20_00_000  # ₹20 lakhs
-GST_THRESHOLD_SPECIAL_STATES = 20_00_000  # ₹20 lakhs for NE states
+GST_THRESHOLD_GOODS = 40_00_000  # â‚¹40 lakhs
+GST_THRESHOLD_SERVICES = 20_00_000  # â‚¹20 lakhs
+GST_THRESHOLD_SPECIAL_STATES = 20_00_000  # â‚¹20 lakhs for NE states
 
 # Valid GST rates in India
 VALID_GST_RATES = [0.0, 5.0, 12.0, 18.0, 28.0]
@@ -41,7 +41,7 @@ def rule_gst_registration_required(turnover: float, business_type: str = "GOODS"
         return (
             False,
             SEVERITY_WARN,
-            f"Your turnover (₹{turnover/100000:.1f}L) exceeds ₹{threshold/100000:.0f}L threshold. GST registration required.",
+            f"Your turnover (â‚¹{turnover/100000:.1f}L) exceeds â‚¹{threshold/100000:.0f}L threshold. GST registration required.",
             "Register for GST immediately to avoid penalties"
         )
     
@@ -50,7 +50,7 @@ def rule_gst_registration_required(turnover: float, business_type: str = "GOODS"
         return (
             True,
             SEVERITY_INFO,
-            f"Your turnover (₹{turnover/100000:.1f}L) is approaching ₹{threshold/100000:.0f}L GST threshold.",
+            f"Your turnover (â‚¹{turnover/100000:.1f}L) is approaching â‚¹{threshold/100000:.0f}L GST threshold.",
             "Plan for GST registration soon"
         )
     
@@ -98,13 +98,13 @@ def rule_reverse_charge_applicable(amount: float, supplier_gstin: Optional[str])
     Returns:
         (is_valid, severity, message, action)
     """
-    # RCM applies if buying from unregistered supplier and amount > ₹5,000 in a day
+    # RCM applies if buying from unregistered supplier and amount > â‚¹5,000 in a day
     if supplier_gstin is None and amount > 5000:
         rcm_gst = amount * 0.18  # Assuming 18% standard rate
         return (
             True,
             SEVERITY_WARN,
-            f"Reverse Charge applies. You must pay ₹{rcm_gst:,.0f} GST (18% RCM) on ₹{amount:,.0f} purchase.",
+            f"Reverse Charge applies. You must pay â‚¹{rcm_gst:,.0f} GST (18% RCM) on â‚¹{amount:,.0f} purchase.",
             "Pay GST to government (not supplier) and claim ITC"
         )
     
@@ -131,7 +131,7 @@ def rule_tds_contractor_payment(amount: float, payment_type: str, aggregate_annu
         return (
             True,
             SEVERITY_WARN,
-            f"TDS applicable: Deduct ₹{tds_amount:,.0f} (1% of ₹{amount:,.0f}) under Section 194C",
+            f"TDS applicable: Deduct â‚¹{tds_amount:,.0f} (1% of â‚¹{amount:,.0f}) under Section 194C",
             "Deduct TDS and deposit by 7th of next month"
         )
     
@@ -140,7 +140,7 @@ def rule_tds_contractor_payment(amount: float, payment_type: str, aggregate_annu
         return (
             True,
             SEVERITY_WARN,
-            f"TDS applicable: Deduct ₹{tds_amount:,.0f} (10% of ₹{amount:,.0f}) under Section 194J",
+            f"TDS applicable: Deduct â‚¹{tds_amount:,.0f} (10% of â‚¹{amount:,.0f}) under Section 194J",
             "Deduct TDS and deposit by 7th of next month"
         )
     
@@ -157,22 +157,22 @@ def rule_tds_cash_withdrawal(amount: float, annual_aggregate: float) -> Tuple[bo
     Returns:
         (is_valid, severity, message, action)
     """
-    if annual_aggregate > 1_00_00_000:  # > ₹1 crore
+    if annual_aggregate > 1_00_00_000:  # > â‚¹1 crore
         tds_rate = 0.05  # 5%
         tds_amount = amount * tds_rate
         return (
             True,
             SEVERITY_WARN,
-            f"TDS on cash withdrawal: Aggregate > ₹1Cr. Deduct ₹{tds_amount:,.0f} (5% of ₹{amount:,.0f})",
+            f"TDS on cash withdrawal: Aggregate > â‚¹1Cr. Deduct â‚¹{tds_amount:,.0f} (5% of â‚¹{amount:,.0f})",
             "Bank will deduct TDS automatically"
         )
-    elif annual_aggregate > 20_00_000:  # > ₹20 lakhs
+    elif annual_aggregate > 20_00_000:  # > â‚¹20 lakhs
         tds_rate = 0.02  # 2%
         tds_amount = amount * tds_rate
         return (
             True,
             SEVERITY_WARN,
-            f"TDS on cash withdrawal: Aggregate > ₹20L. Deduct ₹{tds_amount:,.0f} (2% of ₹{amount:,.0f})",
+            f"TDS on cash withdrawal: Aggregate > â‚¹20L. Deduct â‚¹{tds_amount:,.0f} (2% of â‚¹{amount:,.0f})",
             "Bank will deduct TDS automatically"
         )
     
@@ -243,7 +243,7 @@ def rule_duplicate_invoice_gst(customer: str, amount: float, gst_amount: float, 
             return (
                 False,
                 SEVERITY_BLOCK,
-                f"Duplicate invoice detected to {customer} for ₹{amount:,.0f} (within 1 day)",
+                f"Duplicate invoice detected to {customer} for â‚¹{amount:,.0f} (within 1 day)",
                 "Verify this is not a duplicate entry"
             )
         
@@ -271,8 +271,8 @@ def rule_msme_form1_compliance(supplier: str, amount_due: float, days_unpaid: in
         return (
             False,
             SEVERITY_BLOCK,
-            f"MSME Form 1 due: You owe {supplier} ₹{amount_due:,.0f} (unpaid {days_unpaid} days). File Form 1.",
-            f"File MSME Form 1 immediately. Penalty: ₹20,000 + ₹1,000/day (max ₹3,00,000)"
+            f"MSME Form 1 due: You owe {supplier} â‚¹{amount_due:,.0f} (unpaid {days_unpaid} days). File Form 1.",
+            f"File MSME Form 1 immediately. Penalty: â‚¹20,000 + â‚¹1,000/day (max â‚¹3,00,000)"
         )
     
     if days_unpaid > 35:  # Warning before deadline
@@ -280,7 +280,7 @@ def rule_msme_form1_compliance(supplier: str, amount_due: float, days_unpaid: in
         return (
             True,
             SEVERITY_WARN,
-            f"MSME payment to {supplier} due in {days_left} days. ₹{amount_due:,.0f} outstanding.",
+            f"MSME payment to {supplier} due in {days_left} days. â‚¹{amount_due:,.0f} outstanding.",
             "Pay MSME supplier within 45 days to avoid Form 1 filing"
         )
     
@@ -297,11 +297,11 @@ def rule_e_invoicing_mandatory(turnover: float, invoice_amount: float) -> Tuple[
     Returns:
         (is_valid, severity, message, action)
     """
-    if turnover > 1_00_00_000:  # > ₹1 crore
+    if turnover > 1_00_00_000:  # > â‚¹1 crore
         return (
             True,
             SEVERITY_WARN,
-            "E-invoicing mandatory for businesses with turnover > ₹1Cr. Use GST portal e-invoice system.",
+            "E-invoicing mandatory for businesses with turnover > â‚¹1Cr. Use GST portal e-invoice system.",
             "Generate e-invoice from GST portal before creating invoice"
         )
     
@@ -322,7 +322,7 @@ def rule_e_way_bill_required(amount: float, is_goods_movement: bool = True) -> T
         return (
             True,
             SEVERITY_WARN,
-            f"E-way bill required for goods movement > ₹50,000 (Invoice: ₹{amount:,.0f})",
+            f"E-way bill required for goods movement > â‚¹50,000 (Invoice: â‚¹{amount:,.0f})",
             "Generate e-way bill from GST portal before dispatch"
         )
     
@@ -430,7 +430,7 @@ def rule_suspicious_invoice_pattern(customer: str, amount: float, days: int = 7)
          return (
             True,
             SEVERITY_INFO,
-            f"High value transaction: ₹{amount:,.0f} to {customer}. Verify authenticity.",
+            f"High value transaction: â‚¹{amount:,.0f} to {customer}. Verify authenticity.",
             "Review invoice details"
         )
     return (True, SEVERITY_INFO, "Transaction pattern normal", "")
@@ -518,7 +518,7 @@ def rule_annual_turnover_limit_check(ytd_turnover: float, months_elapsed: int) -
         return (
             True,
             SEVERITY_INFO,
-            f"Projected turnover: ₹{projected_turnover/100000:.1f}L. Close to ₹40L GST threshold.",
+            f"Projected turnover: â‚¹{projected_turnover/100000:.1f}L. Close to â‚¹40L GST threshold.",
             "Plan for GST registration"
         )
     
@@ -526,8 +526,9 @@ def rule_annual_turnover_limit_check(ytd_turnover: float, months_elapsed: int) -
         return (
             True,
             SEVERITY_INFO,
-            f"Projected turnover: ₹{projected_turnover/100000:.1f}L. Close to ₹1Cr audit threshold.",
+            f"Projected turnover: â‚¹{projected_turnover/100000:.1f}L. Close to â‚¹1Cr audit threshold.",
             "Prepare for book audit requirement"
         )
     
     return (True, SEVERITY_INFO, "Turnover within limits", "")
+

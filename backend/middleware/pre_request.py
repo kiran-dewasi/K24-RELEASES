@@ -1,11 +1,11 @@
-import os
+﻿import os
 import logging
 import time
 import asyncio
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import text
-from backend.database import SessionLocal
+from database import SessionLocal
 import google.generativeai as genai
 import httpx
 
@@ -112,3 +112,4 @@ class HealthCheck:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="AI service unavailable"
             )
+

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tenant Service - Central Hub for Multi-Tenant Operations
 =========================================================
 This service ensures tenant data is consistent across Supabase (Cloud) and SQLite (Local).
@@ -46,7 +46,7 @@ class TenantService:
         Create tenant record in Supabase (Cloud).
         Uses the HTTP-based service to avoid library issues.
         """
-        from backend.services.supabase_service import supabase_http_service
+        from services.supabase_service import supabase_http_service
         
         if not supabase_http_service.client:
             logger.warning("Supabase not available, skipping cloud tenant creation")
@@ -89,7 +89,7 @@ class TenantService:
         Create tenant record in SQLite (Local).
         Safe: Won't fail if tenant already exists.
         """
-        from backend.database import Tenant
+        from database import Tenant
         
         try:
             # Check if exists
@@ -142,8 +142,8 @@ class TenantService:
         Ensure tenant exists locally. If not, try to fetch from cloud.
         Call this during login to sync missing tenants.
         """
-        from backend.database import Tenant
-        from backend.services.supabase_service import supabase_http_service
+        from database import Tenant
+        from services.supabase_service import supabase_http_service
         
         # Check local first
         tenant = db_session.query(Tenant).filter(Tenant.id == tenant_id).first()
@@ -182,7 +182,7 @@ class TenantService:
     
     def get_tenant(self, db_session, tenant_id: str) -> Optional[object]:
         """Get tenant from local database"""
-        from backend.database import Tenant
+        from database import Tenant
         return db_session.query(Tenant).filter(Tenant.id == tenant_id).first()
     
     def update_tenant(self, db_session, tenant_id: str, **kwargs) -> Optional[object]:
@@ -190,7 +190,7 @@ class TenantService:
         Update tenant in local database.
         Accepts: company_name, tally_company_name, whatsapp_number, auto_post_to_tally
         """
-        from backend.database import Tenant
+        from database import Tenant
         
         tenant = db_session.query(Tenant).filter(Tenant.id == tenant_id).first()
         if not tenant:
@@ -210,7 +210,7 @@ class TenantService:
     
     def _sync_tenant_to_cloud(self, tenant_id: str, data: Dict):
         """Sync tenant updates to Supabase (best effort)"""
-        from backend.services.supabase_service import supabase_http_service
+        from services.supabase_service import supabase_http_service
         
         if not supabase_http_service.client:
             return
@@ -235,3 +235,4 @@ class TenantService:
 
 # Global instance
 tenant_service = TenantService()
+

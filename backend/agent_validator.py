@@ -1,4 +1,4 @@
-# K24 AI Agent - Validation Layer
+﻿# K24 AI Agent - Validation Layer
 # ================================
 # This layer performs all safety checks BEFORE any Tally writes
 
@@ -9,7 +9,7 @@ import re
 from tally_connector import TallyConnector
 from agent_errors import AgentError, K24ErrorCode, create_error
 from compliance.india import validate_india
-from backend.compliance.india.india_validation_engine import ValidationResult as IndiaValidationResult
+from compliance.india.india_validation_engine import ValidationResult as IndiaValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ class ValidatorAgent:
             
             # Map warnings
             for issue in india_result.warnings:
-                warnings.append(f"⚠️ {issue.message} ({issue.action})")
+                warnings.append(f"âš ï¸ {issue.message} ({issue.action})")
                 
         except Exception as e:
             logger.error(f"India compliance check failed: {e}")
@@ -198,7 +198,7 @@ class ValidatorAgent:
                 message=f"Missing required fields: {', '.join(missing_fields)}",
                 suggestions=[
                     f"Please provide: {', '.join(missing_fields)}",
-                    "Example: 'Create invoice for HDFC Bank for ₹50000'"
+                    "Example: 'Create invoice for HDFC Bank for â‚¹50000'"
                 ],
                 context={"missing_fields": missing_fields, "intent": intent}
             )
@@ -267,7 +267,7 @@ class ValidatorAgent:
             # Parse amount
             if isinstance(amount, str):
                 # Remove currency symbols and commas
-                amount = re.sub(r'[₹,\s]', '', amount)
+                amount = re.sub(r'[â‚¹,\s]', '', amount)
             
             amount_float = float(amount)
             
@@ -285,7 +285,7 @@ class ValidatorAgent:
             if amount_float > self.max_transaction_amount:
                 error = create_error(
                     K24ErrorCode.AMOUNT_OUT_OF_RANGE,
-                    message=f"Amount exceeds maximum limit of ₹{self.max_transaction_amount:,.2f}",
+                    message=f"Amount exceeds maximum limit of â‚¹{self.max_transaction_amount:,.2f}",
                     suggestions=[
                         "Break into multiple transactions",
                         "Request approval from finance manager"
@@ -298,7 +298,7 @@ class ValidatorAgent:
             # TODO: Calculate average transaction amount from history
             average_amount = 50000  # Placeholder
             if amount_float > (average_amount * self.suspicious_multiplier):
-                warning = f"This amount (₹{amount_float:,.2f}) is {amount_float/average_amount:.1f}x higher than average"
+                warning = f"This amount (â‚¹{amount_float:,.2f}) is {amount_float/average_amount:.1f}x higher than average"
                 return (True, amount_float, warning)
             
             return (True, amount_float, None)
@@ -307,7 +307,7 @@ class ValidatorAgent:
             error = create_error(
                 K24ErrorCode.AMOUNT_OUT_OF_RANGE,
                 message=f"Invalid amount format: '{amount}'",
-                suggestions=["Enter amount as number", "Example: 50000 or ₹50,000"],
+                suggestions=["Enter amount as number", "Example: 50000 or â‚¹50,000"],
                 context={"amount": amount, "error": str(e)}
             )
             return (False, error, None)
@@ -387,7 +387,7 @@ class ValidatorAgent:
         # Check 2: Amount suspiciously large
         if amount > 500000:  # 5 lakh
             warnings.append(
-                f"⚠️ Large transaction: ₹{amount:,.2f}. Extra confirmation required."
+                f"âš ï¸ Large transaction: â‚¹{amount:,.2f}. Extra confirmation required."
             )
         
         # Check 3: Credit limit (placeholder)
@@ -395,3 +395,4 @@ class ValidatorAgent:
         # credit_limit = self.tally.get_credit_limit(party_name)
         
         return (errors, warnings)
+

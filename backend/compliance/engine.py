@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Session
-from backend.database import Voucher, AuditLog
+﻿from sqlalchemy.orm import Session
+from database import Voucher, AuditLog
 from datetime import datetime, timedelta
 from sqlalchemy import func
 
@@ -112,3 +112,4 @@ class ComplianceEngine:
             self.db.commit()
         
         return results
+

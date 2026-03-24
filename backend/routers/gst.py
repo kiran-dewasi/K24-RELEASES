@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from typing import List, Dict, Any
@@ -52,7 +52,7 @@ def get_gst_summary(db: Session = Depends(get_db)):
     }
 
 from pydantic import BaseModel
-from backend.compliance.gst_engine import GSTEngine
+from compliance.gst_engine import GSTEngine
 
 class ValidateGSTINRequest(BaseModel):
     gstin: str
@@ -81,3 +81,4 @@ def calculate_tax_endpoint(req: CalculateTaxRequest):
         company_gstin=req.company_gstin,
         tax_rate=req.tax_rate
     )
+

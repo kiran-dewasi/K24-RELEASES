@@ -1,10 +1,10 @@
-"""
+﻿"""
 Tool definitions for the K24 agent.
 These are functions the agent can call to take actions.
 """
 
 from langchain_core.tools import tool
-from backend.background_jobs import job_manager
+from background_jobs import job_manager
 import json
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -38,7 +38,7 @@ def _get_tenant() -> str:
     if _CURRENT_TENANT_ID:
         return _CURRENT_TENANT_ID
     # 2. User table (synced from Supabase at login)
-    from backend.dependencies import get_tenant_id
+    from dependencies import get_tenant_id
     return get_tenant_id()
 
 
@@ -53,7 +53,7 @@ def _is_duplicate_voucher(party_name: str, amount: float, voucher_type: str, win
     Prevents the AI from pushing the same transaction twice on retry.
     """
     try:
-        from backend.database import SessionLocal, Voucher
+        from database import SessionLocal, Voucher
         from datetime import timedelta
         db = SessionLocal()
         try:
@@ -75,11 +75,11 @@ def get_top_outstanding() -> str:
     """
     Get top outstanding receivables (customers who owe money).
     Call this IMMEDIATELY if user asks "Show receivables", "Pending payments", etc. with NO name.
-    Reads from local DB (instant) — no Tally required.
+    Reads from local DB (instant) â€” no Tally required.
     """
     try:
         # DB-first: read from shadow DB
-        from backend.database import SessionLocal, Ledger
+        from database import SessionLocal, Ledger
         from sqlalchemy import desc
         tenant_id = _get_tenant()
         db = SessionLocal()
@@ -93,7 +93,7 @@ def get_top_outstanding() -> str:
             if top:
                 msg = "Here are the top pending receivables:\n"
                 for d in top:
-                    msg += f"- {d.name}: ₹{d.closing_balance:,.2f}\n"
+                    msg += f"- {d.name}: â‚¹{d.closing_balance:,.2f}\n"
                 msg += "\nDo you want to follow up with any specific customer?"
                 return msg
         finally:
@@ -135,7 +135,7 @@ def get_top_outstanding() -> str:
             return "No outstanding receivables found."
         msg = "Here are the top pending receivables:\n"
         for d in top_5:
-            msg += f"- {d['name']}: ₹{d['amount']:,.2f}\n"
+            msg += f"- {d['name']}: â‚¹{d['amount']:,.2f}\n"
         msg += "\nDo you want to follow up with any specific customer?"
         return msg
     except Exception as e:
@@ -148,7 +148,7 @@ def get_top_customers_by_revenue(limit: int = 5) -> str:
     Call this when user asks for "top customers", "best customers", "highest revenue", etc.
     """
     try:
-        from backend.database import SessionLocal, Ledger, Voucher
+        from database import SessionLocal, Ledger, Voucher
         from sqlalchemy import func, desc
         tenant_id = _get_tenant()
         db = SessionLocal()
@@ -174,7 +174,7 @@ def get_top_customers_by_revenue(limit: int = 5) -> str:
             msg = f"Here are the top {limit} customers by revenue:\n"
             for row in results:
                 total = row.total_sales or 0
-                msg += f"- {row.name}: ₹{total:,.2f}\n"
+                msg += f"- {row.name}: â‚¹{total:,.2f}\n"
             msg += "\nIs there anything else you want to know about these customers?"
             return msg
         finally:
@@ -321,7 +321,7 @@ def create_sales_invoice(
         narration: Narration
     """
     try:
-        print(f"🔧 Tool called: create_sales_invoice")
+        print(f"ðŸ”§ Tool called: create_sales_invoice")
         tenant_id = _get_tenant()
 
         # Auto-Calculate Total Amount if missing
@@ -329,14 +329,14 @@ def create_sales_invoice(
             amount = sum(item.amount for item in items)
             print(f"   Auto-Calculated Amount: {amount}")
 
-        # Idempotency guard — prevent duplicate if AI retries
+        # Idempotency guard â€” prevent duplicate if AI retries
         if _is_duplicate_voucher(party_name, amount, "Sales"):
-            return f"⚠️ A Sales invoice for '{party_name}' of ₹{amount} was already created just now. Skipping duplicate."
+            return f"âš ï¸ A Sales invoice for '{party_name}' of â‚¹{amount} was already created just now. Skipping duplicate."
 
         items_dicts = [item.model_dump() for item in items]
 
         from .invoice_tool import invoice_tool
-        from backend.database import SessionLocal
+        from database import SessionLocal
         import asyncio, nest_asyncio
 
         db = SessionLocal()
@@ -356,14 +356,14 @@ def create_sales_invoice(
                 db=db
             ))
             if result['status'] == 'success':
-                return f"✅ Invoice created! ID: {result.get('voucher_id')} | Tally ID: {result.get('tally_voucher_id')}"
+                return f"âœ… Invoice created! ID: {result.get('voucher_id')} | Tally ID: {result.get('tally_voucher_id')}"
             else:
-                return f"❌ Failed to create invoice: {result.get('error')}"
+                return f"âŒ Failed to create invoice: {result.get('error')}"
         finally:
             db.close()
 
     except Exception as e:
-        return f"❌ Error creating invoice: {str(e)}"
+        return f"âŒ Error creating invoice: {str(e)}"
 
 @tool
 def create_purchase_invoice(
@@ -388,7 +388,7 @@ def create_purchase_invoice(
         description: Purchase description
     """
     try:
-        print(f"🔧 Tool called: create_purchase_invoice (TallyEngine Upgrade)")
+        print(f"ðŸ”§ Tool called: create_purchase_invoice (TallyEngine Upgrade)")
         
         # 1. Convert Items
         items_payload = []
@@ -422,11 +422,11 @@ def create_purchase_invoice(
             })
 
         # 2. Invoke Engine
-        from backend.tally_engine import TallyEngine
+        from tally_engine import TallyEngine
         engine = TallyEngine()
         
         # NORMALIZE: collapse all whitespace variations at entry point
-        # "vinayak  enterprises" → "Vinayak Enterprises" style lookup will succeed
+        # "vinayak  enterprises" â†’ "Vinayak Enterprises" style lookup will succeed
         vendor_name = " ".join(vendor_name.split()).strip()
         
         # Date Handling
@@ -447,12 +447,12 @@ def create_purchase_invoice(
         result = engine.process_purchase_request(payload)
         
         if result.get("status") == "success":
-            return f"✅ Purchase Invoice Created Successfully! (Msg: {result.get('message')})"
+            return f"âœ… Purchase Invoice Created Successfully! (Msg: {result.get('message')})"
         else:
-            return f"❌ Failed to create Purchase Invoice: {result.get('message')}"
+            return f"âŒ Failed to create Purchase Invoice: {result.get('message')}"
 
     except Exception as e:
-        return f"❌ Error creating purchase: {str(e)}"
+        return f"âŒ Error creating purchase: {str(e)}"
 
 @tool
 def create_receipt(
@@ -474,11 +474,11 @@ def create_receipt(
         description: Receipt notes
     """
     try:
-        print(f"🔧 Tool called: create_receipt")
+        print(f"ðŸ”§ Tool called: create_receipt")
 
         # Idempotency guard
         if _is_duplicate_voucher(party_name, amount, "Receipt"):
-            return f"⚠️ A Receipt for '{party_name}' of ₹{amount} was already created just now. Skipping duplicate."
+            return f"âš ï¸ A Receipt for '{party_name}' of â‚¹{amount} was already created just now. Skipping duplicate."
 
         voucher_data = {
             'type': 'Receipt',
@@ -506,10 +506,10 @@ def create_receipt(
         else:
             task_id = result.get('task_id', 'unknown')
 
-        return f"✓ Receipt created for '{party_name}' (₹{amount} via {payment_method}). Task ID: {task_id}"
+        return f"âœ“ Receipt created for '{party_name}' (â‚¹{amount} via {payment_method}). Task ID: {task_id}"
 
     except Exception as e:
-        return f"✗ Error creating receipt: {str(e)}"
+        return f"âœ— Error creating receipt: {str(e)}"
 
 
 # ============================================================================
@@ -519,13 +519,13 @@ def create_receipt(
 def get_customer_balance(customer_name: str) -> str:
     """
     Get outstanding balance for a customer.
-    Reads from local DB first (instant) — falls back to Tally if not found.
+    Reads from local DB first (instant) â€” falls back to Tally if not found.
     Args:
         customer_name: Name of the customer
     """
     try:
         # DB-first
-        from backend.database import SessionLocal, Ledger
+        from database import SessionLocal, Ledger
         tenant_id = _get_tenant()
         db = SessionLocal()
         try:
@@ -534,12 +534,12 @@ def get_customer_balance(customer_name: str) -> str:
                 Ledger.name.ilike(f"%{customer_name}%")
             ).first()
             if ledger:
-                return f"Outstanding Balance for '{ledger.name}': ₹{ledger.closing_balance:,.2f}"
+                return f"Outstanding Balance for '{ledger.name}': â‚¹{ledger.closing_balance:,.2f}"
         finally:
             db.close()
 
         # Fallback: Tally
-        from backend.tally_reader import TallyReader
+        from tally_reader import TallyReader
         reader = TallyReader()
         check = reader.get_ledger_details(customer_name)
         if not check["exists"]:
@@ -548,7 +548,7 @@ def get_customer_balance(customer_name: str) -> str:
             return f"Customer '{customer_name}' not found in Tally."
         tally_name = check["name"]
         balance = reader.get_closing_balance(tally_name)
-        return f"Outstanding Balance for '{tally_name}': ₹{balance}"
+        return f"Outstanding Balance for '{tally_name}': â‚¹{balance}"
     except Exception as e:
         return f"Error fetching balance: {str(e)}"
 
@@ -558,7 +558,7 @@ def list_customers() -> str:
     Get list of all ledgers (focusing on customers) in Tally using TallyReader.
     """
     try:
-        from backend.tally_reader import TallyReader
+        from tally_reader import TallyReader
         reader = TallyReader()
         ledgers = reader.get_all_ledgers()
         
@@ -591,7 +591,7 @@ def get_tally_transactions(
         party_filter: Optional name of party to filter by.
     """
     try:
-        from backend.tally_reader import TallyReader
+        from tally_reader import TallyReader
         from datetime import datetime
         
         # Sanitize Dates (Remove / - .)
@@ -630,7 +630,7 @@ def get_tally_transactions(
             date_header = f"{c_start} to {c_end}"
         
         # Build markdown table for AI to display
-        output = f"📊 **Transactions for {date_header}** ({len(txns)} found)\n\n"
+        output = f"ðŸ“Š **Transactions for {date_header}** ({len(txns)} found)\n\n"
         output += "| Date | Type | Party | Amount | Ref |\n"
         output += "|------|------|-------|--------|-----|\n"
         
@@ -669,7 +669,7 @@ def get_tally_transactions(
                 pass
             
             # Format amount in Indian style
-            amt_str = f"₹{amt:,.0f}" if amt else "-"
+            amt_str = f"â‚¹{amt:,.0f}" if amt else "-"
             
             output += f"| {txn_date} | {txn['type']} | {txn['party'][:20]} | {amt_str} | {txn['number'][:10]} |\n"
         
@@ -677,19 +677,19 @@ def get_tally_transactions(
             output += f"\n*... and {len(txns) - 15} more transactions*\n"
         
         # Summary
-        output += "\n### 📈 Summary\n"
+        output += "\n### ðŸ“ˆ Summary\n"
         if total_sales > 0:
-            output += f"- **Total Sales:** ₹{total_sales:,.0f}\n"
+            output += f"- **Total Sales:** â‚¹{total_sales:,.0f}\n"
         if total_purchases > 0:
-            output += f"- **Total Purchases:** ₹{total_purchases:,.0f}\n"
+            output += f"- **Total Purchases:** â‚¹{total_purchases:,.0f}\n"
         if total_receipts > 0:
-            output += f"- **Total Receipts:** ₹{total_receipts:,.0f}\n"
+            output += f"- **Total Receipts:** â‚¹{total_receipts:,.0f}\n"
         if total_payments > 0:
-            output += f"- **Total Payments:** ₹{total_payments:,.0f}\n"
+            output += f"- **Total Payments:** â‚¹{total_payments:,.0f}\n"
         
         grand_total = total_sales + total_purchases + total_receipts + total_payments
         if grand_total > 0:
-            output += f"\n**Grand Total: ₹{grand_total:,.0f}**"
+            output += f"\n**Grand Total: â‚¹{grand_total:,.0f}**"
         
         return output
         
@@ -705,7 +705,7 @@ def get_tally_ledger_details(name: str) -> str:
         name: Name of the ledger/party to find.
     """
     try:
-        from backend.tally_reader import TallyReader
+        from tally_reader import TallyReader
         reader = TallyReader()
         res = reader.get_ledger_details(name)
         return json.dumps(res, indent=2)
@@ -730,7 +730,7 @@ def create_purchase_voucher_verified(
         party_state: State of supplier (for GST logic).
     """
     try:
-        from backend.tally_engine import TallyEngine
+        from tally_engine import TallyEngine
         engine = TallyEngine()
         payload = {
             "voucher_type": "Purchase",
@@ -748,11 +748,11 @@ def create_purchase_voucher_verified(
 def check_stock_levels() -> str:
     """
     Get current stock summary (Items, Quantity, Value).
-    Reads from local DB — instant, no Tally required.
+    Reads from local DB â€” instant, no Tally required.
     Returns JSON string for table rendering.
     """
     try:
-        from backend.database import SessionLocal, StockItem
+        from database import SessionLocal, StockItem
         tenant_id = _get_tenant()
         db = SessionLocal()
         try:
@@ -772,7 +772,7 @@ def check_stock_levels() -> str:
             db.close()
 
         # Fallback: Tally
-        from backend.tally_reader import TallyReader
+        from tally_reader import TallyReader
         reader = TallyReader()
         data = reader.get_stock_summary()
         return json.dumps(data)
@@ -784,11 +784,11 @@ def check_stock_levels() -> str:
 def check_outstanding_payments() -> str:
     """
     Get list of customers with outstanding payments (Receivables).
-    Reads from local DB — instant, no Tally required.
+    Reads from local DB â€” instant, no Tally required.
     Returns JSON string for table rendering.
     """
     try:
-        from backend.database import SessionLocal, Ledger
+        from database import SessionLocal, Ledger
         from sqlalchemy import desc
         tenant_id = _get_tenant()
         db = SessionLocal()
@@ -808,7 +808,7 @@ def check_outstanding_payments() -> str:
             db.close()
 
         # Fallback: Tally
-        from backend.tally_reader import TallyReader
+        from tally_reader import TallyReader
         reader = TallyReader()
         data = reader.get_receivables()
         return json.dumps(data)
@@ -840,14 +840,14 @@ def create_tally_voucher(
         date: Date in YYYYMMDD or YYYY-MM-DD. Defaults to today.
     """
     try:
-        from backend.tally_engine import TallyEngine
+        from tally_engine import TallyEngine
         voucher_type = voucher_type.title()
-        print(f"🔧 Tool called: create_tally_voucher ({voucher_type})")
+        print(f"ðŸ”§ Tool called: create_tally_voucher ({voucher_type})")
 
         # Idempotency guard for financial vouchers
         if voucher_type in ["Receipt", "Payment"] and amount > 0:
             if _is_duplicate_voucher(party_name, amount, voucher_type):
-                return f"⚠️ A {voucher_type} for '{party_name}' of ₹{amount} was already created just now. Skipping duplicate."
+                return f"âš ï¸ A {voucher_type} for '{party_name}' of â‚¹{amount} was already created just now. Skipping duplicate."
 
         # Default to today if no date
         txn_date = (date.replace("-", "") if date else _today())
@@ -898,9 +898,9 @@ def create_tally_voucher(
             res = engine.process_financial_voucher(payload)
 
         if res.get("status") == "success":
-            return f"✅ {voucher_type} Voucher Created! {res.get('message')}"
+            return f"âœ… {voucher_type} Voucher Created! {res.get('message')}"
         else:
-            return f"❌ Failed: {res.get('message')}"
+            return f"âŒ Failed: {res.get('message')}"
 
     except Exception as e:
         return f"Error creating voucher: {str(e)}"
@@ -940,8 +940,8 @@ def generate_excel_report(
         A confirmation message; the file will be sent as a WhatsApp attachment.
     """
     try:
-        from backend.services.export_service import ExportService
-        from backend.database import SessionLocal
+        from services.export_service import ExportService
+        from database import SessionLocal
         from datetime import datetime
 
         tenant_id = _get_tenant()
@@ -956,45 +956,45 @@ def generate_excel_report(
                 df = datetime.strptime(date_from, "%Y%m%d") if date_from else None
                 dt = datetime.strptime(date_to, "%Y%m%d") if date_to else None
                 result = service.export_sales_excel(df, dt)
-                caption = f"📊 Sales Register\n{date_from or 'all'} → {date_to or 'now'}"
+                caption = f"ðŸ“Š Sales Register\n{date_from or 'all'} â†’ {date_to or 'now'}"
 
             elif rtype in ("purchase", "purchase register"):
                 df = datetime.strptime(date_from, "%Y%m%d") if date_from else None
                 dt = datetime.strptime(date_to, "%Y%m%d") if date_to else None
                 result = service.export_purchase_excel(df, dt)
-                caption = f"📊 Purchase Register\n{date_from or 'all'} → {date_to or 'now'}"
+                caption = f"ðŸ“Š Purchase Register\n{date_from or 'all'} â†’ {date_to or 'now'}"
 
             elif rtype in ("receivables", "receivable", "outstanding receivables"):
                 result = service.export_outstanding_excel("receivable")
-                caption = "📊 Outstanding Receivables Report"
+                caption = "ðŸ“Š Outstanding Receivables Report"
 
             elif rtype in ("payables", "payable", "outstanding payables"):
                 result = service.export_outstanding_excel("payable")
-                caption = "📊 Outstanding Payables Report"
+                caption = "ðŸ“Š Outstanding Payables Report"
 
             elif rtype in ("stock", "inventory", "stock report"):
                 result = service.export_stock_excel()
-                caption = "📊 Stock / Inventory Report"
+                caption = "ðŸ“Š Stock / Inventory Report"
 
             else:
                 return (
-                    f"❌ Unknown report type '{report_type}'. "
+                    f"âŒ Unknown report type '{report_type}'. "
                     "Choose from: sales, purchase, receivables, payables, stock."
                 )
 
             if not result or not result.get("success"):
-                return f"❌ Failed to generate Excel: {result.get('error', 'Unknown error')}"
+                return f"âŒ Failed to generate Excel: {result.get('error', 'Unknown error')}"
 
             filepath = result["file_path"]
             filename = result["filename"]
-            # Return the special sentinel — the poller will deliver the file
-            return f"{_FILE_PREFIX}{filepath}::{caption}\n\n📎 {filename} is ready — sending now!"
+            # Return the special sentinel â€” the poller will deliver the file
+            return f"{_FILE_PREFIX}{filepath}::{caption}\n\nðŸ“Ž {filename} is ready â€” sending now!"
 
         finally:
             db.close()
 
     except Exception as e:
-        return f"❌ Error generating Excel report: {e}"
+        return f"âŒ Error generating Excel report: {e}"
 
 
 @tool
@@ -1012,8 +1012,8 @@ def generate_pdf_statement(party_name: str) -> str:
         A confirmation message; the PDF will be sent as a WhatsApp attachment.
     """
     try:
-        from backend.services.export_service import ExportService
-        from backend.database import SessionLocal
+        from services.export_service import ExportService
+        from database import SessionLocal
 
         tenant_id = _get_tenant()
         db = SessionLocal()
@@ -1022,18 +1022,18 @@ def generate_pdf_statement(party_name: str) -> str:
             result = service.export_statement_pdf(party_name)
 
             if not result.get("success"):
-                return f"❌ Could not generate PDF for '{party_name}': {result.get('error', 'Party not found.')}"
+                return f"âŒ Could not generate PDF for '{party_name}': {result.get('error', 'Party not found.')}"
 
             filepath = result["file_path"]
             filename = result["filename"]
-            caption = f"📄 Outstanding Statement — {party_name}"
-            return f"{_FILE_PREFIX}{filepath}::{caption}\n\n📎 {filename} is ready — sending now!"
+            caption = f"ðŸ“„ Outstanding Statement â€” {party_name}"
+            return f"{_FILE_PREFIX}{filepath}::{caption}\n\nðŸ“Ž {filename} is ready â€” sending now!"
 
         finally:
             db.close()
 
     except Exception as e:
-        return f"❌ Error generating PDF statement: {e}"
+        return f"âŒ Error generating PDF statement: {e}"
 
 
 # ============================================================================
@@ -1057,7 +1057,7 @@ TOOLS = [
     # Reporting Tools
     check_stock_levels,
     check_outstanding_payments,
-    # ── File Export Tools (WhatsApp delivery) ──
+    # â”€â”€ File Export Tools (WhatsApp delivery) â”€â”€
     generate_excel_report,
     generate_pdf_statement,
 ]
@@ -1089,3 +1089,4 @@ SENSITIVE_TOOLS = [
     create_purchase_voucher_verified,
     create_tally_voucher
 ]
+

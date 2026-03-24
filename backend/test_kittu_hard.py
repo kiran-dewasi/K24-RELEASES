@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import os
 import sys
 from datetime import datetime
@@ -6,8 +6,8 @@ from datetime import datetime
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.orchestrator import K24Orchestrator
-from backend.intent_recognizer import IntentType
+from orchestrator import K24Orchestrator
+from intent_recognizer import IntentType
 
 # Mock Tally Connector to avoid needing live Tally
 class MockTallyConnector:
@@ -15,7 +15,7 @@ class MockTallyConnector:
         return []
 
 async def run_stress_test():
-    print("🔥 STARTING KITTU HARD STRESS TEST 🔥")
+    print("ðŸ”¥ STARTING KITTU HARD STRESS TEST ðŸ”¥")
     print("=======================================")
     
     # Initialize Orchestrator
@@ -110,27 +110,27 @@ async def run_stress_test():
                 # Extra checks
                 if 'expected_path' in scenario:
                     if response['data'].get('path') == scenario['expected_path']:
-                        print("✅ Path Match")
+                        print("âœ… Path Match")
                     else:
-                        print(f"❌ Path Mismatch: Got {response['data'].get('path')}")
+                        print(f"âŒ Path Mismatch: Got {response['data'].get('path')}")
                         is_pass = False
                 
                 if 'check_data' in scenario:
                     if scenario['check_data'](response['data']):
-                         print("✅ Data Validation Passed")
+                         print("âœ… Data Validation Passed")
                     else:
-                         print("❌ Data Validation Failed")
+                         print("âŒ Data Validation Failed")
                          is_pass = False
 
             if is_pass:
-                print("✅ PASSED")
+                print("âœ… PASSED")
                 passed += 1
             else:
-                print(f"❌ FAILED. Expected {scenario['expected_type']}, got {response['type']}")
+                print(f"âŒ FAILED. Expected {scenario['expected_type']}, got {response['type']}")
                 failed += 1
 
         except Exception as e:
-            print(f"❌ CRASHED: {e}")
+            print(f"âŒ CRASHED: {e}")
             failed += 1
 
     print("\n=======================================")
@@ -139,3 +139,4 @@ async def run_stress_test():
 
 if __name__ == "__main__":
     asyncio.run(run_stress_test())
+

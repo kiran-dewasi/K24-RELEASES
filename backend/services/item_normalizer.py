@@ -1,11 +1,11 @@
-"""
+﻿"""
 Item Normalizer & Mapper
 ========================
 Resolves raw OCR item names (e.g. "JD Jeera 1kg", "MDH Kaur Masala 50g")
 to existing Tally catalog items, or decides to create new ones.
 
 Usage:
-    from backend.services.item_normalizer import normalize_and_map_item, CompanySettings
+    from services.item_normalizer import normalize_and_map_item, CompanySettings
 
     result = normalize_and_map_item(
         raw_item_name="JD Jeera 1kg",
@@ -32,9 +32,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Fuzzy matching: prefer rapidfuzz, fall back to difflib
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try:
     from rapidfuzz import fuzz as _fuzz
     from rapidfuzz import process as _rfprocess
@@ -78,9 +78,9 @@ except ImportError:  # pragma: no cover
     logger.warning("rapidfuzz not found; falling back to difflib. Install with: pip install rapidfuzz")
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Domain knowledge dictionaries
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Well-known Indian grocery/commodity brand names to strip from item names.
 # Add more as needed.
@@ -103,7 +103,7 @@ _KNOWN_BRANDS: set[str] = {
     "premium", "special", "super", "gold",
 }
 
-# Commodity base words — these are the real item names, never strip these.
+# Commodity base words â€” these are the real item names, never strip these.
 _COMMODITY_WORDS: set[str] = {
     "jeera", "cumin", "dhaniya", "coriander", "haldi", "turmeric",
     "mirch", "chilli", "lal", "kali", "garam", "masala", "namak",
@@ -162,9 +162,9 @@ _SIZE_PATTERN = re.compile(
 _PUNCT_PATTERN = re.compile(r"[^\w\s\-]")
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Data Transfer Types
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @dataclass
 class ItemCatalogEntry:
@@ -187,8 +187,8 @@ class CompanySettings:
     """Control flags that govern the normalizer's behaviour."""
     allow_brand_level_items: bool = False
     strict_single_item_per_commodity: bool = True
-    high_confidence_threshold: float = 0.85   # >= this → USE_EXISTING
-    low_confidence_threshold: float = 0.55    # <  this → definitely no match
+    high_confidence_threshold: float = 0.85   # >= this â†’ USE_EXISTING
+    low_confidence_threshold: float = 0.55    # <  this â†’ definitely no match
     max_suggestions: int = 3
 
 
@@ -211,15 +211,15 @@ class NormalizedMappingResult:
     brand_candidate: Optional[str]             # e.g. "mdh"
     size_info: Optional[str]                   # e.g. "500g"
     unit: str                                  # cleaned unit
-    confidence: float                          # 0.0 – 1.0
+    confidence: float                          # 0.0 â€“ 1.0
     reasoning: str
     suggestions: List[SimilarItemSuggestion] = field(default_factory=list)
     extra: Dict[str, Any] = field(default_factory=dict)
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Internal helpers
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _normalize_text(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace."""
@@ -230,7 +230,7 @@ def _normalize_text(text: str) -> str:
 
 
 def _normalize_unit(raw_unit: str) -> str:
-    """Canonicalize unit string: 'KGS' → 'kg', 'Pcs' → 'pcs'."""
+    """Canonicalize unit string: 'KGS' â†’ 'kg', 'Pcs' â†’ 'pcs'."""
     return raw_unit.lower().strip().rstrip("s") if raw_unit else ""
 
 
@@ -330,9 +330,9 @@ def find_similar_items(
     return [(item, score, mtype) for score, item, mtype in results[:top_k]]
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Public API
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def normalize_and_map_item(
     raw_item_name: str,
@@ -355,7 +355,7 @@ def normalize_and_map_item(
         NormalizedMappingResult with action, chosen_item_id, and rich metadata.
     """
 
-    # ── STEP 1: Pre-normalization ──────────────────────────────────────────
+    # â”€â”€ STEP 1: Pre-normalization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     normalized_full = _normalize_text(raw_item_name)
     tokens = normalized_full.split()
@@ -365,7 +365,7 @@ def normalize_and_map_item(
 
     # Clean unit
     clean_unit = _normalize_unit(unit) if unit else ""
-    # If unit was embedded in size_info only (e.g. "1kg" → already extracted), keep it
+    # If unit was embedded in size_info only (e.g. "1kg" â†’ already extracted), keep it
     if not clean_unit and size_info:
         unit_in_size = re.search(
             r"(kg|gm|g|ltr?|liters?|ml|pcs|nos|pkt|pack|mtr?)", size_info, re.I
@@ -387,7 +387,7 @@ def normalize_and_map_item(
         brand_candidate, size_info, clean_unit,
     )
 
-    # ── STEP 2: Find candidates ────────────────────────────────────────────
+    # â”€â”€ STEP 2: Find candidates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     candidates = find_similar_items(
         normalized_base_name,
@@ -411,7 +411,7 @@ def normalize_and_map_item(
         # Re-sort
         candidates.sort(key=lambda x: x[1], reverse=True)
 
-    # ── STEP 3: Decision logic ─────────────────────────────────────────────
+    # â”€â”€ STEP 3: Decision logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     HI = company_settings.high_confidence_threshold
     LO = company_settings.low_confidence_threshold
@@ -429,7 +429,7 @@ def normalize_and_map_item(
     ]
 
     if not candidates:
-        # ── No candidates at all ──
+        # â”€â”€ No candidates at all â”€â”€
         return _decision_no_match(
             normalized_base_name, brand_candidate, size_info,
             clean_unit, company_settings, top_suggestions,
@@ -437,7 +437,7 @@ def normalize_and_map_item(
 
     best_item, best_score, best_mtype = candidates[0]
 
-    # ── High confidence match ──
+    # â”€â”€ High confidence match â”€â”€
     if best_score >= HI:
         if _units_compatible(clean_unit, best_item.units):
             return NormalizedMappingResult(
@@ -456,7 +456,7 @@ def normalize_and_map_item(
                 suggestions=top_suggestions,
             )
         else:
-            # Good name match but incompatible units → review
+            # Good name match but incompatible units â†’ review
             return NormalizedMappingResult(
                 action="NEEDS_REVIEW",
                 chosen_item_id=best_item.id,   # suggest, not force
@@ -473,11 +473,11 @@ def normalize_and_map_item(
                 suggestions=top_suggestions,
             )
 
-    # ── Medium confidence zone: multiple close candidates? ──
+    # â”€â”€ Medium confidence zone: multiple close candidates? â”€â”€
     close_candidates = [c for c in candidates if c[1] >= LO]
 
     if len(close_candidates) >= 2 and not company_settings.strict_single_item_per_commodity:
-        # Ambiguous → ask user
+        # Ambiguous â†’ ask user
         return NormalizedMappingResult(
             action="NEEDS_REVIEW",
             chosen_item_id=None,
@@ -513,7 +513,7 @@ def normalize_and_map_item(
                 suggestions=top_suggestions,
             )
 
-    # ── No good match ──
+    # â”€â”€ No good match â”€â”€
     return _decision_no_match(
         normalized_base_name, brand_candidate, size_info,
         clean_unit, company_settings, top_suggestions,
@@ -557,15 +557,15 @@ def _decision_no_match(
             confidence=0.0,
             reasoning=(
                 f"No close base item found (best score: {best_score_hint:.0%}). "
-                "Brand-level items are not allowed — manual review required."
+                "Brand-level items are not allowed â€” manual review required."
             ),
             suggestions=suggestions,
         )
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Convenience: build ItemCatalogEntry list from DB
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def build_catalog_from_db(db_session) -> List[ItemCatalogEntry]:
     """
@@ -591,9 +591,9 @@ def build_catalog_from_db(db_session) -> List[ItemCatalogEntry]:
     ]
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Batch Processing Helper
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def normalize_line_items(
     raw_items: List[Dict[str, Any]],
@@ -663,3 +663,4 @@ def normalize_line_items(
         results.append(augmented)
 
     return results
+

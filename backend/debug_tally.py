@@ -1,4 +1,4 @@
-from backend.tally_search import TallySearch
+﻿from tally_search import TallySearch
 import logging
 import sys
 
@@ -30,3 +30,4 @@ if __name__ == "__main__":
     item_result = search.smart_item_search("Jeera")
     
     print("\n--- DONE ---")
+

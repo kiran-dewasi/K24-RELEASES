@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Session
-from backend.database import AuditLog, Voucher
+﻿from sqlalchemy.orm import Session
+from database import AuditLog, Voucher
 import json
 from datetime import datetime
 
@@ -40,3 +40,4 @@ class AuditService:
     @staticmethod
     def get_all_logs(db: Session, limit: int = 100):
         return db.query(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit).all()
+

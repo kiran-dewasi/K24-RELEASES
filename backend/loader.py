@@ -1,6 +1,6 @@
-import pandas as pd
+﻿import pandas as pd
 from typing import Optional
-from backend.tally_connector import TallyConnector
+from tally_connector import TallyConnector
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -43,3 +43,4 @@ class LedgerLoader:
         except Exception as e:
             logger.error(f"Live Tally fetch_vouchers error: {e}")
             return None
+

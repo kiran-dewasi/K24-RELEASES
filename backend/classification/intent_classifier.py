@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Intent Classification - Main Classifier
 ============================================
 Classifies user intent with pattern matching + LLM fallback.
@@ -11,9 +11,9 @@ import time
 from typing import Tuple, Optional, Dict, Any
 import os
 
-from backend.classification.intents import Intent
-from backend.classification.intent_patterns import pattern_match_intent
-from backend.gemini.gemini_orchestrator import GeminiOrchestrator
+from classification.intents import Intent
+from classification.intent_patterns import pattern_match_intent
+from gemini.gemini_orchestrator import GeminiOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -307,3 +307,4 @@ async def classify_intent(message: str, timeout: int = DEFAULT_TIMEOUT) -> Tuple
     """
     classifier = get_classifier()
     return await classifier.classify_intent(message, timeout)
+

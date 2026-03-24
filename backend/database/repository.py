@@ -1,4 +1,4 @@
-from backend.database.supabase_client import supabase
+﻿from database.supabase_client import supabase
 import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -280,3 +280,4 @@ class TaskRepository:
             return res.data[0] if res.data else None
         except:
              return None
+

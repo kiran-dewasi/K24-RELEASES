@@ -1,11 +1,11 @@
-import sys
+﻿import sys
 import os
 
 # Fix path: Add ROOT directory (parent of backend/)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.database import get_db, User
-from backend.auth import verify_password, get_password_hash
+from database import get_db, User
+from auth import verify_password, get_password_hash
 
 def debug_auth():
     print("--- AUTH DEBUGGER ---")
@@ -53,3 +53,4 @@ def debug_auth():
 
 if __name__ == "__main__":
     debug_auth()
+

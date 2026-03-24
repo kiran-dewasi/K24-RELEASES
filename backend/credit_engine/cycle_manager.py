@@ -1,5 +1,5 @@
-"""
-Credit Engine — Billing Cycle Manager
+﻿"""
+Credit Engine â€” Billing Cycle Manager
 ======================================
 Manages `billing_cycles` rows in Supabase.
 
@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 import calendar
 
-from backend.database.supabase_client import supabase
+from database.supabase_client import supabase
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def _month_boundaries(now: datetime) -> tuple[datetime, datetime]:
     Returns (start_of_month, end_of_month) for the given datetime.
     end_of_month is the first second of the NEXT month (exclusive upper bound).
 
-    Example: March 2026 → (2026-03-01T00:00:00Z, 2026-04-01T00:00:00Z)
+    Example: March 2026 â†’ (2026-03-01T00:00:00Z, 2026-04-01T00:00:00Z)
     """
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     # Last day of the month
@@ -106,7 +106,7 @@ def create_billing_cycle(
         if rows:
             logger.info(
                 f"[CycleManager] Created billing cycle for {tenant_id} "
-                f"({cycle_start.date()} → {cycle_end.date()}) "
+                f"({cycle_start.date()} â†’ {cycle_end.date()}) "
                 f"max={max_credits} credits"
             )
             return rows[0]
@@ -124,20 +124,20 @@ def find_or_create_active_cycle(tenant_id: str) -> Optional[Dict[str, Any]]:
 
     Steps:
       1. Look for an existing active cycle that covers today.
-      2. If found → return it.
-      3. If not found → look up the tenant's plan, then create a new cycle
+      2. If found â†’ return it.
+      3. If not found â†’ look up the tenant's plan, then create a new cycle
          aligned to the current calendar month.
-      4. If the tenant has no plan → create a cycle using the 'starter' plan
+      4. If the tenant has no plan â†’ create a cycle using the 'starter' plan
          as a safe default (prevents credit engine from crashing on unregistered tenants).
 
     Returns the active billing_cycle row dict, or None only on DB errors.
     """
-    # ── 1: Existing active cycle? ────────────────────────────────────────────
+    # â”€â”€ 1: Existing active cycle? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     cycle = get_active_cycle(tenant_id)
     if cycle:
         return cycle
 
-    # ── 2: No cycle — look up tenant's plan ─────────────────────────────────
+    # â”€â”€ 2: No cycle â€” look up tenant's plan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     tenant_plan = get_tenant_plan(tenant_id)
 
     if tenant_plan and tenant_plan.get("plans"):
@@ -145,14 +145,14 @@ def find_or_create_active_cycle(tenant_id: str) -> Optional[Dict[str, Any]]:
         plan_id     = plan["id"]
         max_credits = plan["max_credits_per_cycle"]
     else:
-        # Tenant not in tenant_plans table → graceful fallback
+        # Tenant not in tenant_plans table â†’ graceful fallback
         logger.warning(
-            f"[CycleManager] Tenant {tenant_id} has no plan — defaulting to 'starter' limits."
+            f"[CycleManager] Tenant {tenant_id} has no plan â€” defaulting to 'starter' limits."
         )
         plan_id     = "starter"
         max_credits = 500
 
-    # ── 3: Create cycle for current calendar month ──────────────────────────
+    # â”€â”€ 3: Create cycle for current calendar month â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     now                  = datetime.now(timezone.utc)
     cycle_start, cycle_end = _month_boundaries(now)
 
@@ -168,7 +168,7 @@ def find_or_create_active_cycle(tenant_id: str) -> Optional[Dict[str, Any]]:
 def close_cycle(cycle_id: str) -> bool:
     """
     Mark a billing cycle as 'closed'. Called at end of billing period.
-    (Currently manual / cron-triggered — future automation possible.)
+    (Currently manual / cron-triggered â€” future automation possible.)
     """
     try:
         supabase.table("billing_cycles").update({"status": "closed"}).eq("id", cycle_id).execute()
@@ -177,3 +177,4 @@ def close_cycle(cycle_id: str) -> bool:
     except Exception as exc:
         logger.error(f"[CycleManager] close_cycle failed for {cycle_id}: {exc}")
         return False
+

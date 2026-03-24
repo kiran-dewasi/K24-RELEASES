@@ -1,4 +1,4 @@
-
+﻿
 from fastapi import Security, HTTPException, status
 from fastapi.security.api_key import APIKeyHeader
 import os
@@ -25,7 +25,7 @@ def get_tenant_id() -> str:
     Single source of truth for tenant_id resolution.
 
     Resolution order:
-      1. Local SQLite User table — populated from Supabase at login
+      1. Local SQLite User table â€” populated from Supabase at login
          (this IS the Supabase tenant_id, synced during auth flow)
       2. First non-default tenant found in Ledger data
       3. Fallback to "default" with a warning
@@ -33,7 +33,7 @@ def get_tenant_id() -> str:
     This function is used as a FastAPI Depends() across all routers
     that use x-api-key auth (dashboard, reports, vouchers, etc.)
     """
-    from backend.database import SessionLocal, User, Ledger
+    from database import SessionLocal, User, Ledger
 
     try:
         db = SessionLocal()
@@ -81,3 +81,4 @@ def get_tenant_id() -> str:
         "Ensure user has logged in via Supabase."
     )
     return "default"
+

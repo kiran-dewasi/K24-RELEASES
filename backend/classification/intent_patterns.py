@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Intent Classification - Pattern Matching
 =============================================
 Regex patterns for fast intent classification (< 100ms).
@@ -7,7 +7,7 @@ Compiled patterns for performance optimization.
 
 import re
 from typing import Dict, List, Tuple, Optional
-from backend.classification.intents import Intent
+from classification.intents import Intent
 
 # Compiled regex patterns for each intent
 # Format: {Intent: [compiled_patterns]}
@@ -210,3 +210,4 @@ def pattern_match_intent(message: str) -> Tuple[Optional[str], float]:
                 return (intent, confidence)
     
     return (None, 0.0)
+

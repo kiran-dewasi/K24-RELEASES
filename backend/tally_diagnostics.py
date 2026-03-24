@@ -1,8 +1,8 @@
-import requests
+﻿import requests
 import os
 from dataclasses import dataclass
 from typing import List
-from backend.tally_live_update import TallyXMLBuilder, post_to_tally
+from tally_live_update import TallyXMLBuilder, post_to_tally
 
 TALLY_URL = os.getenv("TALLY_URL", "http://localhost:9000")
 
@@ -97,3 +97,4 @@ class TallyDiagnostics:
             print(f"{r.check_name:<30} | {r.status:<10} | {r.details}")
             if r.status != "OK":
                 print(f"  -> REMEDIATION: {r.remediation}")
+

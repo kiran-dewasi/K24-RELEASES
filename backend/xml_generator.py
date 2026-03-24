@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 def generate_sales_xml(party_name: str, amount: float, narration: str = "Created via K24 AI", revenue_ledger_name: str = "Sales") -> str:
     """Generate Tally Sales Voucher XML with dynamic Revenue Ledger"""
@@ -16,7 +16,7 @@ def generate_validated_sales_xml(party_name: str, amount: float, narration: str 
     Ensure required ledgers exist, then return Sales voucher XML.
     Raises Exception if prerequisites cannot be satisfied.
     """
-    from backend.tally_preflight import ensure_all_prerequisites
+    from tally_preflight import ensure_all_prerequisites
     
     ok = ensure_all_prerequisites(party_name)
     if not ok:
@@ -36,3 +36,4 @@ def generate_tally_sales_xml(party_name: str, amount: float, ledger: str = "Sale
     Passes 'ledger' argument as 'revenue_ledger_name'.
     """
     return generate_sales_xml(party_name, amount, revenue_ledger_name=ledger)
+

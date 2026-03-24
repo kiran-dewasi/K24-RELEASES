@@ -1,8 +1,8 @@
-import logging
+﻿import logging
 import difflib
 import time
 from typing import List, Optional, Tuple, Dict
-from backend.tally_reader import TallyReader
+from tally_reader import TallyReader
 
 logger = logging.getLogger("TallySearch")
 
@@ -28,24 +28,24 @@ class TallySearch:
     def _refresh_ledgers_if_needed(self):
         now = time.time()
         if not self._ledger_cache or (now - self._ledger_cache_time > self.CACHE_DURATION):
-            logger.info("🔄 Refreshing Ledger Cache from Tally...")
+            logger.info("ðŸ”„ Refreshing Ledger Cache from Tally...")
             try:
                 self._ledger_cache = self.reader.get_all_ledgers()
                 self._ledger_cache_time = now
-                logger.info(f"✅ Cached {len(self._ledger_cache)} Ledgers.")
+                logger.info(f"âœ… Cached {len(self._ledger_cache)} Ledgers.")
             except Exception as e:
-                logger.error(f"❌ Failed to refresh ledger cache: {e}")
+                logger.error(f"âŒ Failed to refresh ledger cache: {e}")
     
     def _refresh_items_if_needed(self):
         now = time.time()
         if not self._item_cache or (now - self._item_cache_time > self.CACHE_DURATION):
-            logger.info("🔄 Refreshing Stock Item Cache from Tally...")
+            logger.info("ðŸ”„ Refreshing Stock Item Cache from Tally...")
             try:
                 self._item_cache = self.reader.get_all_stock_items()
                 self._item_cache_time = now
-                logger.info(f"✅ Cached {len(self._item_cache)} Items.")
+                logger.info(f"âœ… Cached {len(self._item_cache)} Items.")
             except Exception as e:
-                logger.error(f"❌ Failed to refresh item cache: {e}")
+                logger.error(f"âŒ Failed to refresh item cache: {e}")
 
     def smart_ledger_search(self, query: str, threshold: float = 0.6) -> str:
         """
@@ -63,7 +63,7 @@ class TallySearch:
         # 1. Exact Match Check
         for name in self._ledger_cache:
             if name.lower() == query_norm:
-                logger.info(f"🎯 Exact Match Found: '{name}'")
+                logger.info(f"ðŸŽ¯ Exact Match Found: '{name}'")
                 return name
         
         # 2. Substring Match (Strong Signal)
@@ -71,17 +71,17 @@ class TallySearch:
         for name in self._ledger_cache:
             name_norm = name.lower()
             if name_norm.startswith(query_norm) or query_norm.startswith(name_norm):
-                logger.info(f"🧠 Smart Prefix Match: '{query}' -> '{name}'")
+                logger.info(f"ðŸ§  Smart Prefix Match: '{query}' -> '{name}'")
                 return name
         
         # 3. Fuzzy Match
         matches = difflib.get_close_matches(query, self._ledger_cache, n=1, cutoff=threshold)
         if matches:
             best_match = matches[0]
-            logger.info(f"🧠 Smart Fuzzy Match: User said '{query}', Tally has '{best_match}' (Score > {threshold})")
+            logger.info(f"ðŸ§  Smart Fuzzy Match: User said '{query}', Tally has '{best_match}' (Score > {threshold})")
             return best_match
             
-        logger.info(f"🆕 No match found for '{query}'. Will Create New.")
+        logger.info(f"ðŸ†• No match found for '{query}'. Will Create New.")
         return query
 
     def smart_item_search(self, query: str, threshold: float = 0.6) -> str:
@@ -104,14 +104,14 @@ class TallySearch:
         for name in self._item_cache:
             name_norm = name.lower()
             if name_norm.startswith(query_norm) or query_norm.startswith(name_norm):
-                logger.info(f"🧠 Smart Item Prefix: '{query}' -> '{name}'")
+                logger.info(f"ðŸ§  Smart Item Prefix: '{query}' -> '{name}'")
                 return name
                 
         # 3. Fuzzy
         matches = difflib.get_close_matches(query, self._item_cache, n=1, cutoff=threshold)
         if matches:
             best_match = matches[0]
-            logger.info(f"🧠 Smart Item Fuzzy: '{query}' -> '{best_match}'")
+            logger.info(f"ðŸ§  Smart Item Fuzzy: '{query}' -> '{best_match}'")
             return best_match
             
         return query # Return original to trigger creation
@@ -124,3 +124,4 @@ class TallySearch:
         else:
             self._refresh_items_if_needed()
             return name in self._item_cache
+

@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Indian Compliance - Validation Engine
 ==========================================
 Main validation engine that runs all India-specific rules.
@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, List
 from datetime import date
 from pydantic import BaseModel, Field
-from backend.compliance.india import india_validation_rules as rules
+from compliance.india import india_validation_rules as rules
 
 logger = logging.getLogger(__name__)
 
@@ -252,3 +252,4 @@ def validate_india(parameters: Dict[str, Any], intent: str, context: Dict[str, A
     """
     engine = get_validation_engine()
     return engine.validate_india(parameters, intent, context)
+

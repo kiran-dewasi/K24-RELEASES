@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Parameter Extraction - Main Extractor
 ==========================================
 Extract parameters from user messages with timeout and validation.
@@ -9,10 +9,10 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional, Tuple
 from datetime import date
-from backend.extraction.parameter_models import (
+from extraction.parameter_models import (
     ExtractedParameters, CustomerName, Amount, InvoiceDate, GstRate, Description
 )
-from backend.extraction.fuzzy_matcher import match_ledger_with_fallback, get_ledger_details
+from extraction.fuzzy_matcher import match_ledger_with_fallback, get_ledger_details
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,8 @@ class ParameterExtractor:
     
     # Regex patterns for extraction
     AMOUNT_PATTERNS = [
-        r'(?:₹|rs\.?|rupees?)\s*([0-9,]+(?:\.[0-9]{2})?)',  # ₹50,000 or Rs. 5000
-        r'([0-9,]+(?:\.[0-9]{2})?)\s*(?:₹|rs\.?|rupees?)',  # 50000 Rs
+        r'(?:â‚¹|rs\.?|rupees?)\s*([0-9,]+(?:\.[0-9]{2})?)',  # â‚¹50,000 or Rs. 5000
+        r'([0-9,]+(?:\.[0-9]{2})?)\s*(?:â‚¹|rs\.?|rupees?)',  # 50000 Rs
         r'\b([0-9,]+(?:\.[0-9]{2})?)\s*(?:lakhs?|lacs?|l)\b',  # 5 lakhs or 5L
         r'\b([0-9,]+(?:\.[0-9]{2})?)\s*(?:crores?|cr)\b',  # 1 crore or 1Cr
         r'(?:for|amount|of)\s+([0-9,]+(?:\.[0-9]{2})?)',  # for 50000
@@ -51,7 +51,7 @@ class ParameterExtractor:
             "50000" -> 50000.0
             "5L" -> 500000.0
             "1Cr" -> 10000000.0
-            "₹50,000" -> 50000.0
+            "â‚¹50,000" -> 50000.0
         """
         text_lower = text.lower().strip()
         
@@ -90,8 +90,8 @@ class ParameterExtractor:
             "receipt for Reliance" -> "Reliance"
         """
         patterns = [
-            r'(?:for|to|from)\s+([A-Z][\w\s&.-]+?)(?:\s+for|\s+of|\s+with|\s+\d|\s+₹|$)',
-            r'(?:customer|party|ledger)\s+([A-Z][\w\s&.-]+?)(?:\s+for|\s+of|\s+with|\s+\d|\s+₹|$)',
+            r'(?:for|to|from)\s+([A-Z][\w\s&.-]+?)(?:\s+for|\s+of|\s+with|\s+\d|\s+â‚¹|$)',
+            r'(?:customer|party|ledger)\s+([A-Z][\w\s&.-]+?)(?:\s+for|\s+of|\s+with|\s+\d|\s+â‚¹|$)',
         ]
         
         for pattern in patterns:
@@ -241,7 +241,7 @@ class ParameterExtractor:
         # TODO: Query average invoice amount from database
         # For now, just check very high amounts
         if amount > 1000000:  # 10L+
-            result.add_warning(f"Amount ₹{amount/100000:.1f}L is very high. Please confirm.")
+            result.add_warning(f"Amount â‚¹{amount/100000:.1f}L is very high. Please confirm.")
     
     def _extract_date(self, message: str) -> Optional[str]:
         """Extract date from message"""
@@ -296,3 +296,4 @@ async def extract_parameters(
     """
     extractor = get_extractor()
     return await extractor.extract_parameters(message, intent, timeout)
+

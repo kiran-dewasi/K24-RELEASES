@@ -1,9 +1,9 @@
-"""
+﻿"""
 One-time migration: re-assigns all 'default' tenant_id records
 to the real tenant_id from the active User.
 Run once from project root: python -m backend.migrations.fix_tenant_ids
 """
-from backend.database import SessionLocal, Ledger, Voucher, User
+from database import SessionLocal, Ledger, Voucher, User
 
 def run():
     db = SessionLocal()
@@ -50,3 +50,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+

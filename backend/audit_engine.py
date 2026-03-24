@@ -1,6 +1,6 @@
-import pandas as pd
+﻿import pandas as pd
 from typing import List, Dict, Any
-from backend.tally_connector import TallyConnector
+from tally_connector import TallyConnector
 
 class AuditEngine:
     def __init__(self, tally_connector: TallyConnector):
@@ -169,7 +169,7 @@ class AuditEngine:
         return issues
 
     def _check_high_value_cash(self) -> List[Dict[str, Any]]:
-        """Flags cash payments exceeding ₹10,000 (Section 40A(3))"""
+        """Flags cash payments exceeding â‚¹10,000 (Section 40A(3))"""
         issues = []
         try:
             # Fetch 'Cash' ledger vouchers
@@ -195,7 +195,7 @@ class AuditEngine:
                     issues.append({
                         "type": "Compliance Risk",
                         "severity": "High",
-                        "message": f"Cash Payment of ₹{amount} exceeds ₹10,000 limit",
+                        "message": f"Cash Payment of â‚¹{amount} exceeds â‚¹10,000 limit",
                         "details": f"Date: {row['date']}, Voucher: {row.get('voucher_number', 'N/A')}"
                     })
                     
@@ -224,7 +224,7 @@ class AuditEngine:
                     issues.append({
                         "type": "Data Quality",
                         "severity": "Medium",
-                        "message": f"Potential Duplicate: {len(group)} {v_type} vouchers of ₹{amount} on {date}",
+                        "message": f"Potential Duplicate: {len(group)} {v_type} vouchers of â‚¹{amount} on {date}",
                         "details": "Please verify if these are distinct transactions."
                     })
 
@@ -232,3 +232,4 @@ class AuditEngine:
             print(f"Audit Error (Duplicates): {e}")
             
         return issues
+

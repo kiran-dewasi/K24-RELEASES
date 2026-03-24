@@ -1,4 +1,4 @@
-"""
+﻿"""
 Configuration Service for K24 Desktop Backend.
 
 Centralizes access to:
@@ -12,7 +12,7 @@ Loads configuration from:
 3. Hardcoded Defaults (Lowest Priority)
 
 Usage:
-    from backend.services.config_service import get_cloud_url, get_desktop_api_key
+    from services.config_service import get_cloud_url, get_desktop_api_key
 
     url = get_cloud_url()
     api_key = get_desktop_api_key()
@@ -131,3 +131,4 @@ if __name__ == "__main__":
     print(f"Cloud URL: {get_cloud_url()}")
     print(f"Environment: {get_environment()}")
     print(f"API Key Set: {'Yes' if get_desktop_api_key() else 'No'}")
+

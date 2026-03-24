@@ -1,7 +1,7 @@
-import xml.etree.ElementTree as ET
+﻿import xml.etree.ElementTree as ET
 import logging
 from typing import Dict, Any, List, Optional
-from backend.tally_live_update import TallyResponse
+from tally_live_update import TallyResponse
 
 logger = logging.getLogger("tally_response_parser")
 
@@ -103,3 +103,4 @@ def parse_tally_response(xml_response: str) -> TallyResponse:
             status="System Error",
             errors=[f"Unexpected Error: {str(e)}"]
         )
+

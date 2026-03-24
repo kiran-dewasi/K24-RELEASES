@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, TypedDict, Union, Optional
+﻿from typing import Annotated, Literal, TypedDict, Union, Optional
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -6,8 +6,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, ToolMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from backend.tools import ALL_TOOLS, SAFE_TOOLS, SENSITIVE_TOOLS
-from backend.agent_system import SYSTEM_INSTRUCTIONS # optional, or inline
+from tools import ALL_TOOLS, SAFE_TOOLS, SENSITIVE_TOOLS
+from agent_system import SYSTEM_INSTRUCTIONS # optional, or inline
 import os
 import json
 
@@ -54,14 +54,14 @@ def agent_node(state: AgentState):
     Uses ModelRouter to select Flash vs Pro.
     """
     import time
-    print(f"[AGENT_NODE] {time.strftime('%H:%M:%S')} — iteration start")
+    print(f"[AGENT_NODE] {time.strftime('%H:%M:%S')} â€” iteration start")
     messages = state["messages"]
     source = state.get("source_pipeline", "CHAT")
     
     # Prepend System Message if not present (or always inject for context)
     from langchain_core.messages import SystemMessage
-    from backend.agent_system import SYSTEM_INSTRUCTIONS
-    from backend.ai_engine.router import router # Lazy import to avoid circular dep if any
+    from agent_system import SYSTEM_INSTRUCTIONS
+    from ai_engine.router import router # Lazy import to avoid circular dep if any
 
     # Custom system instruction adaptation for WhatsApp if needed
     import datetime
@@ -87,7 +87,7 @@ def agent_node(state: AgentState):
     has_image = False
     last_msg = messages[-1]
     
-    # ── SHORT-CIRCUIT: FILE DELIVERY SENTINEL ──
+    # â”€â”€ SHORT-CIRCUIT: FILE DELIVERY SENTINEL â”€â”€
     # If the last message is a tool execution that returned a file sentinel,
     # skip LLM invocation so it doesn't digest the sentinel.
     if getattr(last_msg, "type", "") == "tool" and isinstance(last_msg.content, str):
@@ -122,7 +122,7 @@ def agent_node(state: AgentState):
     # Select Model using Router
     selected_llm = router.get_model(has_image=has_image, complexity=complexity)
     
-    # ── FORCE TOOL CALLING IF FILE IS REQUESTED ──
+    # â”€â”€ FORCE TOOL CALLING IF FILE IS REQUESTED â”€â”€
     # If the user is specifically asking for an Excel or PDF, the LLM often hallucinates
     # a text reply ("I will send it now") instead of calling the tool. We force it here.
     force_tool = False
@@ -236,12 +236,12 @@ async def run_agent(message_text: str, thread_id: str = "default", user_id: str 
         from langgraph.checkpoint.memory import MemorySaver
         _app = build_graph(checkpointer=MemorySaver())
 
-    # ── Propagate tenant_id to tools via thread-local ────────────────────────
+    # â”€â”€ Propagate tenant_id to tools via thread-local â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # _get_tenant() in tools/__init__.py reads _CURRENT_TENANT_ID first if set.
     # This ensures the tenant from the WhatsApp resolution flows into every tool.
     if user_id and user_id not in ("default", ""):
         try:
-            import backend.tools as _tools_mod
+            import tools as _tools_mod
             _tools_mod._CURRENT_TENANT_ID = user_id
         except Exception:
             pass
@@ -278,5 +278,6 @@ async def run_agent(message_text: str, thread_id: str = "default", user_id: str 
         import traceback
         traceback.print_exc()
         return f"Agent Error: {str(e)}"
+
 
 

@@ -1,5 +1,5 @@
-import sys; sys.path.insert(0, '.')
-from backend.database import SessionLocal, Voucher
+﻿import sys; sys.path.insert(0, '.')
+from database import SessionLocal, Voucher
 from sqlalchemy import text
 from datetime import datetime, date
 
@@ -39,3 +39,4 @@ results_feb = q2.all()
 print(f"\nTotal vouchers in FEB 2026: {len(results_feb)}")
 
 db.close()
+

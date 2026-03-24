@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Session
-from backend.database import SessionLocal, User
+﻿from sqlalchemy.orm import Session
+from database import SessionLocal, User
 
 def update_user_whatsapp():
     db = SessionLocal()
@@ -11,7 +11,7 @@ def update_user_whatsapp():
         
         user = db.query(User).filter(User.username == username).first()
         if not user:
-            print(f"❌ User '{username}' not found.")
+            print(f"âŒ User '{username}' not found.")
             return
 
         print(f"Found User: {user.username} (Current WA: {user.whatsapp_number})")
@@ -21,13 +21,14 @@ def update_user_whatsapp():
         user.is_whatsapp_verified = True
         
         db.commit()
-        print(f"✅ Updated User '{username}' with WhatsApp Number: {target_number}")
+        print(f"âœ… Updated User '{username}' with WhatsApp Number: {target_number}")
         print("You can now send messages from this number and be recognized as Admin.")
 
     except Exception as e:
-        print(f"❌ Error updating user: {e}")
+        print(f"âŒ Error updating user: {e}")
     finally:
         db.close()
 
 if __name__ == "__main__":
     update_user_whatsapp()
+

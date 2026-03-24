@@ -1,8 +1,8 @@
-import pandas as pd
+﻿import pandas as pd
 from typing import Any, Dict, Optional
 import pickle
 import os
-from backend.tally_connector import TallyConnector
+from tally_connector import TallyConnector
 from xml.sax.saxutils import escape
 import logging
 
@@ -223,3 +223,4 @@ def delete_entry(df: pd.DataFrame, idx: int) -> pd.DataFrame:
         # Fallback to old method
         new_df = df.drop(idx).reset_index(drop=True)
         return new_df
+

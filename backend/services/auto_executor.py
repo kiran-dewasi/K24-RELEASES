@@ -1,8 +1,8 @@
-"""
+﻿"""
 Auto-Execution Service for Bill Processing
 ==========================================
 Implements confidence-based auto-execution logic.
-If confidence >= 95% → auto-create + post to Tally.
+If confidence >= 95% â†’ auto-create + post to Tally.
 Only ask questions if truly uncertain.
 """
 
@@ -58,7 +58,7 @@ async def process_with_auto_execution(
     confidence = calculate_overall_confidence(bill_data)
     summary = get_confidence_summary(confidence)
     
-    logger.info(f"📊 Overall Confidence: {confidence:.2%} ({summary['level']})")
+    logger.info(f"ðŸ“Š Overall Confidence: {confidence:.2%} ({summary['level']})")
     
     # Get item count and total for messages
     items_count = len(bill_data.get('items', []))
@@ -68,8 +68,8 @@ async def process_with_auto_execution(
     # ============ DECISION TREE ============
     
     if confidence >= HIGH_CONFIDENCE_THRESHOLD:
-        # 🟢 HIGH CONFIDENCE: Auto-execute without questions
-        logger.info("✅ High confidence - auto-creating voucher")
+        # ðŸŸ¢ HIGH CONFIDENCE: Auto-execute without questions
+        logger.info("âœ… High confidence - auto-creating voucher")
         
         voucher = await _create_voucher_internal(
             bill_data, 
@@ -93,11 +93,11 @@ async def process_with_auto_execution(
                     "items_count": items_count,
                     "total_amount": total_amount,
                     "party_name": party_name,
-                    "message": f"✅ Auto-posted to Tally! {party_name}: {items_count} items, ₹{total_amount:,.2f}"
+                    "message": f"âœ… Auto-posted to Tally! {party_name}: {items_count} items, â‚¹{total_amount:,.2f}"
                 }
             else:
                 # Tally push failed - report as created, not posted
-                logger.warning(f"⚠️ Tally push failed: {tally_result.get('error', 'Unknown error')}")
+                logger.warning(f"âš ï¸ Tally push failed: {tally_result.get('error', 'Unknown error')}")
                 return {
                     "action": "auto_created",  # NOT auto_posted since Tally failed
                     "voucher": voucher,
@@ -108,7 +108,7 @@ async def process_with_auto_execution(
                     "items_count": items_count,
                     "total_amount": total_amount,
                     "party_name": party_name,
-                    "message": f"✅ Voucher created but Tally offline. {party_name}: {items_count} items, ₹{total_amount:,.2f}"
+                    "message": f"âœ… Voucher created but Tally offline. {party_name}: {items_count} items, â‚¹{total_amount:,.2f}"
                 }
         else:
             return {
@@ -119,12 +119,12 @@ async def process_with_auto_execution(
                 "items_count": items_count,
                 "total_amount": total_amount,
                 "party_name": party_name,
-                "message": f"✅ Voucher created! {party_name}: {items_count} items, ₹{total_amount:,.2f}"
+                "message": f"âœ… Voucher created! {party_name}: {items_count} items, â‚¹{total_amount:,.2f}"
             }
     
     elif confidence >= MEDIUM_CONFIDENCE_THRESHOLD:
-        # 🟡 MEDIUM CONFIDENCE: Create draft, ask for confirmation
-        logger.info("⚠️ Medium confidence - creating draft for review")
+        # ðŸŸ¡ MEDIUM CONFIDENCE: Create draft, ask for confirmation
+        logger.info("âš ï¸ Medium confidence - creating draft for review")
         
         voucher = await _create_voucher_internal(
             bill_data, 
@@ -155,12 +155,12 @@ async def process_with_auto_execution(
             "items_count": items_count,
             "total_amount": total_amount,
             "party_name": party_name,
-            "message": f"⚠️ Draft created ({confidence:.0%} confidence). {review_note}"
+            "message": f"âš ï¸ Draft created ({confidence:.0%} confidence). {review_note}"
         }
     
     else:
-        # 🔴 LOW CONFIDENCE: Ask ONE targeted question
-        logger.info("❌ Low confidence - asking for clarification")
+        # ðŸ”´ LOW CONFIDENCE: Ask ONE targeted question
+        logger.info("âŒ Low confidence - asking for clarification")
         
         uncertain = identify_uncertain_fields(bill_data)
         question = generate_clarification_question(uncertain, bill_data)
@@ -175,7 +175,7 @@ async def process_with_auto_execution(
             "items_count": items_count,
             "total_amount": total_amount,
             "party_name": party_name,
-            "message": f"❓ {question}"
+            "message": f"â“ {question}"
         }
 
 
@@ -191,7 +191,7 @@ async def _create_voucher_internal(
     """
     try:
         # Try to use existing voucher creation logic
-        from backend.logic import logic_create_voucher_async
+        from logic import logic_create_voucher_async
         
         # Transform bill_data to voucher format
         voucher_data = {
@@ -255,7 +255,7 @@ async def _push_to_tally_internal(voucher: Dict, tenant_id: Optional[str]) -> Di
         except:
             pass
         
-        logger.info(f"🏢 Using company: {company}")
+        logger.info(f"ðŸ¢ Using company: {company}")
         
         # Format date to YYYYMMDD (8 chars required by Tally)
         raw_date = voucher.get('date', '')
@@ -280,7 +280,7 @@ async def _push_to_tally_internal(voucher: Dict, tenant_id: Optional[str]) -> Di
         else:
             tally_date = datetime.now().strftime('%Y%m%d')
         
-        logger.info(f"📅 Date formatted: {raw_date} -> {tally_date}")
+        logger.info(f"ðŸ“… Date formatted: {raw_date} -> {tally_date}")
         
         # Prepare Tally format - use CORRECT key casing for create_voucher_safely
         voucher_fields = {
@@ -291,7 +291,7 @@ async def _push_to_tally_internal(voucher: Dict, tenant_id: Optional[str]) -> Di
         
         line_items = voucher.get('line_items', [])
         
-        logger.info(f"📦 Pushing voucher: {voucher_fields['PartyLedgerName']}, {len(line_items)} items")
+        logger.info(f"ðŸ“¦ Pushing voucher: {voucher_fields['PartyLedgerName']}, {len(line_items)} items")
         
         # Extract Taxes
         gst_data = voucher.get('gst', {})
@@ -318,7 +318,7 @@ async def _push_to_tally_internal(voucher: Dict, tenant_id: Optional[str]) -> Di
             taxes=taxes
         )
         
-        logger.info(f"📤 Tally result: success={result.success}, error={result.error_details}")
+        logger.info(f"ðŸ“¤ Tally result: success={result.success}, error={result.error_details}")
         
         return {
             "success": result.success if hasattr(result, 'success') else True,
@@ -360,3 +360,4 @@ def process_with_auto_execution_sync(
         return asyncio.run(
             process_with_auto_execution(bill_data, user_id, tenant_id, auto_post_enabled)
         )
+

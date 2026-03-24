@@ -1,9 +1,9 @@
-from typing import Dict, Any
+﻿from typing import Dict, Any
 import re
 import logging
-from backend.orchestration.base_workflow import BaseWorkflow, WorkflowResult
-from backend.tally_connector import TallyConnector
-from backend.tally_live_update import dispatch_tally_update, TallyAPIError
+from orchestration.base_workflow import BaseWorkflow, WorkflowResult
+from tally_connector import TallyConnector
+from tally_live_update import dispatch_tally_update, TallyAPIError
 
 logger = logging.getLogger(__name__)
 
@@ -82,3 +82,4 @@ def update_gstin_workflow(party_name: str, new_gstin: str, company: str = "SHREE
     workflow = GSTINUpdateWorkflow()
     result = workflow.run(party_name=party_name, new_gstin=new_gstin, company=company, tally_url=tally_url)
     return result.dict()
+

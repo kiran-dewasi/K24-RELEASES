@@ -1,6 +1,6 @@
-from sqlalchemy.orm import Session
-from backend.database import SessionLocal, User, Company, UserSettings, Tenant, Ledger, WhatsAppMapping, init_db
-from backend.auth import get_password_hash
+﻿from sqlalchemy.orm import Session
+from database import SessionLocal, User, Company, UserSettings, Tenant, Ledger, WhatsAppMapping, init_db
+from auth import get_password_hash
 from datetime import datetime
 import uuid
 
@@ -31,7 +31,7 @@ def create_default_user():
             db.add(company)
             db.commit()
             db.refresh(company)
-            print(f"✓ Created Company: {company_name}")
+            print(f"âœ“ Created Company: {company_name}")
 
         # 3. Create Tenant Record (for Multi-tenancy)
         tenant_id = "TENANT-12345"
@@ -83,3 +83,4 @@ def create_default_user():
 
 if __name__ == "__main__":
     create_default_user()
+

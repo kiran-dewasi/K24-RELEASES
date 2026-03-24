@@ -1,12 +1,12 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import List, Dict, Optional
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from backend.database import Voucher, Ledger, Tenant
-from backend.socket_manager import socket_manager
-# from backend.xml_generator import generate_tally_sales_xml # Deprecated
-from backend.tally_xml_builder import build_sales_voucher_xml, InventoryEntry
-from backend.tally_connector import TallyConnector as _TC
+from database import Voucher, Ledger, Tenant
+from socket_manager import socket_manager
+# from xml_generator import generate_tally_sales_xml # Deprecated
+from tally_xml_builder import build_sales_voucher_xml, InventoryEntry
+from tally_connector import TallyConnector as _TC
 import logging
 
 logger = logging.getLogger("invoice_tool")
@@ -49,14 +49,14 @@ class InvoiceTool:
         
         try:
             # ============ STEP 1: PREFLIGHT ============
-            logger.info(f"🔄 [PREFLIGHT] Checking party '{party_name}' in Tally...")
+            logger.info(f"ðŸ”„ [PREFLIGHT] Checking party '{party_name}' in Tally...")
             
             # For now, assume party exists (Agent will verify)
             result["preflight_status"] = "passed"
-            logger.info(f"✅ [PREFLIGHT] Party '{party_name}' OK")
+            logger.info(f"âœ… [PREFLIGHT] Party '{party_name}' OK")
             
             # ============ STEP 2: TALLY PUSH ============
-            logger.info(f"📤 [TALLY PUSH] Generating XML for {party_name}...")
+            logger.info(f"ðŸ“¤ [TALLY PUSH] Generating XML for {party_name}...")
             
             if not date_str:
                 date_str = datetime.now().strftime("%Y%m%d") # Tally format YYYYMMDD
@@ -105,7 +105,7 @@ class InvoiceTool:
             # Generate XML
             if inventory_entries:
                 # ITEM INVOICE
-                logger.info(f"📄 Building Item Invoice XML with {len(inventory_entries)} items.")
+                logger.info(f"ðŸ“„ Building Item Invoice XML with {len(inventory_entries)} items.")
                 xml_payload = build_sales_voucher_xml(
                     company_name=_TC().company_name,  # Auto-detected from active Tally company
                     voucher_fields={
@@ -122,15 +122,15 @@ class InvoiceTool:
                 # We can't use build_sales_voucher_xml efficiently for pure ledger mode without refactor
                 # So we use the old logic via a direct XML string or upgrade builder purely for this?
                 # Let's fallback to old generator for backward compat if NO items provided.
-                from backend.xml_generator import generate_tally_sales_xml
-                logger.info("📄 Building Accounting Invoice XML (No Items).")
+                from xml_generator import generate_tally_sales_xml
+                logger.info("ðŸ“„ Building Accounting Invoice XML (No Items).")
                 xml_payload = generate_tally_sales_xml(
                     party_name=party_name,
                     amount=amount,
                     ledger="Sales"
                 )
 
-            logger.info(f"📡 [SOCKET] Sending to Tally Agent (Tenant: {tenant_id})...")
+            logger.info(f"ðŸ“¡ [SOCKET] Sending to Tally Agent (Tenant: {tenant_id})...")
             
             # Send to local agent via Socket
             tally_response = await socket_manager.send_command(
@@ -151,18 +151,18 @@ class InvoiceTool:
             if tally_response and ("<CREATED>1</CREATED>" in str(tally_response) or "<UPDATED>1</UPDATED>" in str(tally_response)):
                 result["tally_status"] = "success"
                 result["tally_voucher_id"] = self._extract_voucher_id(str(tally_response))
-                logger.info(f"✅ [TALLY] Success! VchID: {result['tally_voucher_id']}")
+                logger.info(f"âœ… [TALLY] Success! VchID: {result['tally_voucher_id']}")
             else:
                 result["tally_status"] = "failed"
                 result["error"] = f"Tally rejected: {str(tally_response)[:200]}"
-                logger.error(f"❌ [TALLY] Failed: {result['error']}")
+                logger.error(f"âŒ [TALLY] Failed: {result['error']}")
                 return result  # CRITICAL: Don't write to DB if Tally failed
             
             # ============ STEP 3: DB INSERT ============
-            logger.info(f"💾 [DB] Writing to Supabase (Tenant: {tenant_id})...")
+            logger.info(f"ðŸ’¾ [DB] Writing to Supabase (Tenant: {tenant_id})...")
             
             if not db:
-                logger.error("❌ [DB] No database session provided")
+                logger.error("âŒ [DB] No database session provided")
                 result["error"] = "Database session required"
                 return result
             
@@ -184,13 +184,13 @@ class InvoiceTool:
             result["db_status"] = "success"
             result["status"] = "success"
             
-            logger.info(f"✅ [DB] Success! Record ID: {new_voucher.id}")
-            logger.info(f"✅ [COMPLETE] Invoice created: Tally + DB in sync")
+            logger.info(f"âœ… [DB] Success! Record ID: {new_voucher.id}")
+            logger.info(f"âœ… [COMPLETE] Invoice created: Tally + DB in sync")
             
             return result
             
         except Exception as e:
-            logger.error(f"❌ [ERROR] {str(e)}")
+            logger.error(f"âŒ [ERROR] {str(e)}")
             result["error"] = str(e)
             result["status"] = "failed"
             if db:
@@ -210,3 +210,4 @@ class InvoiceTool:
 
 # Singleton instance
 invoice_tool = InvoiceTool()
+

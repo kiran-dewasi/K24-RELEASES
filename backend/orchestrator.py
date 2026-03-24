@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Orchestrator ("The Brain")
 Coordinates Intent Recognition, Context Management, and Tally Integration.
 Implements the "Competence over Magic" philosophy.
@@ -11,10 +11,10 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import os
 
-from backend.intent_recognizer import IntentRecognizer, IntentType, Intent
-from backend.context_manager import ContextManager, UserContext
-from backend.tally_connector import TallyConnector
-from backend.agent import TallyAgent
+from intent_recognizer import IntentRecognizer, IntentType, Intent
+from context_manager import ContextManager, UserContext
+from tally_connector import TallyConnector
+from agent import TallyAgent
 
 logger = logging.getLogger(__name__)
 
@@ -365,3 +365,4 @@ class K24Orchestrator:
             )
 
         return None
+

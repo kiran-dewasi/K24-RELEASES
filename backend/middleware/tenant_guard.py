@@ -1,11 +1,11 @@
-"""
+﻿"""
 Tenant Guard Middleware - IDOR Protection
 ==========================================
 Prevents Insecure Direct Object Reference attacks by ensuring
 all database queries are filtered by the current user's tenant_id.
 
 Usage:
-    from backend.middleware.tenant_guard import TenantGuard
+    from middleware.tenant_guard import TenantGuard
     
     # In any endpoint:
     query = TenantGuard.filter(db.query(Voucher), Voucher, current_user)
@@ -174,3 +174,4 @@ def require_tenant(func):
 
 # Convenience exports
 tenant_guard = TenantGuard()
+

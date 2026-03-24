@@ -1,12 +1,12 @@
-"""
+﻿"""
 Enable Auto-Post to Tally for the default tenant.
 """
 from sqlalchemy.orm import Session
-from backend.database import get_db, Tenant, engine
-from backend.database import Base # Ensure models are loaded
+from database import get_db, Tenant, engine
+from database import Base # Ensure models are loaded
 
 def enable_auto_post():
-    from backend.database import SessionLocal # Use direct session
+    from database import SessionLocal # Use direct session
     db = SessionLocal()
     try:
         # Find the tenant (assuming default or the one used in testing)
@@ -22,12 +22,13 @@ def enable_auto_post():
             tenant.auto_post_to_tally = True
             
         db.commit()
-        print("✅ Auto-Post Enabled successfully!")
+        print("âœ… Auto-Post Enabled successfully!")
         
     except Exception as e:
-        print(f"❌ Failed: {e}")
+        print(f"âŒ Failed: {e}")
     finally:
         db.close()
 
 if __name__ == "__main__":
     enable_auto_post()
+

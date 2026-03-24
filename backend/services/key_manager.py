@@ -1,7 +1,7 @@
-import os
+﻿import os
 import logging
-from backend.database import get_db, UserSettings
-from backend.database.encryption import encryptor
+from database import get_db, UserSettings
+from database.encryption import encryptor
 
 logger = logging.getLogger(__name__)
 
@@ -35,3 +35,4 @@ def get_google_api_key(user_id: str = None) -> str:
         return env_key
         
     return None
+

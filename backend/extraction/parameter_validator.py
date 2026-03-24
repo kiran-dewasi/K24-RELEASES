@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Parameter Extraction - Validator
 =====================================
 Validate parameters against business rules and Tally database.
@@ -6,7 +6,7 @@ Validate parameters against business rules and Tally database.
 
 import logging
 from typing import Tuple, Optional, Dict, Any
-from backend.database import SessionLocal, Ledger, Voucher
+from database import SessionLocal, Ledger, Voucher
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,9 @@ class ParameterValidator:
     def validate_amount_range(amount: float, min_val: float = 0, max_val: float = 10_000_000) -> Tuple[bool, Optional[str]]:
         """Validate amount is within acceptable range"""
         if amount <= min_val:
-            return False, f"Amount must be greater than ₹{min_val:,.0f}"
+            return False, f"Amount must be greater than â‚¹{min_val:,.0f}"
         if amount > max_val:
-            return False, f"Amount exceeds maximum of ₹{max_val:,.0f}"
+            return False, f"Amount exceeds maximum of â‚¹{max_val:,.0f}"
         return True, None
     
     @staticmethod
@@ -93,3 +93,4 @@ def validate_parameter(param_name: str, value: Any, context: Dict) -> Tuple[bool
         return validator.validate_reference_unique(value)
     else:
         return True, None
+

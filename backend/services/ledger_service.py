@@ -1,4 +1,4 @@
-"""
+﻿"""
 Ledger Service - Tally-like Automatic Ledger Management
 
 This service implements the core "Create Once, Use Forever" pattern:
@@ -8,7 +8,7 @@ This service implements the core "Create Once, Use Forever" pattern:
 - Mimics Tally's seamless ledger management
 
 Usage:
-    from backend.services.ledger_service import LedgerService
+    from services.ledger_service import LedgerService
     ledger_service = LedgerService(db)
     ledger_id = await ledger_service.get_or_create_ledger("Customer ABC", "Sundry Debtors")
 """
@@ -77,11 +77,11 @@ class LedgerService:
         existing_ledger = self._find_existing_ledger(normalized_name, tenant_id)
         
         if existing_ledger:
-            logger.info(f"✅ Ledger EXISTS: '{existing_ledger.name}' (ID: {existing_ledger.id})")
+            logger.info(f"âœ… Ledger EXISTS: '{existing_ledger.name}' (ID: {existing_ledger.id})")
             return existing_ledger.id
         
         # 2. AUTO-CREATE NEW LEDGER
-        logger.info(f"🆕 Creating new ledger: '{normalized_name}'")
+        logger.info(f"ðŸ†• Creating new ledger: '{normalized_name}'")
         
         # Smart Group Inference
         if not under_group:
@@ -108,10 +108,10 @@ class LedgerService:
                 logger.warning(f"Tally sync failed for ledger '{normalized_name}': {e}")
                 # Don't fail - local ledger is created, Tally sync can retry later
             
-            logger.info(f"✅ Ledger CREATED: '{new_ledger.name}' (ID: {new_ledger.id}) under '{under_group}'")
+            logger.info(f"âœ… Ledger CREATED: '{new_ledger.name}' (ID: {new_ledger.id}) under '{under_group}'")
             return new_ledger.id
         
-        logger.error(f"❌ Failed to create ledger: '{normalized_name}'")
+        logger.error(f"âŒ Failed to create ledger: '{normalized_name}'")
         return None
     
     def _find_existing_ledger(self, name: str, tenant_id: str) -> Optional[Ledger]:
@@ -343,3 +343,4 @@ def get_or_create_ledger(
         voucher_type=voucher_type,
         tenant_id=tenant_id
     )
+

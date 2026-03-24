@@ -1,4 +1,4 @@
-"""
+﻿"""
 Intent Recognizer for KITTU
 Uses Gemini to understand user intent from natural language.
 
@@ -174,7 +174,7 @@ class IntentRecognizer:
             Intent object with action, entity, parameters, and confidence
         """
         import time
-        print(f"[INTENT_CALL] {time.strftime('%H:%M:%S')} — query: {user_message[:30]}")
+        print(f"[INTENT_CALL] {time.strftime('%H:%M:%S')} â€” query: {user_message[:30]}")
         # Build prompt with context
         prompt = self._build_prompt(user_message, context)
         
@@ -304,7 +304,7 @@ Return ONLY valid JSON, nothing else."""
     
     def _keyword_fallback(self, query: str) -> Intent:
         """Fallback keyword-based intent recognition with entity extraction"""
-        from backend.entity_extractor import extract_entity_fallback, extract_parameters_fallback
+        from entity_extractor import extract_entity_fallback, extract_parameters_fallback
         
         query_lower = query.lower()
         
@@ -438,7 +438,7 @@ async def classify_intent(
         else:
             # Last-resort static fallback if init itself fails
             # Minimal dependency to avoid circular imports
-            from backend.entity_extractor import (
+            from entity_extractor import (
                 extract_entity_fallback,
                 extract_parameters_fallback,
             )
@@ -488,3 +488,4 @@ if __name__ == "__main__":
         print(result)
 
     asyncio.run(_self_test())
+

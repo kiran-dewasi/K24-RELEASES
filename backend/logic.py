@@ -1,13 +1,13 @@
-
+﻿
 import asyncio
 import json
 import os
 import uuid
 import requests
 from datetime import datetime
-from backend.database.supabase_client import supabase
-from backend.database.repository import TaskRepository, AuditRepository
-from backend.database import SessionLocal, Voucher, Ledger, StockItem, InventoryEntry
+from database.supabase_client import supabase
+from database.repository import TaskRepository, AuditRepository
+from database import SessionLocal, Voucher, Ledger, StockItem, InventoryEntry
 
 # Async Helper
 def run_async(coro):
@@ -122,9 +122,9 @@ def send_whatsapp_message(phone_number: str, message_text: str):
 
 def invoke_agent_with_context(user_id: str, user_message: str, source_pipeline: str):
     """
-    Reuse existing agent invocation from backend.agent
+    Reuse existing agent invocation from agent
     """
-    from backend.agent import agent
+    from agent import agent
     
     async def call_agent():
         response = await agent.ainvoke({
@@ -203,7 +203,7 @@ async def logic_create_ledger_async(ledger_data: dict, user_id: str = "agent",
     try:
         task_id = str(uuid.uuid4())
         print(f"\n{'='*70}")
-        print(f"🔄 ASYNC LOGIC: create_ledger")
+        print(f"ðŸ”„ ASYNC LOGIC: create_ledger")
         print(f"   Task ID: {task_id}")
         print(f"   Ledger: {ledger_data.get('name')}")
         print(f"{'='*70}\n")
@@ -230,7 +230,7 @@ async def logic_create_ledger_async(ledger_data: dict, user_id: str = "agent",
         fields = {k: v for k, v in fields.items() if v is not None}
 
         # Use new Async Helper
-        from backend.tally_live_update import create_ledger_async as _create_ledger_direct_async
+        from tally_live_update import create_ledger_async as _create_ledger_direct_async
         
         response = await _create_ledger_direct_async(company=company, ledger_name=ledger_data.get("name"), parent=parent_group, fields=fields)
 
@@ -286,7 +286,7 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
     try:
         task_id = str(uuid.uuid4())
         print(f"\n{'='*70}")
-        print(f"🔄 ASYNC LOGIC: create_voucher")
+        print(f"ðŸ”„ ASYNC LOGIC: create_voucher")
         print(f"   Task ID: {task_id}")
         print(f"   Type: {voucher_data.get('type')}")
         print(f"{'='*70}\n")
@@ -334,8 +334,8 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
                      # Fallback (Single Leg - Might Fail)
                      items = [{"ledger": ledger_leg, "amount": amount, "is_debit": is_debit_leg}]
 
-        from backend.tally_live_update import create_voucher_async as _create_voucher_direct_async
-        from backend.tally_live_update import create_ledger_async as _create_ledger_direct_async
+        from tally_live_update import create_voucher_async as _create_voucher_direct_async
+        from tally_live_update import create_ledger_async as _create_ledger_direct_async
 
         # --- PERSISTENCE: Check Local DB First ---
         party_name = voucher_data.get("party")
@@ -505,8 +505,9 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
 
     except Exception as e:
         print(f"DEBUG: Logic Error: {e}")
-        print(f"❌ CRITICAL TASK ERROR: {e}")
+        print(f"âŒ CRITICAL TASK ERROR: {e}")
         task_repo = TaskRepository()
         if 'task_id' in locals():
             await task_repo.update_task_progress(celery_task_id=task_id, status="failed", progress_percent=100, error=str(e))
         raise e
+

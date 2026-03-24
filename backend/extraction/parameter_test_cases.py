@@ -1,19 +1,19 @@
-"""
+﻿"""
 K24 Parameter Extraction - Test Cases
 ======================================
 Comprehensive test suite for parameter extraction.
 """
 
 import asyncio
-from backend.extraction.parameter_extractor import extract_parameters
-from backend.extraction.fuzzy_matcher import fuzzy_match_ledger, exact_match_ledger
-from backend.extraction.parameter_models import Amount, InvoiceDate, GstRate
+from extraction.parameter_extractor import extract_parameters
+from extraction.fuzzy_matcher import fuzzy_match_ledger, exact_match_ledger
+from extraction.parameter_models import Amount, InvoiceDate, GstRate
 
 # Test cases: (message, intent, expected_results)
 TEST_CASES = [
     # Amount extraction
     ("Create invoice for 50000", "CREATE_INVOICE", {"amount": 50000.0}),
-    ("Invoice for ₹5,00,000", "CREATE_INVOICE", {"amount": 500000.0}),
+    ("Invoice for â‚¹5,00,000", "CREATE_INVOICE", {"amount": 500000.0}),
     ("Bill for Rs. 25000", "CREATE_INVOICE", {"amount": 25000.0}),
     ("Create invoice for 5L", "CREATE_INVOICE", {"amount": 500000.0}),
     ("Make invoice 1Cr", "CREATE_INVOICE", {"amount": 10000000.0}),
@@ -60,7 +60,7 @@ def test_amount_parsing():
         ("50000", 50000.0),
         ("5L", 500000.0),
         ("1Cr", 10000000.0),
-        ("₹50,000", 50000.0),
+        ("â‚¹50,000", 50000.0),
         ("Rs. 25000", 25000.0),
     ]
     
@@ -68,14 +68,14 @@ def test_amount_parsing():
     failed = 0
     
     for text, expected in test_cases:
-        from backend.extraction.parameter_extractor import ParameterExtractor
+        from extraction.parameter_extractor import ParameterExtractor
         result = ParameterExtractor.parse_amount(text)
         
         if result == expected:
-            print(f"✓ '{text}' -> {result}")
+            print(f"âœ“ '{text}' -> {result}")
             passed += 1
         else:
-            print(f"✗ '{text}' -> {result} (expected {expected})")
+            print(f"âœ— '{text}' -> {result} (expected {expected})")
             failed += 1
     
     print(f"\nAmount parsing: {passed} passed, {failed} failed")
@@ -104,17 +104,17 @@ def test_gst_validation():
         try:
             gst = GstRate(value=rate)
             if should_pass:
-                print(f"✓ {rate}% is valid")
+                print(f"âœ“ {rate}% is valid")
                 passed += 1
             else:
-                print(f"✗ {rate}% should have failed but passed")
+                print(f"âœ— {rate}% should have failed but passed")
                 failed += 1
         except ValueError:
             if not should_pass:
-                print(f"✓ {rate}% correctly rejected")
+                print(f"âœ“ {rate}% correctly rejected")
                 passed += 1
             else:
-                print(f"✗ {rate}% should have passed but failed")
+                print(f"âœ— {rate}% should have passed but failed")
                 failed += 1
     
     print(f"\nGST validation: {passed} passed, {failed} failed")
@@ -155,16 +155,16 @@ async def test_parameter_extraction():
                     all_checks_passed = False
             
             if all_checks_passed:
-                print(f"✓ [{i}] '{message[:50]}...'")
+                print(f"âœ“ [{i}] '{message[:50]}...'")
                 passed += 1
             else:
-                print(f"✗ [{i}] '{message[:50]}...'")
+                print(f"âœ— [{i}] '{message[:50]}...'")
                 print(f"   Expected: {expected}")
                 print(f"   Got: amount={result.amount}, errors={result.errors}")
                 failed += 1
                 
         except Exception as e:
-            print(f"✗ [{i}] '{message[:50]}...' - Error: {e}")
+            print(f"âœ— [{i}] '{message[:50]}...' - Error: {e}")
             failed += 1
     
     print(f"\nParameter extraction: {passed} passed, {failed} failed")
@@ -202,3 +202,4 @@ async def run_all_tests():
 
 if __name__ == "__main__":
     asyncio.run(run_all_tests())
+

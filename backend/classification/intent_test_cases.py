@@ -1,12 +1,12 @@
-"""
+﻿"""
 K24 Intent Classification - Test Cases
 =======================================
 Comprehensive test suite for 68 intents.
 """
 
 import asyncio
-from backend.classification.intent_classifier import classify_intent
-from backend.classification.intents import Intent
+from classification.intent_classifier import classify_intent
+from classification.intents import Intent
 
 # Test cases: (message, expected_intent, min_confidence)
 TEST_CASES = [
@@ -116,10 +116,10 @@ async def run_tests():
                 confidence_ok = confidence >= min_confidence
             
             if intent_match and confidence_ok:
-                status = "✓ PASS"
+                status = "âœ“ PASS"
                 passed += 1
             else:
-                status = "✗ FAIL"
+                status = "âœ— FAIL"
                 failed += 1
             
             method = metadata.get("method", "unknown")
@@ -132,12 +132,12 @@ async def run_tests():
             print(f"  Method: {method}, Time: {elapsed_ms:.0f}ms")
             
             if not intent_match:
-                print(f"  ⚠ Intent mismatch!")
+                print(f"  âš  Intent mismatch!")
             if not confidence_ok:
-                print(f"  ⚠ Confidence too low!")
+                print(f"  âš  Confidence too low!")
                 
         except Exception as e:
-            print(f"\n[{i}/{len(TEST_CASES)}] ✗ ERROR")
+            print(f"\n[{i}/{len(TEST_CASES)}] âœ— ERROR")
             print(f"  Message: \"{message}\"")
             print(f"  Error: {e}")
             failed += 1
@@ -151,3 +151,4 @@ async def run_tests():
 
 if __name__ == "__main__":
     asyncio.run(run_tests())
+

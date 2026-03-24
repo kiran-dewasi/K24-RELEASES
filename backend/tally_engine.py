@@ -1,4 +1,4 @@
-import requests
+﻿import requests
 import logging
 import os
 import time
@@ -10,9 +10,9 @@ from xml.sax.saxutils import escape
 from decimal import Decimal
 
 # Import TallyReader and Search (Assume these files exist and work)
-from backend.tally_reader import TallyReader
-from backend.tally_search import TallySearch
-from backend.database import SessionLocal, GSTLedger, Ledger
+from tally_reader import TallyReader
+from tally_search import TallySearch
+from database import SessionLocal, GSTLedger, Ledger
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -297,7 +297,7 @@ class TallyObjectFactory:
         
         party_flag = "Yes" if party_is_debit else "No"
         
-        # VALIDATOR skipped — all amounts are negative per Tally convention;
+        # VALIDATOR skipped â€” all amounts are negative per Tally convention;
         # balance is enforced by ISDEEMEDPOSITIVE flags, not the sum of amounts.
 
         # View Mode
@@ -357,16 +357,16 @@ class TallyClient:
 
             logger.info(f"Tally raw response: {resp_text[:300]}")
 
-            # CREATED=1 → new object created
-            # ALTERED=1 → existing object updated
-            # IGNORED=1 → object already exists exactly as-is (SUCCESS for ensure_* operations)
+            # CREATED=1 â†’ new object created
+            # ALTERED=1 â†’ existing object updated
+            # IGNORED=1 â†’ object already exists exactly as-is (SUCCESS for ensure_* operations)
             if ("<CREATED>1</CREATED>" in resp_text or
                     "<ALTERED>1</ALTERED>" in resp_text or
                     "<IGNORED>1</IGNORED>" in resp_text):
                 if "<IGNORED>1</IGNORED>" in resp_text:
-                    logger.info("✅ Tally confirmed object already exists (IGNORED=1 → treating as success).")
+                    logger.info("âœ… Tally confirmed object already exists (IGNORED=1 â†’ treating as success).")
                 else:
-                    logger.info("✅ Tally confirmed object created/altered.")
+                    logger.info("âœ… Tally confirmed object created/altered.")
                 return True
 
             # Any exception is a rejection
@@ -374,7 +374,7 @@ class TallyClient:
                 import re
                 err_match = re.search(r'<LINEERROR>(.*?)</LINEERROR>', resp_text)
                 err_msg = err_match.group(1) if err_match else "No LINEERROR"
-                logger.error(f"❌ Tally EXCEPTION: {err_msg}")
+                logger.error(f"âŒ Tally EXCEPTION: {err_msg}")
                 logger.error(f"Full response:\n{resp_text}")
                 with open("failed_voucher.xml", "w", encoding="utf-8") as f:
                     f.write(xml_payload)
@@ -382,18 +382,18 @@ class TallyClient:
 
             # Any explicit error count > 0
             if "<ERRORS>1</ERRORS>" in resp_text or "<ERRORS>2</ERRORS>" in resp_text:
-                logger.error(f"❌ Tally ERRORS in response:\n{resp_text}")
+                logger.error(f"âŒ Tally ERRORS in response:\n{resp_text}")
                 return False
 
             # No confirmation at all = failure
-            logger.error(f"❌ Tally did not confirm creation. Full response:\n{resp_text}")
+            logger.error(f"âŒ Tally did not confirm creation. Full response:\n{resp_text}")
             return False
 
         except requests.exceptions.ConnectionError:
-            logger.error(f"❌ Cannot connect to Tally at {self.tally_url} — is Tally open?")
+            logger.error(f"âŒ Cannot connect to Tally at {self.tally_url} â€” is Tally open?")
             return False
         except Exception as e:
-            logger.error(f"❌ Connection Error: {e}")
+            logger.error(f"âŒ Connection Error: {e}")
             return False
 
 
@@ -411,7 +411,7 @@ class TallyEngine:
             return None
 
         # NORMALIZE: collapse multiple spaces, strip edges, title-case
-        # e.g. "vinayak  enterprises" → "Vinayak Enterprises"
+        # e.g. "vinayak  enterprises" â†’ "Vinayak Enterprises"
         name = " ".join(name.split()).strip()
 
         # 1. READ FIRST (Cache/Live Lookup)
@@ -423,7 +423,7 @@ class TallyEngine:
                  xml = TallyObjectFactory.create_ledger_xml(existing_name, group, affects_stock, is_duty, gstin)
                  self.client.send_request(xml)
             
-            logger.info(f"✅ Ledger Exists: '{existing_name}' (Mapped from '{name}')")
+            logger.info(f"âœ… Ledger Exists: '{existing_name}' (Mapped from '{name}')")
             return existing_name
         
         # 2. CREATE ONLY IF MISSING
@@ -437,7 +437,7 @@ class TallyEngine:
             self.reader.fetch_all_masters()
             canonical = self.reader.ledger_cache.get(" ".join(name.split()).lower())
             if canonical:
-                logger.info(f"✅ Ledger canonical name from Tally: '{canonical}'")
+                logger.info(f"âœ… Ledger canonical name from Tally: '{canonical}'")
                 return canonical
             # Fallback: use the normalized name we sent
             self.reader.ledger_cache[" ".join(name.split()).lower()] = name.strip()
@@ -454,7 +454,7 @@ class TallyEngine:
         existing_name = self.reader.check_item_exists(name)
         
         if existing_name:
-            logger.info(f"✅ Item Exists: '{existing_name}'.")
+            logger.info(f"âœ… Item Exists: '{existing_name}'.")
             normalized = " ".join(existing_name.split()).lower()
             canonical_unit = getattr(self.reader, "item_unit_cache", {}).get(normalized, unit)
             return existing_name, canonical_unit
@@ -478,7 +478,7 @@ class TallyEngine:
             canonical = self.reader.item_cache.get(n)
             canonical_unit = getattr(self.reader, "item_unit_cache", {}).get(n, unit)
             if canonical:
-                logger.info(f"✅ Item canonical name from Tally: '{canonical}' with unit '{canonical_unit}'")
+                logger.info(f"âœ… Item canonical name from Tally: '{canonical}' with unit '{canonical_unit}'")
                 return canonical, canonical_unit
             self.reader.item_cache[n] = name.strip()
             if hasattr(self.reader, "item_unit_cache"):
@@ -563,12 +563,12 @@ class TallyEngine:
         # 0. PRE-WARM CACHE: fetch all ledgers + items ONCE upfront
         #    This prevents cold-cache misses when ensure_* calls run sequentially.
         #    Without this, Tally is busy with ledger calls when item cache tries to populate.
-        logger.info("🔥 Pre-warming Tally cache (ledgers + items)...")
+        logger.info("ðŸ”¥ Pre-warming Tally cache (ledgers + items)...")
         if not self.reader.cache_populated:
             self.reader.fetch_all_masters()
         if not self.reader.item_cache:
             self.reader.fetch_all_items()
-        logger.info(f"✅ Cache ready: {len(self.reader.ledger_cache)} ledgers, {len(self.reader.item_cache)} items")
+        logger.info(f"âœ… Cache ready: {len(self.reader.ledger_cache)} ledgers, {len(self.reader.item_cache)} items")
 
         # 1. Validate & Context
         party_name_input = payload.get("party_name")
@@ -617,14 +617,14 @@ class TallyEngine:
 
         # 5. Build Voucher (Using Golden XML Builder)
         logger.info("DEBUG: Building Purchase Voucher XML via Golden XML Builder...")
-        from backend.tally_golden_xml import GoldenXMLBuilder, VoucherData, InventoryItem, LedgerEntry
+        from tally_golden_xml import GoldenXMLBuilder, VoucherData, InventoryItem, LedgerEntry
 
         # Auto-detect company name from Tally
         company_name = self.reader.get_company_name() or os.getenv("TALLY_COMPANY", "")
         if company_name:
             logger.info(f"Using Tally company: '{company_name}'")
         else:
-            logger.warning("Could not detect Tally company name — omitting SVCURRENTCOMPANY")
+            logger.warning("Could not detect Tally company name â€” omitting SVCURRENTCOMPANY")
 
         date_str = payload.get("date", "20250401")
         voucher_number = payload.get("voucher_number", "")
@@ -771,7 +771,7 @@ class TallyEngine:
                         tax_lines.append({"name": igst_row.name, "amount": tax_amt, "rate": rate})
                         logger.info(f"Using IGST ledger: {igst_row.name}")
                     else:
-                        logger.warning(f"No OUTPUT IGST ledger found for {rate}% — skipping GST lines")
+                        logger.warning(f"No OUTPUT IGST ledger found for {rate}% â€” skipping GST lines")
                 else:
                     # Find OUTPUT CGST and SGST ledgers
                     half_str = f"{int(half_rate)}" if float(half_rate).is_integer() else str(half_rate)
@@ -795,20 +795,20 @@ class TallyEngine:
                         tax_lines.append({"name": cgst_row.name, "amount": tax_amt_half, "rate": half_rate})
                         tax_lines.append({"name": sgst_row.name, "amount": tax_amt_half, "rate": half_rate})
                     else:
-                        logger.warning(f"No OUTPUT CGST/SGST ledgers found for {half_str}% — skipping GST lines")
+                        logger.warning(f"No OUTPUT CGST/SGST ledgers found for {half_str}% â€” skipping GST lines")
         finally:
             db.close()
 
         logger.info("DEBUG: Building Sales Voucher XML via Golden XML Builder...")
 
-        from backend.tally_golden_xml import GoldenXMLBuilder, VoucherData, InventoryItem, LedgerEntry
+        from tally_golden_xml import GoldenXMLBuilder, VoucherData, InventoryItem, LedgerEntry
 
         # Auto-detect company name from Tally (required for SVCURRENTCOMPANY)
         company_name = self.reader.get_company_name() or os.getenv("TALLY_COMPANY", "")
         if company_name:
             logger.info(f"Using Tally company: '{company_name}'")
         else:
-            logger.warning("Could not detect Tally company name — omitting SVCURRENTCOMPANY")
+            logger.warning("Could not detect Tally company name â€” omitting SVCURRENTCOMPANY")
 
         date_str = payload.get("date", "20250401")
 
@@ -939,8 +939,8 @@ class TallyEngine:
 
         # 4. BUILD XML using GoldenXMLBuilder (proven correct structure)
         # GoldenXMLBuilder generates ALLLEDGERENTRIES.LIST with proper
-        # sign conventions — same builder that works for Sales vouchers.
-        from backend.tally_golden_xml import GoldenXMLBuilder
+        # sign conventions â€” same builder that works for Sales vouchers.
+        from tally_golden_xml import GoldenXMLBuilder
 
         company_name = self.reader.get_company_name() or os.getenv("TALLY_COMPANY", "")
         date_str = payload.get("date", "20250401")
@@ -972,7 +972,7 @@ class TallyEngine:
                 bill_ref=payload.get("bill_ref")
             )
         else:
-            # Contra/Journal — fallback to old factory for now
+            # Contra/Journal â€” fallback to old factory for now
             voucher_xml = TallyObjectFactory.create_voucher_xml(
                 payload={
                     "date": date_str,
@@ -1062,3 +1062,4 @@ class TallyEngine:
         else:
             # Fallback for generic types?
             return {"status": "error", "message": f"Unsupported Voucher Type: {v_type}"}
+

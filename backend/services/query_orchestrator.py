@@ -1,14 +1,14 @@
-"""
+﻿"""
 Query Orchestrator Service - Day 5 Implementation
 =================================================
 Intelligent query processing that understands user intent and 
 pulls ONLY relevant data from Tally/SQLite.
 
 Use Cases:
-- "How much does ABC Corp owe?" → Outstanding summary
-- "Send invoice INV-001 as PDF" → Generate PDF, send via WhatsApp
-- "January sales summary" → Pull sales data, format concisely
-- "Stock of Product A?" → Quick stock status
+- "How much does ABC Corp owe?" â†’ Outstanding summary
+- "Send invoice INV-001 as PDF" â†’ Generate PDF, send via WhatsApp
+- "January sales summary" â†’ Pull sales data, format concisely
+- "Stock of Product A?" â†’ Quick stock status
 
 The orchestrator follows the architecture principle:
 "Don't dump all 100 bills - show top 3 and summary"
@@ -234,7 +234,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response="❌ Sorry, I couldn't process that request. Please try again.",
+                formatted_response="âŒ Sorry, I couldn't process that request. Please try again.",
                 error=str(e)
             )
     
@@ -260,7 +260,7 @@ class QueryOrchestrator:
                     llm_entity = llm_result.get("entity", "")
                     intent_obj = llm_result.get("intent_obj")
                     
-                    logger.info(f"🧠 LLM Intent: {llm_intent} (conf={llm_confidence:.2f})")
+                    logger.info(f"ðŸ§  LLM Intent: {llm_intent} (conf={llm_confidence:.2f})")
                     
                     # Map LLM intent types to QueryIntent
                     intent_mapping = {
@@ -540,7 +540,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response=f"❌ Party '{party_name}' not found. Check spelling or try a different name.",
+                formatted_response=f"âŒ Party '{party_name}' not found. Check spelling or try a different name.",
                 error="Party not found"
             )
         
@@ -568,21 +568,21 @@ class QueryOrchestrator:
         
         # Format response (concise for WhatsApp)
         response_lines = [
-            f"📊 **{ledger.name}** - Outstanding Summary",
+            f"ðŸ“Š **{ledger.name}** - Outstanding Summary",
             "",
-            f"💰 Total Due: ₹{total_outstanding:,.2f}",
+            f"ðŸ’° Total Due: â‚¹{total_outstanding:,.2f}",
         ]
         
         if overdue_amount > 0:
-            response_lines.append(f"⚠️ Overdue: ₹{overdue_amount:,.2f}")
+            response_lines.append(f"âš ï¸ Overdue: â‚¹{overdue_amount:,.2f}")
         
         # Show top 3 bills only (not all 100)
         if bills:
             response_lines.append("")
-            response_lines.append("📋 Top Bills:")
+            response_lines.append("ðŸ“‹ Top Bills:")
             for i, bill in enumerate(bills[:3]):
                 due_str = bill.due_date.strftime("%d-%b") if bill.due_date else "N/A"
-                response_lines.append(f"  {i+1}. ₹{bill.amount:,.0f} (Due: {due_str})")
+                response_lines.append(f"  {i+1}. â‚¹{bill.amount:,.0f} (Due: {due_str})")
             
             if len(bills) > 3:
                 response_lines.append(f"  ... and {len(bills) - 3} more bills")
@@ -591,9 +591,9 @@ class QueryOrchestrator:
         response_lines.extend([
             "",
             "Reply:",
-            "1️⃣ PDF Statement",
-            "2️⃣ Full Details", 
-            "3️⃣ Send Reminder"
+            "1ï¸âƒ£ PDF Statement",
+            "2ï¸âƒ£ Full Details", 
+            "3ï¸âƒ£ Send Reminder"
         ])
         
         return OrchestrationResult(
@@ -634,17 +634,17 @@ class QueryOrchestrator:
         ).order_by(desc(Ledger.closing_balance)).limit(5).all()
         
         response_lines = [
-            "📊 **Overall Outstanding Summary**",
+            "ðŸ“Š **Overall Outstanding Summary**",
             "",
-            f"📥 Receivables: ₹{receivables:,.0f}",
-            f"📤 Payables: ₹{payables:,.0f}",
-            f"📈 Net: ₹{receivables - payables:,.0f}",
+            f"ðŸ“¥ Receivables: â‚¹{receivables:,.0f}",
+            f"ðŸ“¤ Payables: â‚¹{payables:,.0f}",
+            f"ðŸ“ˆ Net: â‚¹{receivables - payables:,.0f}",
             "",
-            "🔝 Top 5 Debtors:"
+            "ðŸ” Top 5 Debtors:"
         ]
         
         for i, ledger in enumerate(top_debtors):
-            response_lines.append(f"  {i+1}. {ledger.name}: ₹{ledger.closing_balance:,.0f}")
+            response_lines.append(f"  {i+1}. {ledger.name}: â‚¹{ledger.closing_balance:,.0f}")
         
         response_lines.extend([
             "",
@@ -687,19 +687,19 @@ class QueryOrchestrator:
         period = parsed.entities.get("date_range", "Last 30 days")
         
         response_lines = [
-            f"💳 **Payment History** - {period}",
-            f"👤 Party: {party_name or 'All Parties'}",
+            f"ðŸ’³ **Payment History** - {period}",
+            f"ðŸ‘¤ Party: {party_name or 'All Parties'}",
             "",
-            f"📥 Total Receipts: ₹{total_receipts:,.0f}",
-            f"📤 Total Payments: ₹{total_payments:,.0f}",
+            f"ðŸ“¥ Total Receipts: â‚¹{total_receipts:,.0f}",
+            f"ðŸ“¤ Total Payments: â‚¹{total_payments:,.0f}",
             "",
-            "📋 Recent Transactions:"
+            "ðŸ“‹ Recent Transactions:"
         ]
         
         for v in vouchers[:5]:
-            icon = "📥" if v.voucher_type == "Receipt" else "📤"
+            icon = "ðŸ“¥" if v.voucher_type == "Receipt" else "ðŸ“¤"
             date_str = v.date.strftime("%d-%b") if v.date else "N/A"
-            response_lines.append(f"  {icon} {date_str}: ₹{v.amount:,.0f}")
+            response_lines.append(f"  {icon} {date_str}: â‚¹{v.amount:,.0f}")
         
         return OrchestrationResult(
             success=True,
@@ -720,7 +720,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response="❓ Which customer? Please specify the name (e.g., 'Full profile of ABC Corp')",
+                formatted_response="â“ Which customer? Please specify the name (e.g., 'Full profile of ABC Corp')",
             )
         
         # Redirect to Customer 360 API
@@ -734,7 +734,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response=f"❌ Customer '{party_name}' not found."
+                formatted_response=f"âŒ Customer '{party_name}' not found."
             )
         
         # Get quick summary
@@ -747,14 +747,14 @@ class QueryOrchestrator:
         outstanding = ledger.closing_balance or 0
         
         response_lines = [
-            f"👤 **{ledger.name}** - 360° Profile",
+            f"ðŸ‘¤ **{ledger.name}** - 360Â° Profile",
             "",
-            f"📊 Type: {ledger.ledger_type or 'Customer'}",
-            f"💰 Total Sales: ₹{total_sales:,.0f}",
-            f"⚡ Outstanding: ₹{outstanding:,.0f}",
-            f"📍 Group: {ledger.under_group or 'N/A'}",
+            f"ðŸ“Š Type: {ledger.ledger_type or 'Customer'}",
+            f"ðŸ’° Total Sales: â‚¹{total_sales:,.0f}",
+            f"âš¡ Outstanding: â‚¹{outstanding:,.0f}",
+            f"ðŸ“ Group: {ledger.under_group or 'N/A'}",
             "",
-            "🔗 Full Details: Open K24 Dashboard → Customers → Search"
+            "ðŸ”— Full Details: Open K24 Dashboard â†’ Customers â†’ Search"
         ]
         
         return OrchestrationResult(
@@ -783,25 +783,25 @@ class QueryOrchestrator:
                 return OrchestrationResult(
                     success=False,
                     data={},
-                    formatted_response=f"❌ Item '{item_name}' not found. Check spelling or try a different name."
+                    formatted_response=f"âŒ Item '{item_name}' not found. Check spelling or try a different name."
                 )
             
             response_lines = [
-                f"📦 **{item.name}** - Stock Status",
+                f"ðŸ“¦ **{item.name}** - Stock Status",
                 "",
-                f"📊 Quantity: {item.closing_stock or 0} {item.unit or 'units'}",
-                f"💰 Last Sale Rate: ₹{item.last_sale_rate or 0:,.2f}",
-                f"🏭 Last Purchase Rate: ₹{item.last_purchase_rate or 0:,.2f}",
+                f"ðŸ“Š Quantity: {item.closing_stock or 0} {item.unit or 'units'}",
+                f"ðŸ’° Last Sale Rate: â‚¹{item.last_sale_rate or 0:,.2f}",
+                f"ðŸ­ Last Purchase Rate: â‚¹{item.last_purchase_rate or 0:,.2f}",
             ]
             
             if item.default_godown:
-                response_lines.append(f"📍 Godown: {item.default_godown}")
+                response_lines.append(f"ðŸ“ Godown: {item.default_godown}")
             
             # Reorder suggestion
             if (item.closing_stock or 0) < (item.reorder_level or 10):
                 response_lines.extend([
                     "",
-                    f"⚠️ **LOW STOCK** - Consider reordering!"
+                    f"âš ï¸ **LOW STOCK** - Consider reordering!"
                 ])
             
             return OrchestrationResult(
@@ -827,11 +827,11 @@ class QueryOrchestrator:
             ).scalar() or 0
             
             response_lines = [
-                "📦 **Inventory Summary**",
+                "ðŸ“¦ **Inventory Summary**",
                 "",
-                f"📊 Total Items: {total_items}",
+                f"ðŸ“Š Total Items: {total_items}",
                 "",
-                "🔝 Top Items by Stock:"
+                "ðŸ” Top Items by Stock:"
             ]
             
             for i, item in enumerate(items[:5]):
@@ -856,7 +856,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response="❓ Which item's rate do you want? (e.g., 'Rate of Product A')"
+                formatted_response="â“ Which item's rate do you want? (e.g., 'Rate of Product A')"
             )
         
         item = self.db.query(StockItem).filter(
@@ -868,15 +868,15 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response=f"❌ Item '{item_name}' not found."
+                formatted_response=f"âŒ Item '{item_name}' not found."
             )
         
         response_lines = [
-            f"💰 **{item.name}** - Rate Info",
+            f"ðŸ’° **{item.name}** - Rate Info",
             "",
-            f"📈 Last Sale Rate: ₹{item.last_sale_rate or 0:,.2f}",
-            f"📉 Last Purchase Rate: ₹{item.last_purchase_rate or 0:,.2f}",
-            f"📊 Margin: {((item.last_sale_rate or 0) - (item.last_purchase_rate or 0)):,.2f}"
+            f"ðŸ“ˆ Last Sale Rate: â‚¹{item.last_sale_rate or 0:,.2f}",
+            f"ðŸ“‰ Last Purchase Rate: â‚¹{item.last_purchase_rate or 0:,.2f}",
+            f"ðŸ“Š Margin: {((item.last_sale_rate or 0) - (item.last_purchase_rate or 0)):,.2f}"
         ]
         
         return OrchestrationResult(
@@ -917,17 +917,17 @@ class QueryOrchestrator:
         top_customers = party_sales.most_common(3)
         
         response_lines = [
-            f"📈 **Sales Summary** - {period}",
+            f"ðŸ“ˆ **Sales Summary** - {period}",
             "",
-            f"💰 Total Sales: ₹{total_sales:,.0f}",
-            f"📊 Invoices: {voucher_count}",
-            f"📈 Avg Sale: ₹{avg_sale:,.0f}",
+            f"ðŸ’° Total Sales: â‚¹{total_sales:,.0f}",
+            f"ðŸ“Š Invoices: {voucher_count}",
+            f"ðŸ“ˆ Avg Sale: â‚¹{avg_sale:,.0f}",
             "",
-            "🏆 Top Customers:"
+            "ðŸ† Top Customers:"
         ]
         
         for i, (name, amount) in enumerate(top_customers):
-            response_lines.append(f"  {i+1}. {name}: ₹{amount:,.0f}")
+            response_lines.append(f"  {i+1}. {name}: â‚¹{amount:,.0f}")
         
         response_lines.extend([
             "",
@@ -962,10 +962,10 @@ class QueryOrchestrator:
         voucher_count = len(purchases)
         
         response_lines = [
-            f"📉 **Purchase Summary** - {period}",
+            f"ðŸ“‰ **Purchase Summary** - {period}",
             "",
-            f"💸 Total Purchases: ₹{total_purchases:,.0f}",
-            f"📊 Bills: {voucher_count}",
+            f"ðŸ’¸ Total Purchases: â‚¹{total_purchases:,.0f}",
+            f"ðŸ“Š Bills: {voucher_count}",
         ]
         
         return OrchestrationResult(
@@ -986,20 +986,20 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=True,
                 data={},
-                formatted_response="ℹ️ No cash accounts found."
+                formatted_response="â„¹ï¸ No cash accounts found."
             )
         
         total_cash = sum(l.closing_balance or 0 for l in cash_ledgers)
         
         response_lines = [
-            "💵 **Cash Balance**",
+            "ðŸ’µ **Cash Balance**",
             "",
-            f"💰 Total: ₹{total_cash:,.2f}",
+            f"ðŸ’° Total: â‚¹{total_cash:,.2f}",
             ""
         ]
         
         for l in cash_ledgers:
-            response_lines.append(f"- {l.name}: ₹{l.closing_balance:,.2f}")
+            response_lines.append(f"- {l.name}: â‚¹{l.closing_balance:,.2f}")
             
         return OrchestrationResult(
             success=True,
@@ -1024,7 +1024,7 @@ class QueryOrchestrator:
         ).order_by(desc(Ledger.closing_balance)).limit(limit).all()
         
         response_lines = [
-            f"🏆 **Top {limit} Customers by Outstanding**",
+            f"ðŸ† **Top {limit} Customers by Outstanding**",
             ""
         ]
         
@@ -1032,7 +1032,7 @@ class QueryOrchestrator:
              response_lines.append("No customers with outstanding balance found.")
         
         for i, ledger in enumerate(top_customers):
-            response_lines.append(f"  {i+1}. {ledger.name}: ₹{ledger.closing_balance or 0:,.0f}")
+            response_lines.append(f"  {i+1}. {ledger.name}: â‚¹{ledger.closing_balance or 0:,.0f}")
         
         return OrchestrationResult(
             success=True,
@@ -1059,12 +1059,12 @@ class QueryOrchestrator:
         ).limit(limit).all()
         
         response_lines = [
-            f"🏆 **Top {limit} Selling Items**",
+            f"ðŸ† **Top {limit} Selling Items**",
             ""
         ]
         
         for i, (name, qty, value) in enumerate(top_items):
-            response_lines.append(f"  {i+1}. {name}: ₹{value or 0:,.0f} ({qty or 0} units)")
+            response_lines.append(f"  {i+1}. {name}: â‚¹{value or 0:,.0f} ({qty or 0} units)")
         
         return OrchestrationResult(
             success=True,
@@ -1085,9 +1085,9 @@ class QueryOrchestrator:
         cash_balance = cash_ledger.closing_balance if cash_ledger else 0
         
         response_lines = [
-            "💵 **Cash Status**",
+            "ðŸ’µ **Cash Status**",
             "",
-            f"💰 Current Balance: ₹{cash_balance:,.0f}",
+            f"ðŸ’° Current Balance: â‚¹{cash_balance:,.0f}",
         ]
         
         return OrchestrationResult(
@@ -1120,7 +1120,7 @@ class QueryOrchestrator:
                 return OrchestrationResult(
                     success=False,
                     data={},
-                    formatted_response=f"❌ Invoice '{invoice_number}' not found."
+                    formatted_response=f"âŒ Invoice '{invoice_number}' not found."
                 )
             
             result = export_service.export_invoice_pdf(voucher.id)
@@ -1133,14 +1133,14 @@ class QueryOrchestrator:
                         "file_path": result["file_path"],
                         "filename": result["filename"]
                     },
-                    formatted_response=f"📄 Invoice PDF generated!\n\n📁 File: {result['filename']}\n\nSending file...",
+                    formatted_response=f"ðŸ“„ Invoice PDF generated!\n\nðŸ“ File: {result['filename']}\n\nSending file...",
                     export_file=result["file_path"]
                 )
             else:
                 return OrchestrationResult(
                     success=False,
                     data={},
-                    formatted_response=f"❌ Failed to generate PDF: {result.get('error', 'Unknown error')}"
+                    formatted_response=f"âŒ Failed to generate PDF: {result.get('error', 'Unknown error')}"
                 )
         
         elif party_name:
@@ -1155,14 +1155,14 @@ class QueryOrchestrator:
                         "file_path": result["file_path"],
                         "filename": result["filename"]
                     },
-                    formatted_response=f"📄 Outstanding Statement PDF generated!\n\n📁 File: {result['filename']}\n\nSending file...",
+                    formatted_response=f"ðŸ“„ Outstanding Statement PDF generated!\n\nðŸ“ File: {result['filename']}\n\nSending file...",
                     export_file=result["file_path"]
                 )
             else:
                 return OrchestrationResult(
                     success=False,
                     data={},
-                    formatted_response=f"❌ Failed to generate PDF: {result.get('error', 'Unknown error')}"
+                    formatted_response=f"âŒ Failed to generate PDF: {result.get('error', 'Unknown error')}"
                 )
         
         else:
@@ -1171,17 +1171,17 @@ class QueryOrchestrator:
                 success=True,
                 data={"export_type": "pdf", "needs_clarification": True},
                 formatted_response=(
-                    "📄 **PDF Export**\n\n"
+                    "ðŸ“„ **PDF Export**\n\n"
                     "What would you like to export?\n\n"
-                    "• 'Send invoice INV-001 as PDF'\n"
-                    "• 'ABC Corp statement PDF'\n"
-                    "• 'Outstanding statement of XYZ Industries'"
+                    "â€¢ 'Send invoice INV-001 as PDF'\n"
+                    "â€¢ 'ABC Corp statement PDF'\n"
+                    "â€¢ 'Outstanding statement of XYZ Industries'"
                 )
             )
     
     def _handle_export_excel(self, parsed: ParsedQuery) -> OrchestrationResult:
         """Handle Excel export request - generates actual Excel file"""
-        from backend.services.export_service import ExportService
+        from services.export_service import ExportService
         
         export_service = ExportService(self.db, self.tenant_id)
         
@@ -1219,14 +1219,14 @@ class QueryOrchestrator:
                     "file_path": result["file_path"],
                     "filename": result["filename"]
                 },
-                formatted_response=f"📊 {report_type} Excel generated!\n\n📁 File: {result['filename']}\n\nSending file...",
+                formatted_response=f"ðŸ“Š {report_type} Excel generated!\n\nðŸ“ File: {result['filename']}\n\nSending file...",
                 export_file=result["file_path"]
             )
         else:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response=f"❌ Failed to generate Excel: {result.get('error', 'Unknown error')}"
+                formatted_response=f"âŒ Failed to generate Excel: {result.get('error', 'Unknown error')}"
             )
     
     def _handle_invoice_details(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1237,7 +1237,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response="❓ Which invoice? Please specify (e.g., 'Show invoice INV-001')"
+                formatted_response="â“ Which invoice? Please specify (e.g., 'Show invoice INV-001')"
             )
         
         voucher = self.db.query(Voucher).filter(
@@ -1252,7 +1252,7 @@ class QueryOrchestrator:
             return OrchestrationResult(
                 success=False,
                 data={},
-                formatted_response=f"❌ Invoice '{invoice_number}' not found."
+                formatted_response=f"âŒ Invoice '{invoice_number}' not found."
             )
         
         # Get items with names
@@ -1287,17 +1287,17 @@ class QueryOrchestrator:
                 date_str = str(voucher.date)
 
         response_lines = [
-            f"🧾 **{voucher.voucher_type} - {voucher.voucher_number}**",
+            f"ðŸ§¾ **{voucher.voucher_type} - {voucher.voucher_number}**",
             "",
-            f"📅 Date: {date_str}",
-            f"👤 Party: {voucher.party_ledger_name or 'N/A'}",
-            f"💰 Total: ₹{voucher.amount or 0:,.2f}",
+            f"ðŸ“… Date: {date_str}",
+            f"ðŸ‘¤ Party: {voucher.party_ledger_name or 'N/A'}",
+            f"ðŸ’° Total: â‚¹{voucher.amount or 0:,.2f}",
             "",
-            "📋 Items:"
+            "ðŸ“‹ Items:"
         ]
         
         for item in items[:5]:
-            response_lines.append(f"  • {item['item_name']}: {item['quantity']} x ₹{item['rate'] or 0:,.0f}")
+            response_lines.append(f"  â€¢ {item['item_name']}: {item['quantity']} x â‚¹{item['rate'] or 0:,.0f}")
         
         if len(items) > 5:
             response_lines.append(f"  ... and {len(items) - 5} more items")
@@ -1328,13 +1328,13 @@ class QueryOrchestrator:
         ).order_by(desc(Voucher.date)).limit(limit).all()
         
         response_lines = [
-            f"📋 **Last {limit} {voucher_type} Vouchers**",
+            f"ðŸ“‹ **Last {limit} {voucher_type} Vouchers**",
             ""
         ]
         
         for v in vouchers:
             date_str = v.date.strftime("%d-%b") if v.date else "N/A"
-            response_lines.append(f"  • {date_str}: {v.party_ledger_name or 'N/A'} - ₹{v.amount or 0:,.0f}")
+            response_lines.append(f"  â€¢ {date_str}: {v.party_ledger_name or 'N/A'} - â‚¹{v.amount or 0:,.0f}")
         
         return OrchestrationResult(
             success=True,
@@ -1347,7 +1347,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response="ℹ️ PDF export is coming soon."
+            formatted_response="â„¹ï¸ PDF export is coming soon."
         )
 
     def _handle_export_excel(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1355,7 +1355,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response="ℹ️ Excel export is coming soon."
+            formatted_response="â„¹ï¸ Excel export is coming soon."
         )
 
     def _handle_invoice_details(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1364,7 +1364,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response="ℹ️ Invoice details view is coming soon."
+            formatted_response="â„¹ï¸ Invoice details view is coming soon."
         )
 
     def _handle_recent_vouchers(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1374,9 +1374,9 @@ class QueryOrchestrator:
             Voucher.tenant_id == self.tenant_id
         ).order_by(desc(Voucher.date)).limit(limit).all()
         
-        response_lines = ["📋 **Recent Vouchers**", ""]
+        response_lines = ["ðŸ“‹ **Recent Vouchers**", ""]
         for v in vouchers:
-            response_lines.append(f"- {v.date.strftime('%d-%b')}: {v.voucher_type} - {v.party_ledger_name} (₹{v.amount:,.0f})")
+            response_lines.append(f"- {v.date.strftime('%d-%b')}: {v.voucher_type} - {v.party_ledger_name} (â‚¹{v.amount:,.0f})")
             
         return OrchestrationResult(
             success=True,
@@ -1392,7 +1392,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response=f"✅ I understand you want to create a RECEIPT.\n\n👤 From: {party}\n💰 Amount: ₹{amount}\n\n(ℹ️ Voucher creation is in preview mode. This was NOT saved to Tally.)"
+            formatted_response=f"âœ… I understand you want to create a RECEIPT.\n\nðŸ‘¤ From: {party}\nðŸ’° Amount: â‚¹{amount}\n\n(â„¹ï¸ Voucher creation is in preview mode. This was NOT saved to Tally.)"
         )
 
     def _handle_create_payment(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1403,7 +1403,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response=f"✅ I understand you want to create a PAYMENT.\n\n👤 To: {party}\n💰 Amount: ₹{amount}\n\n(ℹ️ Voucher creation is in preview mode. This was NOT saved to Tally.)"
+            formatted_response=f"âœ… I understand you want to create a PAYMENT.\n\nðŸ‘¤ To: {party}\nðŸ’° Amount: â‚¹{amount}\n\n(â„¹ï¸ Voucher creation is in preview mode. This was NOT saved to Tally.)"
         )
         
     def _handle_create_sale(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1415,7 +1415,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response=f"✅ I understand you want to create a SALE.\n\n👤 Customer: {party}\n📦 Item: {items} (Qty: {qty})\n\n(ℹ️ Voucher creation is in preview mode. This was NOT saved to Tally.)"
+            formatted_response=f"âœ… I understand you want to create a SALE.\n\nðŸ‘¤ Customer: {party}\nðŸ“¦ Item: {items} (Qty: {qty})\n\n(â„¹ï¸ Voucher creation is in preview mode. This was NOT saved to Tally.)"
         )
 
     def _handle_create_purchase(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1427,7 +1427,7 @@ class QueryOrchestrator:
         return OrchestrationResult(
             success=True,
             data={},
-            formatted_response=f"✅ I understand you want to create a PURCHASE.\n\n👤 Supplier: {party}\n📦 Item: {items} (Qty: {qty})\n\n(ℹ️ Voucher creation is in preview mode. This was NOT saved to Tally.)"
+            formatted_response=f"âœ… I understand you want to create a PURCHASE.\n\nðŸ‘¤ Supplier: {party}\nðŸ“¦ Item: {items} (Qty: {qty})\n\n(â„¹ï¸ Voucher creation is in preview mode. This was NOT saved to Tally.)"
         )
 
     def _handle_general(self, parsed: ParsedQuery) -> OrchestrationResult:
@@ -1436,15 +1436,15 @@ class QueryOrchestrator:
             success=True,
             data={"intent": "general"},
             formatted_response=(
-                "🤔 I'm not sure what you're looking for. Try asking:\n\n"
-                "📊 Outstanding from [Party Name]\n"
-                "📦 Stock of [Item Name]\n"
-                "📈 Last month revenue\n"
-                "📈 This month sales summary\n"
-                "🏆 Top 10 customers\n"
-                "🧾 Show invoice [Number]\n"
-                "💵 Cash balance\n"
-                "📋 Last 5 purchases"
+                "ðŸ¤” I'm not sure what you're looking for. Try asking:\n\n"
+                "ðŸ“Š Outstanding from [Party Name]\n"
+                "ðŸ“¦ Stock of [Item Name]\n"
+                "ðŸ“ˆ Last month revenue\n"
+                "ðŸ“ˆ This month sales summary\n"
+                "ðŸ† Top 10 customers\n"
+                "ðŸ§¾ Show invoice [Number]\n"
+                "ðŸ’µ Cash balance\n"
+                "ðŸ“‹ Last 5 purchases"
             )
         )
 
@@ -1485,3 +1485,4 @@ def get_supported_queries() -> List[str]:
         "Export January sales to Excel",
         "Send invoice as PDF",
     ]
+

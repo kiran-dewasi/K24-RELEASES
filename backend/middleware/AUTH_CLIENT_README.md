@@ -1,4 +1,4 @@
-# Token Refresh Middleware - Usage Guide
+﻿# Token Refresh Middleware - Usage Guide
 
 ## Overview
 
@@ -15,7 +15,7 @@ The `CloudAPIClient` middleware provides automatic JWT access token refresh for 
 ### Basic Usage
 
 ```python
-from backend.middleware.auth_client import get_cloud_client
+from middleware.auth_client import get_cloud_client
 
 # Get the singleton client instance
 client = get_cloud_client()
@@ -32,7 +32,7 @@ if response.status_code == 200:
 
 ```python
 from fastapi import APIRouter, Depends
-from backend.middleware.auth_client import CloudAPIClient, get_authenticated_cloud_client
+from middleware.auth_client import CloudAPIClient, get_authenticated_cloud_client
 
 router = APIRouter()
 
@@ -92,7 +92,7 @@ Low-level request method. Use verb methods instead for convenience.
 Returns the singleton `CloudAPIClient` instance.
 
 ```python
-from backend.middleware.auth_client import get_cloud_client
+from middleware.auth_client import get_cloud_client
 
 client = get_cloud_client()
 # or with custom URL
@@ -104,7 +104,7 @@ FastAPI dependency that provides an authenticated cloud client.
 
 ```python
 from fastapi import Depends
-from backend.middleware.auth_client import get_authenticated_cloud_client, CloudAPIClient
+from middleware.auth_client import get_authenticated_cloud_client, CloudAPIClient
 
 @app.get("/endpoint")
 async def endpoint(client: CloudAPIClient = Depends(get_authenticated_cloud_client)):
@@ -118,45 +118,45 @@ async def endpoint(client: CloudAPIClient = Depends(get_authenticated_cloud_clie
 
 ```
 1. Desktop makes request: GET /api/devices/status
-   ├─ Loads access_token from storage
-   └─ Adds header: Authorization: Bearer <access_token>
+   â”œâ”€ Loads access_token from storage
+   â””â”€ Adds header: Authorization: Bearer <access_token>
 
 2. Cloud responds: 401 - Token expired
 
 3. Middleware detects token expiry
-   └─ Calls: POST /api/devices/refresh
-      ├─ Body: { "refresh_token": "...", "device_id": "..." }
-      └─ Response: { "access_token": "new_token", "refresh_token": "new_refresh" }
+   â””â”€ Calls: POST /api/devices/refresh
+      â”œâ”€ Body: { "refresh_token": "...", "device_id": "..." }
+      â””â”€ Response: { "access_token": "new_token", "refresh_token": "new_refresh" }
 
 4. Middleware updates token storage
-   └─ save_tokens(new_access_token, new_refresh_token)
+   â””â”€ save_tokens(new_access_token, new_refresh_token)
 
 5. Middleware retries original request
-   └─ GET /api/devices/status (with new token)
+   â””â”€ GET /api/devices/status (with new token)
 
 6. Cloud responds: 200 OK
 
 7. Original caller receives successful response
-   └─ Transparent! No error seen by caller
+   â””â”€ Transparent! No error seen by caller
 ```
 
 ### Failure Scenario (Refresh Token Also Expired)
 
 ```
 1. Desktop makes request: GET /api/devices/status
-   └─ Access token expired
+   â””â”€ Access token expired
 
 2. Cloud responds: 401
 
 3. Middleware tries to refresh
-   └─ POST /api/devices/refresh
-      └─ Response: 401 - Refresh token also invalid
+   â””â”€ POST /api/devices/refresh
+      â””â”€ Response: 401 - Refresh token also invalid
 
 4. Middleware clears stored tokens
-   └─ clear_tokens()
+   â””â”€ clear_tokens()
 
 5. Original request returns 401
-   └─ Caller sees auth error and can prompt re-activation
+   â””â”€ Caller sees auth error and can prompt re-activation
 ```
 
 ## Configuration
@@ -242,12 +242,12 @@ pytest desktop/tests/test_auth_client.py --cov=backend.middleware.auth_client --
 #### Scenario 1: Valid Tokens
 1. Ensure `tokens.enc` exists with valid tokens
 2. Make a cloud API call via CloudAPIClient
-3. ✅ Request should succeed without refresh
+3. âœ… Request should succeed without refresh
 
 #### Scenario 2: Expired Access Token
 1. Store tokens with expired access_token
 2. Make a cloud API call
-3. ✅ Request should:
+3. âœ… Request should:
    - Get 401 on first attempt
    - Call refresh endpoint
    - Save new tokens
@@ -256,7 +256,7 @@ pytest desktop/tests/test_auth_client.py --cov=backend.middleware.auth_client --
 #### Scenario 3: Both Tokens Expired
 1. Store completely expired tokens
 2. Make a cloud API call
-3. ✅ Request should:
+3. âœ… Request should:
    - Get 401 on first attempt
    - Try refresh, get 401
    - Clear stored tokens
@@ -267,7 +267,7 @@ pytest desktop/tests/test_auth_client.py --cov=backend.middleware.auth_client --
 ### Example 1: Check Device Status
 
 ```python
-from backend.middleware.auth_client import get_cloud_client
+from middleware.auth_client import get_cloud_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -297,7 +297,7 @@ def check_device_status():
 ### Example 2: Polling for Jobs
 
 ```python
-from backend.middleware.auth_client import get_cloud_client
+from middleware.auth_client import get_cloud_client
 import time
 
 class WhatsAppPoller:
@@ -404,10 +404,10 @@ def complete_job(job_id, status, error_message=None):
 Always use `get_cloud_client()` instead of creating new instances:
 
 ```python
-# ✅ Good
+# âœ… Good
 client = get_cloud_client()
 
-# ❌ Bad - creates multiple sessions
+# âŒ Bad - creates multiple sessions
 client = CloudAPIClient()
 ```
 
@@ -416,12 +416,12 @@ client = CloudAPIClient()
 Always check the status code before parsing JSON:
 
 ```python
-# ✅ Good
+# âœ… Good
 response = client.get("/api/data")
 if response.status_code == 200:
     data = response.json()
 
-# ❌ Bad - may crash on error responses
+# âŒ Bad - may crash on error responses
 data = client.get("/api/data").json()
 ```
 
@@ -430,12 +430,12 @@ data = client.get("/api/data").json()
 Even with auto-refresh, both tokens can expire:
 
 ```python
-# ✅ Good
+# âœ… Good
 response = client.get("/api/data")
 if response.status_code == 401:
     prompt_user_to_reactivate()
 
-# ❌ Bad - assumes requests always succeed
+# âŒ Bad - assumes requests always succeed
 data = client.get("/api/data").json()
 ```
 
@@ -444,13 +444,13 @@ data = client.get("/api/data").json()
 Always log errors for debugging:
 
 ```python
-# ✅ Good
+# âœ… Good
 try:
     response = client.get("/api/data")
 except Exception as e:
     logger.error(f"Request failed: {e}", exc_info=True)
 
-# ❌ Bad - silent failures
+# âŒ Bad - silent failures
 try:
     response = client.get("/api/data")
 except:
@@ -463,3 +463,4 @@ except:
 - `desktop/services/device_service.py` - Device fingerprinting
 - `backend/routers/devices.py` - Device activation endpoint
 - `plan.md` - M3 T5 for implementation details
+

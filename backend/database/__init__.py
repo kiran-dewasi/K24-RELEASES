@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Shadow Database
 The high-speed local store that mirrors Tally.
 """
@@ -51,7 +51,7 @@ print(f"DEBUG: Initial DATABASE_URL: {DATABASE_URL}")
 try:
     engine = get_engine(DATABASE_URL)
 except Exception as e:
-    print(f"❌ Failed to create engine with {DATABASE_URL}: {e}")
+    print(f"âŒ Failed to create engine with {DATABASE_URL}: {e}")
     engine = get_engine(DEFAULT_DB)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -63,20 +63,20 @@ def init_db():
     """Create tables with robust fallback"""
     global engine, SessionLocal
     try:
-        print(f"🔄 Attempting DB Connection to: {engine.url}")
+        print(f"ðŸ”„ Attempting DB Connection to: {engine.url}")
         Base.metadata.create_all(bind=engine)
-        print("✅ DB Initialized Successfully.")
+        print("âœ… DB Initialized Successfully.")
     except Exception as e:
-        print(f"⚠️ DB Connection Failed: {e}")
+        print(f"âš ï¸ DB Connection Failed: {e}")
         if "sqlite" not in str(engine.url):
-            print("🔄 Switching to SQLite Fallback...")
+            print("ðŸ”„ Switching to SQLite Fallback...")
             engine = get_engine(DEFAULT_DB)
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
             try:
                 Base.metadata.create_all(bind=engine)
-                print("✅ SQLite Fallback Initialized.")
+                print("âœ… SQLite Fallback Initialized.")
             except Exception as ex:
-                print(f"❌ SQLite Fallback Failed: {ex}")
+                print(f"âŒ SQLite Fallback Failed: {ex}")
                 raise ex
         else:
             raise e
@@ -136,7 +136,7 @@ class Voucher(TenantMixin, Base):
     """Mirrors a Tally Voucher (Sales/Purchase)"""
     __tablename__ = "vouchers"
 
-    # ── Enterprise-grade data integrity: duplicates physically impossible ──
+    # â”€â”€ Enterprise-grade data integrity: duplicates physically impossible â”€â”€
     __table_args__ = (
         UniqueConstraint('tenant_id', 'guid', name='uq_voucher_tenant_guid'),
         Index('ix_voucher_is_deleted', 'is_deleted'),
@@ -169,13 +169,13 @@ class Voucher(TenantMixin, Base):
     # Linked Ledger Reference
     ledger_id = Column(Integer, ForeignKey("ledgers.id"), nullable=True)
 
-    # ── Line Items (populated during Tally sync, used by drawer/WhatsApp) ──
+    # â”€â”€ Line Items (populated during Tally sync, used by drawer/WhatsApp) â”€â”€
     # inventory_entries: [{name, quantity, rate, amount, godown}]
     # ledger_entries:    [{name, amount, is_tax}]
     inventory_entries = Column(JSON, nullable=True)
     ledger_entries = Column(JSON, nullable=True)
 
-    # ── Soft Delete (Enterprise-grade: never lose audit trail) ──
+    # â”€â”€ Soft Delete (Enterprise-grade: never lose audit trail) â”€â”€
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
     deleted_source = Column(String, nullable=True)  # "tally_sync", "user", "api"
@@ -289,7 +289,7 @@ class Bill(TenantMixin, Base):
 
 
 # Import Encryptor
-from backend.database.encryption import encryptor
+from database.encryption import encryptor
 
 class Company(TenantMixin, Base):
     """Company/Organization details"""
@@ -518,3 +518,4 @@ class DeviceLicense(TenantMixin, Base):
     last_heartbeat = Column(DateTime, default=datetime.now)
     
     created_at = Column(DateTime, default=datetime.now)
+

@@ -1,4 +1,4 @@
-# K24 AI Agent - Error Handler with Retry Logic
+﻿# K24 AI Agent - Error Handler with Retry Logic
 # ===============================================
 # Implements exponential backoff, retry policies, and fallback strategies
 
@@ -254,7 +254,7 @@ class AgentErrorHandler:
                 "Select from suggestions or create new ledger?"
             ],
             K24ErrorCode.INVALID_AMOUNT: [
-                f"Amount must be between ₹0 and ₹{context.get('max_limit', '1,00,00,000')}.",
+                f"Amount must be between â‚¹0 and â‚¹{context.get('max_limit', '1,00,00,000')}.",
                 "Edit amount and try again.",
                 f"You entered: {context.get('amount', 'Unknown')}"
             ],
@@ -270,7 +270,7 @@ class AgentErrorHandler:
             ],
             K24ErrorCode.MALFORMED_REQUEST: [
                 "Your message format is unclear.",
-                "Try: 'Create invoice for ABC Corp ₹50,000 with 18% GST'",
+                "Try: 'Create invoice for ABC Corp â‚¹50,000 with 18% GST'",
                 "Rephrase and try again"
             ],
             K24ErrorCode.MESSAGE_TOO_LONG: [
@@ -290,7 +290,7 @@ class AgentErrorHandler:
             ],
             K24ErrorCode.CREDIT_LIMIT_EXCEEDED: [
                 "Customer credit limit exceeded.",
-                f"Limit: ₹{context.get('credit_limit', 'Unknown')} | Outstanding: ₹{context.get('outstanding', 'Unknown')}",
+                f"Limit: â‚¹{context.get('credit_limit', 'Unknown')} | Outstanding: â‚¹{context.get('outstanding', 'Unknown')}",
                 "Request approval from Finance Manager"
             ],
             K24ErrorCode.REVERSE_CHARGE_APPLICABLE: [
@@ -376,7 +376,7 @@ class FallbackStrategies:
         Generate XML using template when Gemini fails.
         Simple but reliable fallback.
         """
-        from backend.tally_xml_builder import build_voucher_xml
+        from tally_xml_builder import build_voucher_xml
         
         logger.info("Using template-based XML generation as fallback")
         
@@ -509,3 +509,4 @@ if __name__ == "__main__":
         print(f"Classified as: {agent_error.code.value}")
         print(f"Suggestions: {agent_error.suggestions}")
         print(f"Retryable: {agent_error.retry_available}")
+

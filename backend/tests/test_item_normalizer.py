@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for backend.services.item_normalizer
 
 Run with:
@@ -6,7 +6,7 @@ Run with:
 """
 
 import pytest
-from backend.services.item_normalizer import (
+from services.item_normalizer import (
     ItemCatalogEntry,
     CompanySettings,
     NormalizedMappingResult,
@@ -20,9 +20,9 @@ from backend.services.item_normalizer import (
 )
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Fixtures
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @pytest.fixture
 def catalog():
@@ -59,9 +59,9 @@ def lenient_settings():
     )
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Unit helpers
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestHelpers:
 
@@ -124,13 +124,13 @@ class TestHelpers:
         assert brand is None
 
 
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Core mapping tests
-# ──────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class TestNormalizeAndMapItem:
 
-    # ── USE_EXISTING scenarios ───────────────────────────────────────────
+    # â”€â”€ USE_EXISTING scenarios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def test_exact_base_name_maps_to_existing(self, catalog, strict_settings):
         res = normalize_and_map_item("Jeera", 1.0, "kg", catalog, strict_settings)
@@ -139,14 +139,14 @@ class TestNormalizeAndMapItem:
         assert "jeera" in res.normalized_base_name
 
     def test_brand_prefix_stripped_still_maps(self, catalog, strict_settings):
-        """'MDH Jeera' → maps to Jeera (id=1), brand='mdh'"""
+        """'MDH Jeera' â†’ maps to Jeera (id=1), brand='mdh'"""
         res = normalize_and_map_item("MDH Jeera", 1.0, "kg", catalog, strict_settings)
         assert res.action == "USE_EXISTING"
         assert res.chosen_item_id == 1
         assert res.brand_candidate == "mdh"
 
     def test_brand_and_size_stripped_correctly(self, catalog, strict_settings):
-        """'JD Jeera 50kg' → maps to Jeera, brand='jd', size='50kg'"""
+        """'JD Jeera 50kg' â†’ maps to Jeera, brand='jd', size='50kg'"""
         res = normalize_and_map_item("JD Jeera 50kg", 1.0, "kg", catalog, strict_settings)
         assert res.action == "USE_EXISTING"
         assert res.chosen_item_id == 1
@@ -155,20 +155,20 @@ class TestNormalizeAndMapItem:
         assert "50" in res.size_info
 
     def test_tata_salt_maps_to_namak(self, catalog, strict_settings):
-        """'Tata Salt 1kg' → maps to Namak (id=4)"""
+        """'Tata Salt 1kg' â†’ maps to Namak (id=4)"""
         res = normalize_and_map_item("Tata Salt 1kg", 1.0, "kg", catalog, strict_settings)
         # "Salt" and "Namak" may score medium; at least should not CREATE_NEW
         assert res.action in ("USE_EXISTING", "NEEDS_REVIEW")
         assert res.brand_candidate == "tata"
 
     def test_loose_qualifier_stripped(self, catalog, strict_settings):
-        """'Loose Jeera' → strips 'loose', maps to Jeera"""
+        """'Loose Jeera' â†’ strips 'loose', maps to Jeera"""
         res = normalize_and_map_item("Loose Jeera", 1.0, "kg", catalog, strict_settings)
         assert res.action == "USE_EXISTING"
         assert res.chosen_item_id == 1
 
     def test_patanjali_atta_maps_to_atta(self, catalog, strict_settings):
-        """'Patanjali Atta 10kg' → maps to Atta (id=5)"""
+        """'Patanjali Atta 10kg' â†’ maps to Atta (id=5)"""
         res = normalize_and_map_item("Patanjali Atta 10kg", 10.0, "kg", catalog, strict_settings)
         assert res.action in ("USE_EXISTING", "NEEDS_REVIEW")
 
@@ -180,30 +180,30 @@ class TestNormalizeAndMapItem:
         res = normalize_and_map_item("Jeera", 1.0, "kg", catalog, strict_settings)
         assert 0.0 <= res.confidence <= 1.0
 
-    # ── Unit incompatibility → NEEDS_REVIEW ─────────────────────────────
+    # â”€â”€ Unit incompatibility â†’ NEEDS_REVIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def test_unit_mismatch_causes_review(self, catalog, strict_settings):
-        """Jeera matched by name but OCR says 'pcs' — incompatible units"""
+        """Jeera matched by name but OCR says 'pcs' â€” incompatible units"""
         res = normalize_and_map_item("Jeera", 10.0, "pcs", catalog, strict_settings)
         assert res.action == "NEEDS_REVIEW"
         assert "incompatible" in res.reasoning.lower()
 
     def test_kg_gm_compatible(self, catalog, strict_settings):
-        """Jeera with 'gm' unit → compatible with catalog 'kg'"""
+        """Jeera with 'gm' unit â†’ compatible with catalog 'kg'"""
         res = normalize_and_map_item("Jeera", 500.0, "gm", catalog, strict_settings)
         assert res.action == "USE_EXISTING"
         assert res.chosen_item_id == 1
 
-    # ── CREATE_NEW / NEEDS_REVIEW for truly unknown items ────────────────
+    # â”€â”€ CREATE_NEW / NEEDS_REVIEW for truly unknown items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def test_totally_unknown_item_strict_gives_review(self, catalog, strict_settings):
-        """'Bluetooth Speaker' → nothing in catalog → NEEDS_REVIEW (brand items not allowed)"""
+        """'Bluetooth Speaker' â†’ nothing in catalog â†’ NEEDS_REVIEW (brand items not allowed)"""
         res = normalize_and_map_item("Bluetooth Speaker", 1.0, "pcs", catalog, strict_settings)
         assert res.action == "NEEDS_REVIEW"
         assert res.chosen_item_id is None
 
     def test_totally_unknown_item_lenient_creates_new(self, catalog, lenient_settings):
-        """'Bluetooth Speaker' → nothing in catalog → CREATE_NEW (brand items allowed)"""
+        """'Bluetooth Speaker' â†’ nothing in catalog â†’ CREATE_NEW (brand items allowed)"""
         res = normalize_and_map_item("Bluetooth Speaker", 1.0, "pcs", catalog, lenient_settings)
         assert res.action == "CREATE_NEW"
         assert res.chosen_item_id is None
@@ -213,7 +213,7 @@ class TestNormalizeAndMapItem:
         assert res.action in ("NEEDS_REVIEW", "CREATE_NEW")
         assert res.chosen_item_id is None
 
-    # ── Robustness / edge cases ──────────────────────────────────────────
+    # â”€â”€ Robustness / edge cases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def test_all_caps_input(self, catalog, strict_settings):
         res = normalize_and_map_item("MDH JEERA", 1.0, "KG", catalog, strict_settings)
@@ -251,10 +251,10 @@ class TestNormalizeAndMapItem:
         if res.action == "USE_EXISTING":
             assert res.chosen_item_id == 12
 
-    # ── Multi-candidate ambiguity ────────────────────────────────────────
+    # â”€â”€ Multi-candidate ambiguity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def test_ambiguous_dal_in_lenient_mode(self, catalog, lenient_settings):
-        """'Dal' matches both Moong Dal and Chana Dal; lenient multi-item mode → NEEDS_REVIEW"""
+        """'Dal' matches both Moong Dal and Chana Dal; lenient multi-item mode â†’ NEEDS_REVIEW"""
         res = normalize_and_map_item("Dal", 1.0, "kg", catalog, lenient_settings)
         # Either returns top candidate (strict) or asks for review (lenient)
         assert res.action in ("USE_EXISTING", "NEEDS_REVIEW")
@@ -267,7 +267,7 @@ class TestNormalizeAndMapItem:
         if res.action == "USE_EXISTING":
             assert res.chosen_item_id in (7, 8)   # Moong or Chana Dal
 
-    # ── find_similar_items unit test ─────────────────────────────────────
+    # â”€â”€ find_similar_items unit test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def test_find_similar_items_returns_sorted(self, catalog):
         results = find_similar_items("jeera", catalog, top_k=3)
@@ -279,3 +279,4 @@ class TestNormalizeAndMapItem:
         results = find_similar_items("jeera", catalog, top_k=5)
         top_item = results[0][0]
         assert "jeera" in top_item.normalized_name.lower()
+

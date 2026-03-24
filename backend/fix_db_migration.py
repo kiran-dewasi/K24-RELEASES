@@ -1,4 +1,4 @@
-from backend.database import engine
+﻿from database import engine
 from sqlalchemy import text
 
 def migrate_db():
@@ -42,3 +42,4 @@ def migrate_db():
 
 if __name__ == "__main__":
     migrate_db()
+

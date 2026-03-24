@@ -1,4 +1,4 @@
-"""
+﻿"""
 Token Refresh Middleware for Desktop Backend
 
 This module provides HTTP client utilities that automatically handle JWT
@@ -13,7 +13,7 @@ Features:
 - Handles refresh failures gracefully
 
 Usage:
-    from backend.middleware.auth_client import get_cloud_client
+    from middleware.auth_client import get_cloud_client
     
     client = get_cloud_client()
     response = client.get("/api/devices/status")
@@ -224,7 +224,7 @@ class CloudAPIClient:
                     return False
                 
                 # Save new tokens
-                logger.info("✅ Token refresh successful - updating storage")
+                logger.info("âœ… Token refresh successful - updating storage")
                 self._save_tokens(new_access_token, new_refresh_token)
                 return True
             
@@ -399,3 +399,4 @@ def get_authenticated_cloud_client() -> CloudAPIClient:
         # We don't raise here - let the actual API call fail with proper error
     
     return client
+

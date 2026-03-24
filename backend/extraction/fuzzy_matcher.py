@@ -1,4 +1,4 @@
-"""
+﻿"""
 K24 Parameter Extraction - Fuzzy Matching
 ==========================================
 Fuzzy matching for ledger names with min ratio 0.80.
@@ -7,7 +7,7 @@ Fuzzy matching for ledger names with min ratio 0.80.
 import difflib
 from typing import List, Tuple, Optional
 import logging
-from backend.database import SessionLocal, Ledger
+from database import SessionLocal, Ledger
 
 logger = logging.getLogger(__name__)
 
@@ -173,3 +173,4 @@ def get_ledger_details(ledger_name: str) -> Optional[dict]:
         return None
     finally:
         db.close()
+

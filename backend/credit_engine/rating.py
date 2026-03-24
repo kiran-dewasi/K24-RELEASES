@@ -1,19 +1,19 @@
-"""
-Credit Engine — Rating Module
+﻿"""
+Credit Engine â€” Rating Module
 ==============================
 Computes how many credits a given event should consume by looking up
 the active rule in the `credit_rules` table.
 
 All credit math lives here. If you need to change a credit cost,
-update the DB row in `credit_rules` — not this file.
+update the DB row in `credit_rules` â€” not this file.
 """
 
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 
-from backend.database.supabase_client import supabase  # noqa: E402
-from backend.credit_engine.models import EventType, EventSubtype
+from database.supabase_client import supabase  # noqa: E402
+from credit_engine.models import EventType, EventSubtype
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def _load_rules_into_cache() -> None:
 
     except Exception as exc:
         logger.error(f"[CreditRating] Failed to load credit rules: {exc}")
-        # Keep stale cache rather than crashing — fail open with 0 credits
+        # Keep stale cache rather than crashing â€” fail open with 0 credits
         if _CACHE_LOADED_AT is None:
             _RULE_CACHE = {}
 
@@ -98,7 +98,7 @@ def compute_credits(
         metadata:      Optional context (reserved for future conditional rules).
 
     Returns:
-        Number of credits to consume (0.0 if no rule found → free by default).
+        Number of credits to consume (0.0 if no rule found â†’ free by default).
 
     Notes:
         - Results are cached for _CACHE_TTL_SECONDS to avoid per-event DB hits.
@@ -110,14 +110,14 @@ def compute_credits(
     key     = _cache_key(event_type, event_subtype)
     credits = _RULE_CACHE.get(key, 0.0)
 
-    # ── Future hook: apply condition-based multipliers ───────────────────────
+    # â”€â”€ Future hook: apply condition-based multipliers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Example: multi-page documents could cost page_count * base_rate
     #   if event_type == "DOCUMENT" and metadata and "page_count" in metadata:
     #       multiplier = metadata["page_count"]
     #       credits *= multiplier
-    # ─────────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    logger.debug(f"[CreditRating] {event_type}/{event_subtype} → {credits} credits")
+    logger.debug(f"[CreditRating] {event_type}/{event_subtype} â†’ {credits} credits")
     return credits
 
 
@@ -129,3 +129,4 @@ def invalidate_rule_cache() -> None:
     global _CACHE_LOADED_AT
     _CACHE_LOADED_AT = None
     logger.info("[CreditRating] Rule cache invalidated.")
+

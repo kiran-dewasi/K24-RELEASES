@@ -1,10 +1,10 @@
-
+﻿
 import asyncio
 import logging
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, ValidationError
 from langchain_google_genai import ChatGoogleGenerativeAI
-from backend.ai_engine.router import router
+from ai_engine.router import router
 
 logger = logging.getLogger("Orchestrator")
 
@@ -37,9 +37,9 @@ class GeminiOrchestrator:
                 response = await model.ainvoke(messages)
                 return response
             except Exception as e:
-                logger.warning(f"⚠️ Gemini API Attempt {attempt + 1} failed: {e}")
+                logger.warning(f"âš ï¸ Gemini API Attempt {attempt + 1} failed: {e}")
                 if attempt == self.max_retries - 1:
-                    logger.error("❌ All Gemini retries failed.")
+                    logger.error("âŒ All Gemini retries failed.")
                     # Return a fallback message or raise
                     from langchain_core.messages import AIMessage
                     return AIMessage(content="I'm having trouble connecting to my brain (Google Gemini). Please try again in a moment.")
@@ -72,3 +72,4 @@ class GeminiOrchestrator:
 
 # Singleton
 orchestrator = GeminiOrchestrator()
+

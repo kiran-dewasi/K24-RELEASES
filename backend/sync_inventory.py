@@ -1,5 +1,5 @@
-from backend.database import SessionLocal, StockItem, InventoryEntry
-from backend.tally_reader import TallyReader
+﻿from database import SessionLocal, StockItem, InventoryEntry
+from tally_reader import TallyReader
 import logging
 
 logger = logging.getLogger("InventorySync")
@@ -50,7 +50,7 @@ def sync_tally_stock_items(tenant_id="TENANT-12345"):
                     # HSN/GST currently not fetched in summary
                 )
                 db.add(new_item)
-                print(f"➕ Created Item: {name}")
+                print(f"âž• Created Item: {name}")
             else:
                 # Update
                 existing.closing_balance = item.get("closing_balance", 0.0)
@@ -58,16 +58,17 @@ def sync_tally_stock_items(tenant_id="TENANT-12345"):
                 existing.units = item.get("units")
                 existing.cost_price = cost
                 existing.selling_price = price
-                # print(f"🔄 Updated Item: {name}") # Too noisy
+                # print(f"ðŸ”„ Updated Item: {name}") # Too noisy
                 
             count += 1
             
         db.commit()
         db.close()
-        print(f"✅ Synced {count} Stock Items from Tally.")
+        print(f"âœ… Synced {count} Stock Items from Tally.")
         
     except Exception as e:
-        print(f"❌ Inventory Sync Failed: {e}")
+        print(f"âŒ Inventory Sync Failed: {e}")
 
 if __name__ == "__main__":
     sync_tally_stock_items()
+
