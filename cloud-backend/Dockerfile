@@ -15,11 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Debug - show what got copied
-RUN ls -la /app/ && ls -la /app/routers/ && cat /app/routers/auth.py | head -8 && cat /app/database/__init__.py | head -20
-
-
-# Expose port
 EXPOSE 8080
 
 # Health check
