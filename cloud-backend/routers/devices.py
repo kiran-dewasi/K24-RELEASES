@@ -53,8 +53,8 @@ async def register_device(
     Register device after web authentication.
     Returns a SIGNED socket_token (JWT) for secure Socket.IO auth.
     """
-    from backend.auth import create_socket_token
-    from backend.database import User
+    from auth import create_socket_token
+    from database import User
 
     # Input validation
     device_id = payload.get("device_id")

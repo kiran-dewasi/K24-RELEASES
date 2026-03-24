@@ -7,10 +7,10 @@ import os
 import asyncio
 from typing import Optional, List
 
-from backend.database import get_db, Ledger, Tenant, User
-from backend.auth import get_current_tenant_id
-from backend.tools.invoice_tool import invoice_tool
-# from backend.graph import run_agent # Avoiding circular import if possible, or lazy import
+from database import get_db, Ledger, Tenant, User
+from auth import get_current_tenant_id
+from tools.invoice_tool import invoice_tool
+# from graph import run_agent # Avoiding circular import if possible, or lazy import
 import google.generativeai as genai
 
 logger = logging.getLogger("baileys")
@@ -79,7 +79,7 @@ async def process_baileys_message(
         
         # ============ STEP 1: STRICT TENANT LOOKUP ============
         # Priority 1: Check if it's a Dashboard User (Personal Assistant Mode)
-        from backend.database import WhatsAppMapping
+        from database import WhatsAppMapping
         
         user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
         
@@ -117,7 +117,7 @@ async def process_baileys_message(
             else:
                 # Priority 3: Unknown -> Trigger Onboarding
                 logger.info(f"🆕 Unmapped user: {sender_phone}. Triggering onboarding.")
-                from backend.routers.onboarding_utils import handle_onboarding
+                from routers.onboarding_utils import handle_onboarding
                 
                 response_text = await handle_onboarding(db, sender_phone, message_text)
                 return {
@@ -134,7 +134,7 @@ async def process_baileys_message(
         
         # ============ STEP 3: PASS TO AGENT ============
         try:
-            from backend.graph import run_agent
+            from graph import run_agent
             agent_result = await run_agent(
                 message_text=message_text,
                 thread_id=sender_phone,
@@ -144,7 +144,7 @@ async def process_baileys_message(
             
             # PERSISTENCE: Log to ChatHistory
             try:
-                from backend.database import ChatHistory
+                from database import ChatHistory
                 log_entry = ChatHistory(
                     tenant_id=tenant_id,
                     user_phone=sender_phone,
@@ -215,7 +215,7 @@ async def process_batch(
         
         # ============ TENANT LOOKUP ============
         # Handle both phone numbers and LID (Linked ID) format
-        from backend.database import WhatsAppMapping
+        from database import WhatsAppMapping
         
         # Normalize the sender_phone - could be phone number or LID
         is_lid_format = len(sender_phone) > 15 or not sender_phone.startswith('9')
@@ -250,7 +250,7 @@ async def process_batch(
                     logger.warning(f"⚠️ LID format detected: {sender_phone}")
                     
                     # Check if there's a default tenant we can use
-                    from backend.database import Tenant
+                    from database import Tenant
                     default_tenant = db.query(Tenant).first()
                     if default_tenant:
                         tenant_id = default_tenant.id
@@ -293,7 +293,7 @@ async def process_batch(
             }
         
         # ============ USE BULK PROCESSOR WITH AUTO-EXECUTION ============
-        from backend.services.bulk_processor import BulkBillProcessor
+        from services.bulk_processor import BulkBillProcessor
         
         processor = BulkBillProcessor(max_concurrent=10)
         api_key = os.getenv("GOOGLE_API_KEY")
