@@ -1,442 +1,437 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
-import { Loader2, Monitor, Globe, CheckCircle, ShieldCheck, Key, ArrowRight, ChevronRight, Lock } from "lucide-react";
+import type { FormEvent, ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+    ArrowRight,
+    Building2,
+    CheckCircle,
+    Loader2,
+    Lock,
+    Mail,
+    Monitor,
+    ShieldCheck,
+    User,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { open } from "@tauri-apps/plugin-shell";
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { invoke } from "@tauri-apps/api/core";
-
-// Helper to detect if running in Tauri
-const isTauri = () => typeof window !== "undefined" && "__TAURI__" in window;
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ConnectDeviceProps {
     onAuthenticated: () => void;
 }
 
-export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
-    const [status, setStatus] = useState<"idle" | "waiting" | "validating" | "success" | "error">("idle");
-    const [errorMsg, setErrorMsg] = useState("");
-    const [manualKey, setManualKey] = useState("");
-    const [manualTenantId, setManualTenantId] = useState("");
-    const [manualUserId, setManualUserId] = useState("");
-    const [showManual, setShowManual] = useState(false);
-    const [mounted, setMounted] = useState(false);
+type AuthMode = "login" | "signup";
 
-    // Ensure we only render the portal on the client
-    useEffect(() => {
-        setMounted(true);
-        // Prevent scrolling on body when locked
-        document.body.style.overflow = 'hidden';
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, []);
-
-    useEffect(() => {
-        let unlisten: (() => void) | undefined;
-
-        const setupListener = async () => {
-            if (!isTauri()) return;
-
-            try {
-                console.log("Setting up deep link listener...");
-                unlisten = await onOpenUrl((urls) => {
-                    console.log("Deep link received:", urls);
-                    for (const url of urls) {
-                        if (url.startsWith("k24://auth/callback")) {
-                            handleCallback(url);
-                        }
-                    }
-                });
-            } catch (e) {
-                console.error("Deep link listener error:", e);
-            }
-        };
-
-        setupListener();
-
-        return () => {
-            if (unlisten) unlisten();
-        };
-    }, []);
-
-    const handleCallback = async (url: string) => {
-        try {
-            setStatus("validating");
-            const urlObj = new URL(url);
-            const licenseKey = urlObj.searchParams.get("license_key");
-            const userId = urlObj.searchParams.get("user_id");
-            const tenantId = urlObj.searchParams.get("tenant_id");
-
-            if (!licenseKey) {
-                throw new Error("Invalid callback: missing license_key");
-            }
-
-            await activateLicense(licenseKey, userId || "", tenantId || "");
-
-        } catch (e: any) {
-            setStatus("error");
-            setErrorMsg(e.message);
-        }
+type AuthResponse = {
+    access_token: string;
+    token_type: string;
+    user: {
+        id: number | string;
+        email: string;
+        username: string;
+        full_name: string;
+        role: string;
+        company_id: number | null;
+        tenant_id?: string | null;
     };
+};
 
-    const activateLicense = async (licenseKey: string, userId: string = "", tenantId: string = "") => {
+type DeviceRegisterResponse = {
+    license_key: string;
+    socket_token?: string;
+    tenant_id?: string | null;
+};
+
+const CLOUD_API =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "https://weare-production.up.railway.app";
+
+const APP_VERSION = "1.0.1";
+
+function deriveUsername(email: string) {
+    const base = email.split("@")[0] || "k24user";
+    return base.replace(/[^a-zA-Z0-9._-]/g, "") || "k24user";
+}
+
+function deriveFullName(email: string, companyName: string) {
+    const local = email.split("@")[0] || "";
+    const humanized = local
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+
+    return humanized || companyName || "K24 User";
+}
+
+function getOrCreateDeviceId() {
+    const existing = localStorage.getItem("k24_device_id");
+    if (existing) return existing;
+
+    const deviceId = crypto.randomUUID();
+    localStorage.setItem("k24_device_id", deviceId);
+    return deviceId;
+}
+
+export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
+    const [activeTab, setActiveTab] = useState<AuthMode>("login");
+    const [status, setStatus] = useState<"idle" | "submitting" | "success">("idle");
+    const [error, setError] = useState("");
+
+    const [loginForm, setLoginForm] = useState({
+        email: "",
+        password: "",
+    });
+
+    const [signupForm, setSignupForm] = useState({
+        email: "",
+        password: "",
+        company_name: "",
+        full_name: "",
+    });
+
+    useEffect(() => {
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            document.body.style.overflow = "unset";
+        };
+    }, []);
+
+    const isSubmitting = status === "submitting";
+    const isSuccess = status === "success";
+
+    const signupPayload = useMemo(() => {
+        const email = signupForm.email.trim();
+        const companyName = signupForm.company_name.trim();
+        const fullName = signupForm.full_name.trim() || deriveFullName(email, companyName);
+
+        return {
+            email,
+            password: signupForm.password,
+            company_name: companyName,
+            full_name: fullName,
+            username: deriveUsername(email),
+        };
+    }, [signupForm]);
+
+    async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
+        const response = await fetch(`${CLOUD_API}${path}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await response
+            .json()
+            .catch(() => ({ detail: "Request failed" }));
+
+        if (!response.ok) {
+            throw new Error(
+                typeof data?.detail === "string"
+                    ? data.detail
+                    : `Request failed with status ${response.status}`
+            );
+        }
+
+        return data as T;
+    }
+
+    async function completeDeviceAuth(authData: AuthResponse) {
+        const deviceId = getOrCreateDeviceId();
+        const userId = String(authData.user.id);
+
+        const deviceData = await postJson<DeviceRegisterResponse>("/api/devices/register", {
+            device_id: deviceId,
+            user_id: userId,
+            app_version: APP_VERSION,
+        });
+
+        const tenantId = deviceData.tenant_id ?? authData.user.tenant_id ?? null;
+
+        localStorage.setItem("k24_token", authData.access_token);
+        localStorage.setItem("k24_license_key", deviceData.license_key);
+        localStorage.setItem(
+            "k24_user",
+            JSON.stringify({
+                user_id: userId,
+                tenant_id: tenantId,
+            })
+        );
+        localStorage.setItem("k24_user_id", userId);
+
+        if (deviceData.socket_token) {
+            localStorage.setItem("k24_socket_token", deviceData.socket_token);
+        }
+
+        document.cookie = `k24_token=${authData.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+
+        setStatus("success");
+        window.setTimeout(() => {
+            onAuthenticated();
+        }, 900);
+    }
+
+    function getErrorMessage(error: unknown, fallback: string) {
+        if (error instanceof Error && error.message) {
+            return error.message;
+        }
+
+        if (typeof error === "string" && error) {
+            return error;
+        }
+
+        return fallback;
+    }
+
+    async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setError("");
+        setStatus("submitting");
+
         try {
-            setStatus("validating");
-
-            // CLOUD: Use Railway URL for device activation (auth/subscription)
-            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://weare-production.up.railway.app";
-
-            // Build headers - only include dev bypass in development builds
-            const headers: Record<string, string> = {
-                "Content-Type": "application/json"
-            };
-
-            // DEV ONLY: Add X-Dev-Mode header to bypass desktop token validation
-            // This header is ONLY sent in development builds (NODE_ENV === 'development')
-            // Production builds will never include this header
-            if (process.env.NODE_ENV === 'development') {
-                headers["X-Dev-Mode"] = "true";
-            }
-
-            const response = await fetch(`${backendUrl}/api/devices/activate`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                    license_key: licenseKey,
-                    tenant_id: tenantId || undefined,
-                    user_id: userId || undefined
-                })
+            const authData = await postJson<AuthResponse>("/api/auth/login", {
+                email: loginForm.email.trim(),
+                password: loginForm.password,
             });
 
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({ detail: "Activation failed" }));
-                const errorMessage = data.detail || "Activation failed";
-
-                // Show user-friendly error messages
-                if (response.status === 401) {
-                    throw new Error("Invalid or expired license key");
-                } else if (response.status === 402) {
-                    throw new Error("Subscription expired. Please renew your subscription.");
-                } else if (response.status === 503) {
-                    throw new Error("Unable to connect to activation server. Please check your internet connection.");
-                } else {
-                    throw new Error(errorMessage);
-                }
-            }
-
-            const data = await response.json();
-
-            // Extract data from response
-            const activatedTenantId = data.tenant_id;
-            const activatedUserId = data.user_id;
-
-            // Store activation details in k24_user as single source of truth
-            const userData = {
-                user_id: activatedUserId,
-                tenant_id: activatedTenantId
-            };
-            localStorage.setItem("k24_user", JSON.stringify(userData));
-
-            // Keep legacy k24_user_id for backward compatibility if needed
-            if (activatedUserId) {
-                localStorage.setItem("k24_user_id", activatedUserId);
-            }
-            localStorage.setItem("k24_license_key", licenseKey);
-
-            setStatus("success");
-            setTimeout(() => {
-                onAuthenticated();
-            }, 2000);
-
-        } catch (e: any) {
-            setStatus("error");
-            setErrorMsg(e.message || "An unexpected error occurred");
+            await completeDeviceAuth(authData);
+        } catch (err: unknown) {
+            setStatus("idle");
+            setError(getErrorMessage(err, "Unable to sign in."));
         }
-    };
+    }
 
-    const handleManualSubmit = () => {
-        if (!manualKey) {
-            setErrorMsg("Please enter a valid license key");
-            return;
-        }
-        activateLicense(manualKey.trim(), manualUserId.trim(), manualTenantId.trim());
-    };
-
-    // DEV ONLY: Fill in test credentials for local testing
-    // This function is only called from the dev-only button below (gated by NODE_ENV check)
-    const useTestCredentials = () => {
-        setManualKey("TEST_LICENSE_001");
-        setManualTenantId("TENANT-e9dbb826");
-        setManualUserId("e9dbb826-5892-43c3-91e6-78900e93f687");
-    };
-
-    const startConnection = async () => {
-        setStatus("waiting");
-        setErrorMsg("");
+    async function handleSignupSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setError("");
+        setStatus("submitting");
 
         try {
-            // Get backend info (including dynamic port)
-            let backendPort = "8000"; // Default for tests
-            if (isTauri()) {
-                try {
-                    await invoke('start_backend');
-                } catch (e) {
-                    console.warn("Sidecar start skipped", e);
-                }
-                // Force port 8000 for dev environment
-            }
-
-            let deviceId = localStorage.getItem("k24_device_id");
-            if (!deviceId) {
-                deviceId = crypto.randomUUID();
-                localStorage.setItem("k24_device_id", deviceId);
-            }
-
-            const appVersion = "1.0.1";
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://k24.ai";
-            const authUrl = `${baseUrl}/auth/desktop?device_id=${deviceId}&app_version=${appVersion}&port=${backendPort}`;
-
-            // Store port for later use
-            sessionStorage.setItem("k24_backend_port", String(backendPort));
-
-            if (isTauri()) {
-                // Explicitly import open from tauri/shell for v2
-                const { open } = await import("@tauri-apps/plugin-shell");
-                await open(authUrl);
-            } else {
-                window.open(authUrl, "_blank");
-            }
-
-            // Also set it for manual copy
-            setManualKey(authUrl);
-
-        } catch (e: any) {
-            console.error(e);
-            setStatus("error");
-            setErrorMsg("Could not open browser. Please check your connection.");
+            const authData = await postJson<AuthResponse>("/api/auth/register", signupPayload);
+            await completeDeviceAuth(authData);
+        } catch (err: unknown) {
+            setStatus("idle");
+            setError(getErrorMessage(err, "Unable to create your account."));
         }
-    };
+    }
 
-    // The Content Component
-    const Content = () => (
-        <div
-            className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#0f172a] text-white"
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 999999,
-                backgroundColor: '#0f172a',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-            }}
-        >
-            {/* Ambient Background */}
+    return (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center overflow-auto bg-[#0f172a] text-white">
             <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-600/20 blur-[120px] animate-pulse-slow" />
-                <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-cyan-600/10 blur-[120px]" />
+                <div className="absolute left-[-10%] top-[-20%] h-[60%] w-[60%] rounded-full bg-indigo-600/20 blur-[120px]" />
+                <div className="absolute bottom-[-20%] right-[-10%] h-[60%] w-[60%] rounded-full bg-cyan-600/10 blur-[120px]" />
                 <div className="absolute inset-0 bg-[url('/grid-pattern.svg')] opacity-[0.03]" />
             </div>
 
-            <div className="relative z-10 w-full max-w-5xl h-[600px] flex rounded-3xl overflow-hidden shadow-2xl border border-white/5 bg-black/40 backdrop-blur-xl ring-1 ring-white/10 m-4">
-
-                {/* Left Side: Visuals & Branding */}
-                <div className="hidden lg:flex w-5/12 relative flex-col justify-between p-12 bg-gradient-to-br from-indigo-950/50 to-slate-900/50">
+            <div className="relative z-10 m-4 flex min-h-[640px] w-full max-w-5xl overflow-hidden rounded-3xl border border-white/5 bg-black/40 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl">
+                <div className="relative hidden w-5/12 flex-col justify-between bg-gradient-to-br from-indigo-950/50 to-slate-900/50 p-12 lg:flex">
                     <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.8))]" />
 
                     <div className="relative z-10">
-                        <div className="h-10 w-10 bg-indigo-500 rounded-lg flex items-center justify-center mb-6 shadow-lg shadow-indigo-500/20">
+                        <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500 shadow-lg shadow-indigo-500/20">
                             <Monitor className="h-6 w-6 text-white" />
                         </div>
-                        <h1 className="text-3xl font-bold tracking-tight text-white mb-2">
+                        <h1 className="mb-2 text-3xl font-bold tracking-tight text-white">
                             K24 Enterprise
                         </h1>
-                        <p className="text-indigo-200/80 font-light">
+                        <p className="font-light text-indigo-200/80">
                             Intelligent Business Operating System
                         </p>
                     </div>
 
                     <div className="relative z-10 space-y-6">
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm">
-                            <ShieldCheck className="h-5 w-5 text-emerald-400 mt-1" />
+                        <div className="flex items-start gap-4 rounded-xl border border-white/5 bg-white/5 p-4 backdrop-blur-sm">
+                            <ShieldCheck className="mt-1 h-5 w-5 text-emerald-400" />
                             <div>
-                                <h3 className="text-sm font-semibold text-white">Bank-Grade Security</h3>
-                                <p className="text-xs text-slate-400 mt-1">End-to-end encryption for all your financial data and Tally sync.</p>
+                                <h3 className="text-sm font-semibold text-white">
+                                    Secure Internal Auth
+                                </h3>
+                                <p className="mt-1 text-xs text-slate-400">
+                                    Sign in and bind this device without leaving the desktop app.
+                                </p>
                             </div>
                         </div>
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm">
-                            <Globe className="h-5 w-5 text-cyan-400 mt-1" />
+                        <div className="flex items-start gap-4 rounded-xl border border-white/5 bg-white/5 p-4 backdrop-blur-sm">
+                            <Lock className="mt-1 h-5 w-5 text-cyan-400" />
                             <div>
-                                <h3 className="text-sm font-semibold text-white">Global Access</h3>
-                                <p className="text-xs text-slate-400 mt-1">Manage your business from anywhere, on any authorized device.</p>
+                                <h3 className="text-sm font-semibold text-white">
+                                    License Bound Per Device
+                                </h3>
+                                <p className="mt-1 text-xs text-slate-400">
+                                    Each successful login issues a device license and stores it locally.
+                                </p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="relative z-10 text-xs text-slate-500 font-mono">
-                        Build v1.0.1 • Guaranteed Stable
+                    <div className="relative z-10 font-mono text-xs text-slate-500">
+                        Build v{APP_VERSION} | Guaranteed Stable
                     </div>
                 </div>
 
-                {/* Right Side: Action Area */}
-                <div className="flex-1 p-12 flex flex-col justify-center bg-white/5 relative">
-                    {/* Success Overlay */}
-                    {status === "success" && (
-                        <div className="absolute inset-0 z-20 bg-emerald-950/90 backdrop-blur-sm flex items-center justify-center flex-col animate-in fade-in duration-500">
-                            <div className="h-20 w-20 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-6 animate-bounce">
+                <div className="relative flex flex-1 items-center bg-white/5 p-6 sm:p-10 lg:p-12">
+                    {isSuccess && (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-emerald-950/90 backdrop-blur-sm">
+                            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
                                 <CheckCircle className="h-10 w-10 text-white" />
                             </div>
-                            <h2 className="text-2xl font-bold text-white mb-2">Device Authorized</h2>
+                            <h2 className="mb-2 text-2xl font-bold text-white">Device Authorized</h2>
                             <p className="text-emerald-200">Starting secure session...</p>
                         </div>
                     )}
 
-                    <div className="max-w-md mx-auto w-full space-y-8">
-                        <div className="text-center lg:text-left">
-                            <h2 className="text-2xl font-bold text-white mb-2">
-                                {showManual ? "Enter License Key" : "Connect Device"}
+                    <div className="mx-auto w-full max-w-md">
+                        <div className="mb-8 text-center lg:text-left">
+                            <h2 className="mb-2 text-2xl font-bold text-white">
+                                Connect this device
                             </h2>
-                            <p className="text-slate-400 text-sm">
-                                {showManual
-                                    ? "Please enter the product key provided by your administrator."
-                                    : "Authorize this computer to access your organization's data."}
+                            <p className="text-sm text-slate-400">
+                                Sign in or create your K24 workspace right here. No browser redirect is
+                                used.
                             </p>
                         </div>
 
-                        {status === "error" && (
-                            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3 text-red-200 text-sm animate-in shake">
-                                <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" />
-                                {errorMsg}
+                        {error && (
+                            <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                                {error}
                             </div>
                         )}
 
-                        {!showManual ? (
-                            <div className="space-y-6">
-                                <Button
-                                    onClick={startConnection}
-                                    disabled={status === "waiting"}
-                                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-base rounded-xl shadow-lg shadow-indigo-900/50 transition-all flex items-center justify-center gap-2 group"
+                        <Tabs
+                            value={activeTab}
+                            onValueChange={(value) => {
+                                setError("");
+                                setActiveTab(value as AuthMode);
+                            }}
+                            className="w-full"
+                        >
+                            <TabsList className="grid h-12 w-full grid-cols-2 rounded-xl border border-white/10 bg-black/30 p-1">
+                                <TabsTrigger
+                                    value="login"
+                                    className="rounded-lg text-sm data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
                                 >
-                                    {status === "waiting" ? <Loader2 className="animate-spin" /> : <Globe className="h-5 w-5" />}
-                                    {status === "waiting" ? "Waiting for Browser..." : "Authenticate via Browser"}
-                                    {!status && <ArrowRight className="h-4 w-4 opacity-50 group-hover:translate-x-1 transition-transform" />}
-                                </Button>
-
-                                {status === "waiting" && manualKey.startsWith("http") && (
-                                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 animate-in fade-in slide-in-from-top-2">
-                                        <p className="text-xs text-slate-400">Browser didn't open? Copy this link:</p>
-                                        <div className="flex gap-2">
-                                            <input
-                                                readOnly
-                                                value={manualKey}
-                                                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-indigo-300 outline-none select-all"
-                                                onClick={(e) => e.currentTarget.select()}
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="h-auto bg-white/5 border-white/10 hover:bg-white/10 text-white"
-                                                onClick={() => navigator.clipboard.writeText(manualKey)}
-                                            >
-                                                Copy
-                                            </Button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="relative">
-                                    <div className="absolute inset-0 flex items-center">
-                                        <span className="w-full border-t border-white/10" />
-                                    </div>
-                                    <div className="relative flex justify-center text-xs uppercase">
-                                        <span className="bg-[#0f172a] px-2 text-slate-500">Or manually</span>
-                                    </div>
-                                </div>
-
-                                <Button
-                                    variant="ghost"
-                                    onClick={() => setShowManual(true)}
-                                    className="w-full h-12 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl flex items-center justify-center gap-2"
+                                    Login
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="signup"
+                                    className="rounded-lg text-sm data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
                                 >
-                                    <Key className="h-4 w-4" />
-                                    I have a license key
-                                </Button>
-                            </div>
-                        ) : (
-                            <div className="space-y-6 animate-in slide-in-from-right duration-300">
-                                <div className="space-y-4">
-                                    {/* License Key Field */}
-                                    <div className="relative group">
-                                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
-                                        <input
-                                            type="text"
-                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono tracking-wider text-sm"
-                                            placeholder="License Key"
-                                            value={manualKey}
-                                            onChange={(e) => setManualKey(e.target.value)}
-                                            autoFocus
-                                        />
-                                    </div>
-                                    {/* Tenant ID Field */}
-                                    <div className="relative group">
-                                        <input
-                                            type="text"
-                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-3 px-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono text-sm"
-                                            placeholder="Tenant ID (optional)"
-                                            value={manualTenantId}
-                                            onChange={(e) => setManualTenantId(e.target.value)}
-                                        />
-                                    </div>
-                                    {/* User ID Field */}
-                                    <div className="relative group">
-                                        <input
-                                            type="text"
-                                            className="w-full bg-black/20 border border-white/10 focus:border-indigo-500/50 rounded-xl py-3 px-4 text-white placeholder:text-slate-600 outline-none transition-all font-mono text-sm"
-                                            placeholder="User ID (optional)"
-                                            value={manualUserId}
-                                            onChange={(e) => setManualUserId(e.target.value)}
-                                        />
-                                    </div>
-                                    {/* DEV ONLY: Test credentials auto-fill button
-                                        Only visible when NODE_ENV === 'development'
-                                        Allows quick testing without manually typing test values */}
-                                    {process.env.NODE_ENV === 'development' && (
-                                        <button
-                                            type="button"
-                                            onClick={useTestCredentials}
-                                            className="w-full py-2 text-xs text-yellow-400 hover:text-yellow-300 border border-yellow-500/30 hover:border-yellow-500/50 rounded-lg transition-colors bg-yellow-500/5 hover:bg-yellow-500/10"
-                                        >
-                                            🧪 Use Test Values (Dev Only)
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="flex gap-3">
-                                    <Button
-                                        variant="ghost"
-                                        onClick={() => setShowManual(false)}
-                                        className="h-12 px-6 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl border border-transparent hover:border-white/10"
-                                    >
-                                        Back
-                                    </Button>
-                                    <Button
-                                        onClick={handleManualSubmit}
-                                        disabled={status === "validating"}
-                                        className="flex-1 h-12 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-900/50"
-                                    >
-                                        {status === "validating" ? <Loader2 className="animate-spin" /> : "Verify License"}
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
+                                    Signup
+                                </TabsTrigger>
+                            </TabsList>
 
-                        <div className="flex items-center justify-center gap-2 text-xs text-slate-600 mt-8">
+                            <TabsContent value="login" className="mt-6">
+                                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                                    <Field
+                                        icon={<Mail className="h-5 w-5" />}
+                                        label="Email Address"
+                                        type="email"
+                                        placeholder="you@company.com"
+                                        value={loginForm.email}
+                                        onChange={(value) =>
+                                            setLoginForm((current) => ({ ...current, email: value }))
+                                        }
+                                    />
+                                    <Field
+                                        icon={<Lock className="h-5 w-5" />}
+                                        label="Password"
+                                        type="password"
+                                        placeholder="Enter your password"
+                                        value={loginForm.password}
+                                        onChange={(value) =>
+                                            setLoginForm((current) => ({ ...current, password: value }))
+                                        }
+                                    />
+
+                                    <Button
+                                        type="submit"
+                                        disabled={isSubmitting}
+                                        className="h-12 w-full rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 hover:bg-indigo-500"
+                                    >
+                                        {isSubmitting && activeTab === "login" ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <ArrowRight className="mr-2 h-4 w-4" />
+                                        )}
+                                        Sign In and Register Device
+                                    </Button>
+                                </form>
+                            </TabsContent>
+
+                            <TabsContent value="signup" className="mt-6">
+                                <form onSubmit={handleSignupSubmit} className="space-y-4">
+                                    <Field
+                                        icon={<Building2 className="h-5 w-5" />}
+                                        label="Company Name"
+                                        type="text"
+                                        placeholder="Acme Pvt Ltd"
+                                        value={signupForm.company_name}
+                                        onChange={(value) =>
+                                            setSignupForm((current) => ({
+                                                ...current,
+                                                company_name: value,
+                                            }))
+                                        }
+                                    />
+                                    <Field
+                                        icon={<User className="h-5 w-5" />}
+                                        label="Full Name"
+                                        type="text"
+                                        placeholder="Founder or admin name"
+                                        value={signupForm.full_name}
+                                        onChange={(value) =>
+                                            setSignupForm((current) => ({
+                                                ...current,
+                                                full_name: value,
+                                            }))
+                                        }
+                                    />
+                                    <Field
+                                        icon={<Mail className="h-5 w-5" />}
+                                        label="Work Email"
+                                        type="email"
+                                        placeholder="you@company.com"
+                                        value={signupForm.email}
+                                        onChange={(value) =>
+                                            setSignupForm((current) => ({ ...current, email: value }))
+                                        }
+                                    />
+                                    <Field
+                                        icon={<Lock className="h-5 w-5" />}
+                                        label="Password"
+                                        type="password"
+                                        placeholder="Create a secure password"
+                                        value={signupForm.password}
+                                        onChange={(value) =>
+                                            setSignupForm((current) => ({ ...current, password: value }))
+                                        }
+                                    />
+
+                                    <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-400">
+                                        Username is generated automatically from your email to match the
+                                        current backend schema.
+                                    </p>
+
+                                    <Button
+                                        type="submit"
+                                        disabled={isSubmitting}
+                                        className="h-12 w-full rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 hover:bg-indigo-500"
+                                    >
+                                        {isSubmitting && activeTab === "signup" ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <ArrowRight className="mr-2 h-4 w-4" />
+                                        )}
+                                        Create Account and Register Device
+                                    </Button>
+                                </form>
+                            </TabsContent>
+                        </Tabs>
+
+                        <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-600">
                             <Lock className="h-3 w-3" />
                             <span>Protected by K24 Secure Guard</span>
                         </div>
@@ -445,10 +440,36 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
             </div>
         </div>
     );
+}
 
-    if (!mounted) return null;
+interface FieldProps {
+    icon: ReactNode;
+    label: string;
+    type: string;
+    placeholder: string;
+    value: string;
+    onChange: (value: string) => void;
+}
 
-    // TEMP: Render inline instead of portal for debugging
-    return <Content />;
-    // return createPortal(<Content />, document.body);
+function Field({ icon, label, type, placeholder, value, onChange }: FieldProps) {
+    return (
+        <label className="block space-y-2">
+            <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                {label}
+            </span>
+            <div className="group relative">
+                <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 transition-colors group-focus-within:text-indigo-400">
+                    {icon}
+                </div>
+                <input
+                    type={type}
+                    required
+                    value={value}
+                    onChange={(event) => onChange(event.target.value)}
+                    placeholder={placeholder}
+                    className="w-full rounded-xl border border-white/10 bg-black/20 py-3.5 pl-12 pr-4 text-sm text-white outline-none transition-all placeholder:text-slate-600 focus:border-indigo-500/50"
+                />
+            </div>
+        </label>
+    );
 }
