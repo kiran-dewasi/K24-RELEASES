@@ -12,7 +12,9 @@
 
 // Check if running in Tauri
 const isTauri = () => {
-    return typeof window !== 'undefined' && '__TAURI__' in window;
+    return typeof window !== 'undefined' && (
+        '__TAURI_INTERNALS__' in window || '__TAURI__' in window
+    );
 };
 
 // In Tauri DEV mode (npx tauri dev), Next.js runs on localhost so backend is

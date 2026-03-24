@@ -1,0 +1,23 @@
+﻿
+> frontend@0.1.0 tauri
+> tauri signer generate --ci
+
+
+Your secret key was generated successfully - Keep it secret!
+dW50cnVzdGVkIGNvbW1lbnQ6IHJzaWduIGVuY3J5cHRlZCBzZWNyZXQga2V5ClJXUlRZMEl5MjBFN3c2L21uczM0SmI2VzVXR29zQkVBczJweGdmZUJIZUJVakYrcThISUFBQkFBQUFBQUFBQUFBQUlBQUFBQWZJZkozL3E3TlB3VTh0b2wvSVZidjNiNTAvcllXVndpcW1IZ0VEQlFldkswc3FPM2N1dGhGL2ExNS9ETmNObVkzeGFvU2J6MHh4ZFdKbCs4Y0swcGdIS1prWWF5ZjJyNUxCZmlxOWNUUnRLeUg2L2FqMG5NTzBGQ05vQzUvZjhZUTIxT3JpRm50UG89Cg==
+
+
+Your public key was generated successfully:
+dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDMzRCQkZBREZDOTg3N0MKUldSOGg4bmYrcnMwL1BhMTUvRE5jTm1ZM3hhb1NiejB4eGRXSmwrOGNLMHBnSEtaa1lheWYycjUK
+
+Add the public key in your tauri.conf.json
+---------------------------
+
+
+Environment variables used to sign:
+`TAURI_SIGNING_PRIVATE_KEY`  Path or String of your private key
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`  Your private key password (optional)
+
+ATTENTION: If you lose your private key OR password, you'll not be able to sign your update package and updates will not work.
+---------------------------
+

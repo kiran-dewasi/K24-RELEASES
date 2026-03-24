@@ -161,7 +161,11 @@ pub async fn backend_request(
     };
 
     let url = format!("{}{}", base_url, endpoint);
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(false)
+        .use_rustls_tls()
+        .build()
+        .map_err(|e| format!("Failed to build client: {}", e))?;
     let method_parsed: reqwest::Method = method.parse()
         .map_err(|_| format!("Invalid HTTP method: {}", method))?;
     

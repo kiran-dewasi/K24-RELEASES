@@ -1,0 +1,21 @@
+﻿
+> frontend@0.1.0 tauri
+> tauri build
+
+node.exe :         Info Looking up installed tauri packages to check mismatched 
+versions...
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (        Info Lo...hed versions...:String 
+   ) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Found version mismatched Tauri packages. Make sure the NPM package and Rust crate 
+versions are on the same major/minor releases:
+tauri (v2.9.5) : @tauri-apps/api (v2.10.1)
+tauri-plugin-updater (v2.9.0) : @tauri-apps/plugin-updater (v2.10.0)
+       Error Found version mismatched Tauri packages. Make sure the NPM package and 
+Rust crate versions are on the same major/minor releases:
+tauri (v2.9.5) : @tauri-apps/api (v2.10.1)
+tauri-plugin-updater (v2.9.0) : @tauri-apps/plugin-updater (v2.10.0)

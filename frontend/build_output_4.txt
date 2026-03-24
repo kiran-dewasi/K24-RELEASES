@@ -1,0 +1,197 @@
+
+> frontend@0.1.0 tauri
+> tauri build
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> frontend@0.1.0 build
+> next build
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\frontend\package-lock.json
+
+   ▲ Next.js 16.0.3 (Turbopack)
+   - Environments: .env.local, .env.production
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+[2m[3241.03ms][22m [@tailwindcss/postcss] src\app\globals.css
+[2m[   0.07ms][22m  [2m ↳ [22mQuick bail check
+[2m[  52.09ms][22m  [2m ↳ [22mSetup compiler
+[2m[   0.40ms][22m    [2m ↳ [22mPostCSS AST -> Tailwind CSS AST
+[2m[  51.66ms][22m    [2m ↳ [22mCreate compiler
+[2m[   0.36ms][22m  [2m ↳ [22mRegister full rebuild paths
+[2m[  21.20ms][22m  [2m ↳ [22mSetup scanner
+[2m[ 101.22ms][22m  [2m ↳ [22mScan for candidates
+[2m[2892.61ms][22m  [2m ↳ [22mRegister dependency messages
+[2m[  81.22ms][22m  [2m ↳ [22mBuild utilities
+[2m[  88.21ms][22m  [2m ↳ [22mOptimization
+[2m[   3.15ms][22m    [2m ↳ [22mAST -> CSS
+[2m[  67.02ms][22m    [2m ↳ [22mLightning CSS
+[2m[  17.97ms][22m    [2m ↳ [22mCSS -> PostCSS AST
+[2m[   3.58ms][22m  [2m ↳ [22mUpdate PostCSS AST
+
+ ✓ Compiled successfully in 11.8s
+   Running TypeScript ...
+   Collecting page data using 17 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 17 workers (0/54) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 17 workers (13/54) 
+   Generating static pages using 17 workers (26/54) 
+   Generating static pages using 17 workers (40/54) 
+ ✓ Generating static pages using 17 workers (54/54) in 1784.0ms
+   Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ○ /admin/plans
+├ ○ /admin/subscriptions
+├ ○ /admin/tenants
+├ ● /admin/tenants/[id]
+│ └ /admin/tenants/default
+├ ○ /auth/callback
+├ ○ /auth/desktop
+├ ○ /chat
+├ ○ /compliance
+├ ○ /compliance/audit-dashboard
+├ ○ /contacts
+├ ● /contacts/[name]
+│ └ /contacts/default
+├ ○ /customers
+├ ● /customers/[id]
+│ └ /customers/default
+├ ○ /daybook
+├ ○ /design-system
+├ ○ /forgot-password
+├ ○ /inventory
+├ ● /inventory/[itemId]
+│ └ /inventory/404
+├ ○ /inventory/movements
+├ ○ /inventory/new
+├ ○ /invoices
+├ ○ /items
+├ ● /items/[id]
+│ └ /items/default
+├ ● /ledgers/[ledger_id]
+│ └ /ledgers/default
+├ ○ /login
+├ ○ /onboarding
+├ ○ /operations/payment
+├ ○ /operations/receipt
+├ ○ /parties
+├ ● /parties/[id]
+│ └ /parties/default
+├ ○ /pricing
+├ ○ /reports
+├ ● /reports/[slug]
+│ ├ /reports/sales-register
+│ ├ /reports/purchase-register
+│ ├ /reports/cash-flow
+│ └ [+3 more paths]
+├ ○ /reports/audit
+├ ○ /reports/outstanding
+├ ○ /reset-password
+├ ○ /search
+├ ○ /settings
+├ ○ /settings/ai
+├ ○ /settings/whatsapp
+├ ○ /signup
+├ ○ /vouchers/new/payment
+├ ○ /vouchers/new/receipt
+└ ○ /vouchers/new/sales
+
+
+○  (Static)  prerendered as static content
+●  (SSG)     prerendered as static HTML (uses generateStaticParams)
+
+   Compiling app v0.1.0 (C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\frontend\src-tauri)
+warning: unused import: `Emitter`
+ --> src\commands.rs:3:24
+  |
+3 | use tauri::{AppHandle, Emitter};
+  |                        ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable expression
+   --> src\commands.rs:225:5
+    |
+224 |     app.restart();
+    |     ------------- any code following this expression is unreachable
+225 |     Ok(())
+    |     ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src\commands.rs:232:21
+    |
+232 |         if let Some(mut child) = process.take() {
+    |                     ----^^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `window`
+  --> src\lib.rs:54:27
+   |
+54 |         .on_window_event(|window, event| {
+   |                           ^^^^^^ help: if this is intentional, prefix it with an underscore: `_window`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `check_updates` is never used
+   --> src\commands.rs:194:14
+    |
+194 | pub async fn check_updates(app: AppHandle) -> Result<String, String> {
+    |              ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `install_update` is never used
+   --> src\commands.rs:207:14
+    |
+207 | pub async fn install_update(app: AppHandle) -> Result<String, String> {
+    |              ^^^^^^^^^^^^^^
+
+warning: `app` (lib) generated 6 warnings (run `cargo fix --lib -p app` to apply 3 suggestions)
+    Finished `release` profile [unoptimized] target(s) in 58.78s
+       Built application at: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\frontend\src-tauri\target\release\app.exe
+        Info Patching binary "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\frontend\\src-tauri\\target\\release\\app.exe" for type msi
+        Info Target: x64
+     Running candle for "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\frontend\\src-tauri\\target\\release\\wix\\x64\\main.wxs"
+     Running light to produce C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\frontend\src-tauri\target\release\bundle\msi\K24_1.0.3_x64_en-US.msi
+        Info Patching binary "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\frontend\\src-tauri\\target\\release\\app.exe" for type nsis
+        Info Target: x64
+     Running makensis to produce C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\frontend\src-tauri\target\release\bundle\nsis\K24_1.0.3_x64-setup.exe
+failed to bundle project `The system cannot find the file specified. (os error 2)`
+       Error failed to bundle project `The system cannot find the file specified. (os error 2)`

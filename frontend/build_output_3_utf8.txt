@@ -1,0 +1,56 @@
+﻿
+> frontend@0.1.0 tauri
+> tauri build
+
+node.exe :         Info Looking up installed tauri packages to check mismatched 
+versions...
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (        Info Lo...hed versions...:String 
+   ) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+     Running beforeBuildCommand `npm run build`
+
+> frontend@0.1.0 build
+> next build
+
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ΓÜá Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\Krisha 
+Dewasi\OneDrive\Desktop\WEARE\weare\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider 
+removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-
+directory for more information.
+ Detected additional lockfiles: 
+   * C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\frontend\package-lock.json
+
+   Γû▓ Next.js 16.0.3 (Turbopack)
+   - Environments: .env.local, .env.production
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure 
+accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ Γ£ô Compiled successfully in 14.4s
+   Running TypeScript ...
+Failed to compile.
+
+./src/components/AutoUpdater.tsx:14:17
+Type error: Property '__TAURI_INTERNALS__' does not exist on type 'Window & typeof 
+globalThis'.
+
+[0m [90m 12 |[39m   useEffect(() [33m=>[39m {
+ [90m 13 |[39m     [90m// Only run in Tauri environment[39m
+[31m[1m>[22m[39m[90m 14 |[39m     [36mif[39m 
+([33m![39mwindow[33m.[39m__TAURI_INTERNALS__) [36mreturn[39m[33m;[39m
+ [90m    |[39m                 [31m[1m^[22m[39m
+ [90m 15 |[39m
+ [90m 16 |[39m     [36mconst[39m checkForUpdates [33m=[39m [36masync[39m () 
+[33m=>[39m {
+ [90m 17 |[39m       [36mtry[39m {[0m
+Next.js build worker exited with code: 1 and signal: null
+beforeBuildCommand `npm run build` failed with exit code 1
+       Error beforeBuildCommand `npm run build` failed with exit code 1

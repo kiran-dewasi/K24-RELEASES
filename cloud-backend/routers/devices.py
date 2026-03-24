@@ -11,7 +11,7 @@ import os
 from jose import jwt
 
 # Fix imports for Cloud Backend environment
-from database import get_supabase_client
+from database import get_supabase_client, get_db
 
 # Define local JWT utils since backend.auth is not available
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "secret-key") # Fallback for dev
@@ -29,9 +29,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 # Mocks for compatibility with legacy register_device signature
 # These allows the file to load even if backend.* modules are missing
-def get_db():
-    yield None
-
 class DeviceLicense:
     pass
 
@@ -58,45 +55,64 @@ async def register_device(
     """
     from backend.auth import create_socket_token
     from backend.database import User
-    
+
+    # Input validation
     device_id = payload.get("device_id")
     user_id = payload.get("user_id")
     app_version = payload.get("app_version")
-    
+
     if not device_id or not user_id:
         raise HTTPException(status_code=400, detail="Missing device_id or user_id")
 
+    # Validate device_id format (basic string check, non-empty after strip)
+    if not isinstance(device_id, str) or not device_id.strip():
+        raise HTTPException(status_code=400, detail="Invalid device_id format")
+
+    # Validate user_id format (basic string check, non-empty after strip)
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(status_code=400, detail="Invalid user_id format")
+
     # Get user's tenant_id (critical for multi-tenancy)
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        # Try by google_api_key (which stores Supabase UUID)
-        user = db.query(User).filter(User.google_api_key == user_id).first()
-    
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            # Try by google_api_key (which stores Supabase UUID)
+            user = db.query(User).filter(User.google_api_key == user_id).first()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error while fetching user: {str(e)}")
+
     tenant_id = getattr(user, 'tenant_id', None) if user else None
     if not tenant_id:
         # Generate from user_id as fallback
         tenant_id = f"TENANT-{str(user_id).replace('-', '')[:8].upper()}"
 
     # Check if a license already exists for this device/user combo
-    existing_device = db.query(DeviceLicense).filter(
-        DeviceLicense.device_fingerprint == device_id,
-        DeviceLicense.user_id == user_id
-    ).first()
+    try:
+        existing_device = db.query(DeviceLicense).filter(
+            DeviceLicense.device_fingerprint == device_id,
+            DeviceLicense.user_id == user_id
+        ).first()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error while checking existing device: {str(e)}")
 
     if existing_device:
         # Reactivate or return existing
-        existing_device.status = "active"
-        existing_device.app_version = app_version
-        existing_device.last_validated_at = datetime.now()
-        db.commit()
-        
+        try:
+            existing_device.status = "active"
+            existing_device.app_version = app_version
+            existing_device.last_validated_at = datetime.now()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Database error while updating device: {str(e)}")
+
         # Generate signed socket token (Phase 2 security)
         socket_token = create_socket_token(
             user_id=user_id,
             tenant_id=tenant_id,
             license_key=existing_device.license_key
         )
-        
+
         return {
             "license_key": existing_device.license_key,
             "socket_token": socket_token,  # <-- Signed JWT for socket auth!
@@ -105,7 +121,7 @@ async def register_device(
 
     # Generate unique license key
     license_key = generate_license_key()
-    
+
     # Create device license
     device = DeviceLicense(
         license_key=license_key,
@@ -117,21 +133,21 @@ async def register_device(
         last_validated_at=datetime.now(),
         last_heartbeat=datetime.now()
     )
-    
+
     try:
         db.add(device)
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    
+        raise HTTPException(status_code=500, detail=f"Database error while creating device: {str(e)}")
+
     # Generate signed socket token (Phase 2 security)
     socket_token = create_socket_token(
         user_id=user_id,
         tenant_id=tenant_id,
         license_key=license_key
     )
-    
+
     return {
         "license_key": license_key,
         "socket_token": socket_token,  # <-- Signed JWT for socket auth!
