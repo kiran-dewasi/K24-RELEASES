@@ -1,5 +1,7 @@
 "use client";
 
+const CLOUD_API = "https://weare-production.up.railway.app";
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -7,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lock, Mail, User, Building, ArrowRight, CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api";
 
 export default function SignupPage() {
     const router = useRouter();
@@ -39,7 +40,16 @@ export default function SignupPage() {
             console.log("IS TAURI DEV:", process.env.NODE_ENV)
             console.log("CALLING URL:", "https://weare-production.up.railway.app")
 
-            const data = await apiRequest("/api/auth/register", "POST", payload);
+            const response = await fetch(`${CLOUD_API}/api/auth/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || "Registration failed");
+            }
+            const data = await response.json();
 
             // Auto-login logic
             if (data.access_token) {
