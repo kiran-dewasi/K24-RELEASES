@@ -16,8 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Debug - show what got copied
-RUN echo "=== /app contents ===" && ls -la /app/
-RUN echo "=== auth.py line 6 ===" && sed -n '6p' /app/routers/auth.py
+RUN ls -la /app/ && ls -la /app/routers/ && cat /app/routers/auth.py | head -8 && cat /app/database/__init__.py | head -20
 
 
 # Expose port
