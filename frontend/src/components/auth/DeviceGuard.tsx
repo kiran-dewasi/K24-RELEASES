@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import ConnectDevice from "./ConnectDevice";
 import { Loader2 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://weare-production.up.railway.app";
+const API_BASE = "https://weare-production.up.railway.app";
 
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);

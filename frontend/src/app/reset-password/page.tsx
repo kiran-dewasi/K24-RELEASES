@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lock, CheckCircle, XCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api";
+
+const CLOUD_API = "https://weare-production.up.railway.app";
 
 function ResetPasswordContent() {
     const router = useRouter();
@@ -45,21 +46,25 @@ function ResetPasswordContent() {
         setLoading(true);
 
         try {
-            const response = await api.post("/api/auth/reset-password", {
-                access_token: accessToken,
-                new_password: password
+            const data = await fetch(`${CLOUD_API}/api/auth/reset-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    token: accessToken,
+                    new_password: password,
+                }),
             });
 
-            if (response.ok) {
-                setSuccess(true);
-                // Redirect to login after 3 seconds
-                setTimeout(() => router.push("/login"), 3000);
-            } else {
-                const data = await response.json();
-                setError(data.detail || "Failed to reset password");
+            if (!data.ok) {
+                const err = await data.json().catch(() => ({}));
+                throw new Error(err.detail || "Request failed");
             }
+
+            setSuccess(true);
+            // Redirect to login after 3 seconds
+            setTimeout(() => router.push("/login"), 3000);
         } catch (err) {
-            setError("Network error. Please try again.");
+            setError(err instanceof Error ? err.message : "Network error. Please try again.");
         } finally {
             setLoading(false);
         }

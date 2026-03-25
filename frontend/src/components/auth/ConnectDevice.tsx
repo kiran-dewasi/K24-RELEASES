@@ -139,26 +139,27 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
 
     async function completeDeviceAuth(authData: AuthResponse) {
         const deviceId = getOrCreateDeviceId();
-        const userId = String(authData.user.id);
+        const activatedUserId = String(authData.user.id);
 
         const deviceData = await postJson<DeviceRegisterResponse>("/api/devices/register", {
             device_id: deviceId,
-            user_id: userId,
+            user_id: activatedUserId,
             app_version: APP_VERSION,
         });
 
-        const tenantId = deviceData.tenant_id ?? authData.user.tenant_id ?? null;
+        const activatedTenantId = deviceData.tenant_id ?? authData.user.tenant_id ?? null;
 
         localStorage.setItem("k24_token", authData.access_token);
         localStorage.setItem("k24_license_key", deviceData.license_key);
         localStorage.setItem(
             "k24_user",
             JSON.stringify({
-                user_id: userId,
-                tenant_id: tenantId,
+                id: activatedUserId,
+                user_id: activatedUserId,
+                tenant_id: activatedTenantId,
             })
         );
-        localStorage.setItem("k24_user_id", userId);
+        localStorage.setItem("k24_user_id", activatedUserId);
 
         if (deviceData.socket_token) {
             localStorage.setItem("k24_socket_token", deviceData.socket_token);
