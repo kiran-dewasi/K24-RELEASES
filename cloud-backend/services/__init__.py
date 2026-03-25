@@ -12,13 +12,6 @@ from services.supabase_service import (
 )
 from services.tenant_service import TenantService, tenant_service
 from services.bulk_processor import BulkBillProcessor, bulk_processor
-from services.query_orchestrator import (
-    OrchestrationResult,
-    ParsedQuery,
-    QueryIntent,
-    QueryOrchestrator,
-    process_user_query,
-)
 from services.export_service import (
     ExcelGenerator,
     ExportService,
