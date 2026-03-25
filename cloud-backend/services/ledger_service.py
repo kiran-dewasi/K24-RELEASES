@@ -19,7 +19,10 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from agent_gemini import extract_bill_data
+try:
+    from agent_gemini import extract_bill_data
+except ImportError:
+    extract_bill_data = None
 from services.auto_executor import process_with_auto_execution
 from services.confidence_scorer import calculate_overall_confidence
 from database import Ledger, get_db
