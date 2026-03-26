@@ -1,38 +1,24 @@
-﻿import os
+import os
 import logging
-from database import get_db, UserSettings
-from database.encryption import encryptor
 
 logger = logging.getLogger(__name__)
+
 
 def get_google_api_key(user_id: str = None) -> str:
     """
     Get Google/Gemini API key.
-    Priority:
-    1. Encrypted key in UserSettings (if user_id provided)
-    2. GOOGLE_API_KEY environment variable (Legacy/Dev)
-    3. k24_config.json (Legacy)
-    """
-    # 1. Try DB first (Secure User-owned Key)
-    if user_id:
-        try:
-            db = next(get_db())
-            settings = db.query(UserSettings).filter(UserSettings.user_id == str(user_id)).first()
-            if settings and settings.google_api_key:
-                try:
-                    # Try to decrypt
-                    decrypted = encryptor.decrypt(settings.google_api_key)
-                    if decrypted and len(decrypted) > 20: # Basic validity check
-                        return decrypted
-                except Exception as e:
-                    logger.error(f"Failed to decrypt user API key: {e}")
-        except Exception as e:
-            logger.error(f"DB Key fetch failed: {e}")
 
-    # 2. Environment Variable
+    On the cloud backend, API keys are not stored per-user in the database
+    (UserSettings was local-only and has been removed from the cloud schema).
+    The key is sourced from the GOOGLE_API_KEY environment variable set in
+    Railway / the cloud deployment.
+
+    The `user_id` argument is accepted for call-site compatibility but is
+    not used in the cloud context.
+    """
     env_key = os.getenv("GOOGLE_API_KEY")
     if env_key:
         return env_key
-        
-    return None
 
+    logger.warning("GOOGLE_API_KEY environment variable is not set")
+    return None

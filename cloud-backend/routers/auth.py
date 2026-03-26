@@ -4,10 +4,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from database import User, Company, UserSettings, get_db
+from database import User, Company, get_db
 from auth import (
-    get_password_hash,
-    verify_password,
     create_access_token,
     get_current_active_user
 )
@@ -15,647 +13,457 @@ from auth import (
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Request / Response schemas
+# ---------------------------------------------------------------------------
+
 class UserRegister(BaseModel):
     email: EmailStr
-    username: str
     password: str
     full_name: str
     company_name: str
-    role: str = "admin"  # First user is always admin
+    role: str = "owner"
+    language: str = "en"
 
-class CompanySetup(BaseModel):
-    gstin: str | None = None
-    pan: str | None = None
-    address: str | None = None
-    city: str | None = None
-    state: str | None = None
-    pincode: str | None = None
-    phone: str | None = None
-    tally_company_name: str
-    tally_url: str = "http://localhost:9000"
-    tally_edu_mode: bool = False
-    google_api_key: str | None = None
 
 class Token(BaseModel):
     access_token: str
     token_type: str
     user: dict
 
+
 class UserResponse(BaseModel):
-    id: int
-    email: str
-    username: str
-    full_name: str
-    role: str
-    company_id: int | None
+    id: str
+    full_name: str | None
+    role: str | None
     tenant_id: str | None
-    whatsapp_number: str | None
-    is_whatsapp_verified: bool | None = False
-    
+    whatsapp_number: str | None = None
+    language: str | None = None
+    is_active: bool | None = True
+
     class Config:
         from_attributes = True
 
-@router.post("/register", response_model=Token)
-async def register(user_data: UserRegister, db: Session = Depends(get_db)):
-    """
-    Register new user in Supabase + create local session (Hybrid approach)
-    """
-    from services.supabase_service import supabase_service, supabase_http_service
-    import uuid
-
-    # 1. Supabase Registration (Cloud Master)
-    # ---------------------------------------------
-    user_id = None
-    tenant_id = None
-    
-    # Check if we can talk to Supabase
-    if supabase_service.client:
-        try:
-            # A. Create Auth User (using HTTP service)
-            auth_response = supabase_http_service.sign_up(
-                email=user_data.email,
-                password=user_data.password,
-                user_metadata={
-                    "full_name": user_data.full_name,
-                    "company_name": user_data.company_name
-                }
-            )
-            
-            # Check for user in response
-            if auth_response and auth_response.get('user'):
-                user_id = auth_response['user']['id']
-                
-                # B. Create Profile (User) - Trigger will handle tenant_id creation usually
-                try:
-                    profile = supabase_service.create_user_profile(
-                        user_id=user_id,
-                        email=user_data.email,
-                        full_name=user_data.full_name
-                    )
-                    
-                    # Fetch the generated tenant_id if not returned immediately
-                    if profile and 'tenant_id' in profile and profile['tenant_id']:
-                         tenant_id = profile['tenant_id']
-                    else:
-                         # Fetch explicitly
-                         p_data = supabase_service.get_user_profile(user_id)
-                         if p_data and p_data.get('tenant_id'):
-                             tenant_id = p_data.get('tenant_id')
-
-                except Exception as e:
-                    print(f"Supabase Profile Creation Warning: {e}")
-
-                # C. If still no tenant_id, generate one locally and sync back to Supabase
-                if not tenant_id and user_id:
-                    tenant_id = f"TENANT-{user_id[:8].upper()}"
-                    print(f"Generated local tenant_id: {tenant_id}")
-                    
-                    # SYNC BACK: Update Supabase profile with generated tenant_id
-                    try:
-                        supabase_http_service.update_user_profile(user_id, {"tenant_id": tenant_id})
-                        print(f"✅ Synced tenant_id to Supabase: {tenant_id}")
-                    except Exception as sync_err:
-                        print(f"⚠️ Could not sync tenant_id to Supabase: {sync_err}")
-
-                # D. Create Subscription (using HTTP service)
-                if tenant_id and user_id:
-                    try:
-                        supabase_http_service.create_subscription(user_id, tenant_id, "free")
-                    except Exception as e:
-                         print(f"Supabase Subscription Warning: {e}")
-
-        except Exception as e:
-            # If Supabase fails (e.g. offline), should we fail strictly or allow local-only?
-            # Prompt implies Supabase is Master. We should probably fail or warn.
-            # For robustness, we will FAIL if cloud is required.
-            print(f"Supabase Registration Failed: {e}")
-            raise HTTPException(status_code=400, detail=f"Cloud registration failed: {str(e)}")
-    else:
-        # Supabase not configured - generate local tenant_id
-        tenant_id = f"TENANT-{uuid.uuid4().hex[:8].upper()}"
-        print(f"Offline mode - Generated local tenant_id: {tenant_id}")
-
-    # 2. Local Registration (Business Data Replica)
-    # ---------------------------------------------
-    
-    # Check if user exists locally
-    if db.query(User).filter(User.email == user_data.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered locally")
-    
-    if db.query(User).filter(User.username == user_data.username).first():
-        raise HTTPException(status_code=400, detail="Username already taken locally")
-    
-    # Phase 1: Ensure tenant exists locally (synced with cloud)
-    # This creates the tenant in SQLite if not already present
-    if tenant_id:
-        logger.info(f"Tenant local sync skipped on cloud for user {user_id}")
-    
-    # Create company locally
-    company = Company(
-        name=user_data.company_name,
-        created_at=datetime.now(),
-        tenant_id=tenant_id or "offline-default" # Sync tenant_id
-    )
-    db.add(company)
-    db.commit()
-    db.refresh(company)
-    
-    # Create user locally
-    hashed_password = get_password_hash(user_data.password)
-    user = User(
-        email=user_data.email,
-        username=user_data.username,
-        hashed_password=hashed_password,
-        full_name=user_data.full_name,
-        role=user_data.role,
-        company_id=company.id,
-        tenant_id=tenant_id or "offline-default", # Sync tenant_id
-        is_verified=True,  # Auto-verify first user
-        created_at=datetime.now(),
-        google_api_key=user_id # Store Supabase UUID in google_api_key for now as a reference or add a new column later
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    
-    # Create default settings
-    settings = UserSettings(user_id=user.id, tenant_id=tenant_id or "offline-default")
-    db.add(settings)
-    db.commit()
-    
-    # Create access token (Local Session)
-    # Include tenant_id in JWT for API filtering (Phase 1 security)
-    access_token = create_access_token(data={
-        "sub": user.username,
-        "tenant_id": tenant_id  # Now embedded in token!
-    })
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "username": user.username,
-            "full_name": user.full_name,
-            "role": user.role,
-            "company_id": user.company_id,
-            "tenant_id": tenant_id
-        }
-    }
 
 class LoginRequest(BaseModel):
     email: str
     password: str
 
+
+# ---------------------------------------------------------------------------
+# REGISTER
+# ---------------------------------------------------------------------------
+
+@router.post("/register", response_model=Token)
+async def register(user_data: UserRegister, db: Session = Depends(get_db)):
+    """
+    Register a new user using Supabase Auth as the master identity provider.
+    After Supabase creates the auth user, we upsert only profile fields
+    into the `user_profiles` ORM model (no password, no username stored).
+    """
+    from services.supabase_service import supabase_service, supabase_http_service
+
+    # ------------------------------------------------------------------
+    # 1. Create the auth user in Supabase
+    # ------------------------------------------------------------------
+    if not supabase_service.client:
+        raise HTTPException(status_code=503, detail="Cloud registration unavailable: Supabase not configured")
+
+    try:
+        auth_response = supabase_http_service.sign_up(
+            email=user_data.email,
+            password=user_data.password,
+            user_metadata={
+                "full_name": user_data.full_name,
+                "company_name": user_data.company_name,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Supabase sign_up failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Cloud registration failed: {str(e)}")
+
+    if not (auth_response and auth_response.get("user")):
+        raise HTTPException(status_code=400, detail="Supabase did not return a user after registration")
+
+    supabase_user_id: str = auth_response["user"]["id"]
+
+    # ------------------------------------------------------------------
+    # 2. Resolve tenant_id (from profile trigger or generate locally)
+    # ------------------------------------------------------------------
+    tenant_id: str | None = None
+    try:
+        profile = supabase_service.create_user_profile(
+            user_id=supabase_user_id,
+            email=user_data.email,
+            full_name=user_data.full_name,
+        )
+        if profile and profile.get("tenant_id"):
+            tenant_id = profile["tenant_id"]
+    except Exception as e:
+        logger.warning(f"Supabase profile creation warning: {e}")
+
+    if not tenant_id:
+        # Fetch explicitly in case a DB trigger created it
+        try:
+            p_data = supabase_service.get_user_profile(supabase_user_id)
+            if p_data and p_data.get("tenant_id"):
+                tenant_id = p_data["tenant_id"]
+        except Exception:
+            pass
+
+    if not tenant_id:
+        tenant_id = f"K24-{supabase_user_id[:8].upper()}"
+        logger.info(f"Generated local tenant_id: {tenant_id}")
+        try:
+            supabase_http_service.update_user_profile(supabase_user_id, {"tenant_id": tenant_id})
+        except Exception as sync_err:
+            logger.warning(f"Could not sync tenant_id to Supabase: {sync_err}")
+
+    # ------------------------------------------------------------------
+    # 3. Upsert profile into user_profiles via ORM
+    # ------------------------------------------------------------------
+    user = db.query(User).filter(User.id == supabase_user_id).first()
+    if not user:
+        user = User(
+            id=supabase_user_id,
+            tenant_id=tenant_id,
+            full_name=user_data.full_name,
+            role=user_data.role,
+            language=user_data.language,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(user)
+    else:
+        # profile already exists (e.g. DB trigger beat us) – patch missing fields
+        user.tenant_id = user.tenant_id or tenant_id
+        user.full_name = user.full_name or user_data.full_name
+        user.role = user.role or user_data.role
+        user.language = user.language or user_data.language
+        user.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(user)
+
+    # ------------------------------------------------------------------
+    # 4. Create free subscription stub in Supabase
+    # ------------------------------------------------------------------
+    try:
+        supabase_http_service.create_subscription(supabase_user_id, tenant_id, "free")
+    except Exception as e:
+        logger.warning(f"Supabase subscription creation warning: {e}")
+
+    # ------------------------------------------------------------------
+    # 5. Issue a local JWT (tenant_id embedded for API filtering)
+    # ------------------------------------------------------------------
+    access_token = create_access_token(data={
+        "sub": supabase_user_id,
+        "tenant_id": tenant_id,
+    })
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "full_name": user.full_name,
+            "role": user.role,
+            "tenant_id": user.tenant_id,
+            "language": user.language,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# LOGIN
+# ---------------------------------------------------------------------------
+
 @router.post("/login", response_model=Token)
 async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     """
-    Hybrid Login:
-    1. Authenticate with Supabase (Cloud Master)
-    2. Sync/Verify Local User (Business Replica)
-    3. Return Local Session Token
+    Authenticate via Supabase Auth, then load profile from user_profiles ORM.
+    No local password hashes are involved.
     """
     from services.supabase_service import supabase_service, supabase_http_service
-    
-    # 1. Supabase Authentication (Priority)
-    # -------------------------------------
-    supabase_user_id = None
-    supabase_auth_token = None
-    
-    if supabase_http_service.client:
-        try:
-            # Use HTTP service for login (not broken client.auth)
-            auth_response = supabase_http_service.sign_in(
-                email=login_data.email,
-                password=login_data.password
-            )
-            
-            if auth_response and auth_response.get('user'):
-                supabase_user_id = auth_response['user']['id']
-                supabase_auth_token = auth_response.get('access_token')
-                print(f"✅ Supabase Login Success: {login_data.email}")
-            else:
-                 print(f"⚠️ Supabase Login Failed (Invalid Credentials or No Session)")
-        except Exception as e:
-            # If invalid credentials, Supabase raises an error
-            print(f"Supabase Auth Error: {e}")
-            # If it's a "Invalid login credentials" error, we might want to stop early?
-            # BUT: We must support Offline Mode. If Supabase is unreachable, we default to local check.
-            # If Supabase REJECTED the password (400), strictly we should fail.
-            # However, detecting "wrong password" vs "offline" can be tricky with generic exceptions.
-            # For now, we fall back to local check functionality if Supabase login fails/errors.
-            pass
 
-    # 2. Local Authentication / User Sync
-    # -----------------------------------
+    # ------------------------------------------------------------------
+    # 1. Authenticate with Supabase (mandatory for cloud backend)
+    # ------------------------------------------------------------------
+    if not (supabase_http_service and supabase_http_service.client):
+        raise HTTPException(status_code=503, detail="Cloud auth unavailable")
+
     try:
-        # A. Look up local user
-        user = db.query(User).filter(User.email == login_data.email).first()
-        
-        # B. Logic Fork
-        if user:
-            # User exists locally.
-            # If we had a successful Supabase login, we trust that.
-            # If Supabase failed (offline?), we check local password hash.
-            if not supabase_user_id:
-                # Cloud login failed/skipped -> Check local password
-                if not verify_password(login_data.password, user.hashed_password):
-                     raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Incorrect email or password (Local Check)",
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
-            else:
-                # Cloud login SUCCESS. Sync tenant_id from Supabase if local is wrong/missing.
-                if user.tenant_id in [None, '', 'offline-default']:
-                    # Fetch tenant_id from Supabase profile
-                    profile = supabase_service.get_user_profile(supabase_user_id)
-                    if profile and profile.get('tenant_id'):
-                        user.tenant_id = profile['tenant_id']
-                        db.commit()
-                        print(f"✅ Synced tenant_id from Supabase: {user.tenant_id}")
-                
-        else:
-            # User DOES NOT EXIST locally.
-            # If Supabase login succeeded, we should auto-create the local replica (First login on this device).
-            if supabase_user_id:
-                print(f"🔄 Syncing Supabase User to Local DB: {login_data.email}")
-                
-                # Fetch profile for extra details
-                profile = supabase_service.get_user_profile(supabase_user_id)
-                full_name = profile.get('full_name') if profile else "Supabase User"
-                tenant_id = profile.get('tenant_id') if profile else f"TENANT-{supabase_user_id[:8]}"
-                
-                # Create Company Stub
-                company = Company(
-                    name=profile.get('company_name', 'My Company'),
-                    created_at=datetime.now(),
-                    tenant_id=tenant_id
-                )
-                db.add(company)
-                db.commit()
-                db.refresh(company)
-                
-                # Create User Stub
-                hashed_pw = get_password_hash(login_data.password) # Campure current password locally for offline access next time
-                user = User(
-                    email=login_data.email,
-                    username=login_data.email.split('@')[0], # Fallback username
-                    hashed_password=hashed_pw,
-                    full_name=full_name,
-                    role='admin', # Default to admin for first sync
-                    company_id=company.id,
-                    tenant_id=tenant_id,
-                    is_verified=True,
-                    is_active=True,
-                    created_at=datetime.now(),
-                    google_api_key=supabase_user_id
-                )
-                db.add(user)
-                db.commit()
-                db.refresh(user)
-                
-                # Create Settings Stub
-                settings = UserSettings(user_id=user.id, tenant_id=tenant_id)
-                db.add(settings)
-                db.commit()
-                
-                # Phase 1: Ensure tenant exists in local SQLite
-                user_id = supabase_user_id
-                logger.info(f"Tenant local sync skipped on cloud for user {user_id}")
-                
-            else:
-                # Neither Cloud nor Local found the user/password valid
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Incorrect email or password",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-        if not user.is_active:
-            raise HTTPException(status_code=400, detail="User account is disabled")
-        
-        # Update last login
-        user.last_login = datetime.now()
-        db.commit()
-        
-        # 3. Create Session Token (Local Access)
-        # Include tenant_id in JWT for API filtering (Phase 1 security)
-        access_token = create_access_token(data={
-            "sub": user.username,
-            "tenant_id": getattr(user, 'tenant_id', None)  # Embedded for security!
-        })
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "username": user.username,
-                "full_name": user.full_name,
-                "role": user.role,
-                "company_id": user.company_id,
-                "tenant_id": getattr(user, 'tenant_id', None) # Safely get if column missing (handled by migration script)
-            }
-        }
-    except HTTPException:
-        raise
+        auth_response = supabase_http_service.sign_in(
+            email=login_data.email,
+            password=login_data.password,
+        )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        logger.warning(f"Supabase sign_in error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
+    if not (auth_response and auth_response.get("user")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    supabase_user_id: str = auth_response["user"]["id"]
+    logger.info(f"Supabase login success: {login_data.email}")
+
+    # ------------------------------------------------------------------
+    # 2. Load profile from user_profiles (ORM)
+    # ------------------------------------------------------------------
+    user = db.query(User).filter(User.id == supabase_user_id).first()
+
+    if not user:
+        # First login on this deployment – sync profile from Supabase
+        logger.info(f"First login on this deployment for {login_data.email} – syncing profile")
+        try:
+            profile_data = supabase_service.get_user_profile(supabase_user_id)
+        except Exception:
+            profile_data = None
+
+        tenant_id = (profile_data or {}).get("tenant_id") or f"K24-{supabase_user_id[:8].upper()}"
+        full_name  = (profile_data or {}).get("full_name") or "User"
+
+        user = User(
+            id=supabase_user_id,
+            tenant_id=tenant_id,
+            full_name=full_name,
+            role=(profile_data or {}).get("role", "owner"),
+            language=(profile_data or {}).get("language", "en"),
+            is_active=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        # Sync tenant_id if it went stale
+        if not user.tenant_id:
+            try:
+                p = supabase_service.get_user_profile(supabase_user_id)
+                if p and p.get("tenant_id"):
+                    user.tenant_id = p["tenant_id"]
+            except Exception:
+                pass
+
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="User account is disabled")
+
+    # ------------------------------------------------------------------
+    # 3. Update last_login_at
+    # ------------------------------------------------------------------
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+
+    # ------------------------------------------------------------------
+    # 4. Issue local JWT
+    # ------------------------------------------------------------------
+    access_token = create_access_token(data={
+        "sub": user.id,
+        "tenant_id": user.tenant_id,
+    })
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "full_name": user.full_name,
+            "role": user.role,
+            "tenant_id": user.tenant_id,
+            "language": user.language,
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# /me
+# ---------------------------------------------------------------------------
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     return current_user
 
-@router.post("/setup-company")
-def setup_company(
-    company_data: CompanySetup,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can setup company")
-    
-    company = db.query(Company).filter(Company.id == current_user.company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    
-    # Update company details
-    company.gstin = company_data.gstin
-    company.pan = company_data.pan
-    company.address = company_data.address
-    company.city = company_data.city
-    company.state = company_data.state
-    company.pincode = company_data.pincode
-    company.phone = company_data.phone
-    company.tally_company_name = company_data.tally_company_name
-    company.tally_url = company_data.tally_url
-    company.tally_edu_mode = company_data.tally_edu_mode
-    
-    # Update user's Google API key
-    if company_data.google_api_key:
-        current_user.google_api_key = company_data.google_api_key
-    
-    db.commit()
-    
-    return {"status": "success", "message": "Company setup completed"}
 
-@router.get("/check-setup")
-def check_setup_status(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    company = db.query(Company).filter(Company.id == current_user.company_id).first()
-    
-    setup_complete = bool(
-        company and 
-        company.tally_company_name and
-        company.gstin
-    )
-    
-    return {
-        "setup_complete": setup_complete,
-        "company": {
-            "name": company.name if company else None,
-            "gstin": company.gstin if company else None,
-            "tally_configured": bool(company and company.tally_company_name)
-        } if company else None
-    }
-
-class PasswordChangeRequest(BaseModel):
-    old_password: str
-    new_password: str
+# ---------------------------------------------------------------------------
+# LOGOUT
+# ---------------------------------------------------------------------------
 
 @router.post("/logout")
 async def logout():
-    # JWT is stateless, so just return success
-    # Frontend will delete token from localStorage
-    # In a more complex setup, we might blacklist the token here.
     return {"message": "Logged out successfully"}
+
+
+# ---------------------------------------------------------------------------
+# CHANGE PASSWORD (delegates entirely to Supabase)
+# ---------------------------------------------------------------------------
+
+class PasswordChangeRequest(BaseModel):
+    new_password: str   # Old password is validated by Supabase re-auth if needed
+
 
 @router.post("/change-password")
 async def change_password(
     request: PasswordChangeRequest,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
 ):
-    # Verify old password
-    if not verify_password(request.old_password, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Old password incorrect")
-    
-    # Update password
-    new_hash = get_password_hash(request.new_password)
-    current_user.hashed_password = new_hash
-    db.commit()
-    
+    from services.supabase_service import supabase_service
+    if not supabase_service.client:
+        raise HTTPException(status_code=503, detail="Cloud service unavailable")
+    try:
+        supabase_service.client.auth.update_user({"password": request.new_password})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Password change failed: {str(e)}")
     return {"message": "Password changed successfully"}
 
 
-# ============================================
-# NEW: FORGOT PASSWORD (Supabase Email)
-# ============================================
+# ---------------------------------------------------------------------------
+# FORGOT PASSWORD
+# ---------------------------------------------------------------------------
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
+
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):
-    """
-    Send password reset email via Supabase.
-    Always returns success to prevent email enumeration.
-    """
+    """Send password reset email via Supabase."""
     from services.supabase_service import supabase_service
-    
+
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
-    
+
     try:
-        # Supabase will send password reset email
         supabase_service.client.auth.reset_password_for_email(
             request.email,
-            options={
-                "redirect_to": "https://your-app.vercel.app/reset-password"
-            }
+            options={"redirect_to": "https://your-app.vercel.app/reset-password"}
         )
     except Exception as e:
-        # Log error but don't expose it (security)
-        print(f"Password reset error for {request.email}: {e}")
-    
-    # Always return success to prevent email enumeration
+        logger.warning(f"Password reset error for {request.email}: {e}")
+
     return {
         "message": "If an account exists with this email, a password reset link has been sent.",
         "success": True
     }
 
 
-# ============================================
-# NEW: RESET PASSWORD (After email link)
-# ============================================
+# ---------------------------------------------------------------------------
+# RESET PASSWORD
+# ---------------------------------------------------------------------------
+
 class ResetPasswordRequest(BaseModel):
-    access_token: str  # Token from Supabase email link
+    access_token: str
     new_password: str
 
+
 @router.post("/reset-password")
-async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    """
-    Reset password using token from Supabase email.
-    Frontend extracts token from URL after user clicks email link.
-    """
+async def reset_password(request: ResetPasswordRequest):
+    """Reset password using token from Supabase email link."""
     from services.supabase_service import supabase_service
-    
+
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
-    
+
     try:
-        # Set session with recovery token
         supabase_service.client.auth.set_session(request.access_token, "")
-        
-        # Update password in Supabase
-        response = supabase_service.client.auth.update_user({
-            "password": request.new_password
-        })
-        
+        response = supabase_service.client.auth.update_user({"password": request.new_password})
         if response.user:
-            # Also update local password hash
-            user = db.query(User).filter(User.email == response.user.email).first()
-            if user:
-                user.hashed_password = get_password_hash(request.new_password)
-                db.commit()
-            
             return {"message": "Password reset successfully", "success": True}
-        else:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-            
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     except Exception as e:
-        print(f"Password reset error: {e}")
+        logger.error(f"Password reset error: {e}")
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
 
-# ============================================
-# NEW: GET SUBSCRIPTION STATUS
-# ============================================
+# ---------------------------------------------------------------------------
+# SUBSCRIPTION STATUS
+# ---------------------------------------------------------------------------
+
 @router.get("/subscription")
 async def get_subscription_status(current_user: User = Depends(get_current_active_user)):
-    """
-    Get current user's subscription status from Supabase.
-    """
+    """Get current user's subscription status from Supabase."""
     from services.supabase_service import supabase_service
-    
+
     if not supabase_service.client:
-        # Return default free status if cloud unavailable
         return {
             "status": "offline",
             "plan": "free",
             "can_access": True,
             "message": "Working in offline mode"
         }
-    
+
     try:
-        # Get user's Supabase ID (stored in google_api_key field)
-        supabase_user_id = current_user.google_api_key
-        
-        if not supabase_user_id:
-            return {
-                "status": "local_only",
-                "plan": "free",
-                "can_access": True,
-                "message": "Local account - no cloud subscription"
-            }
-        
-        # Call Supabase function to check subscription
         result = supabase_service.client.rpc(
-            'check_subscription_status',
-            {'p_user_id': supabase_user_id}
+            "check_subscription_status",
+            {"p_user_id": current_user.id}
         ).execute()
-        
+
         if result.data:
             return result.data
-        else:
-            return {
-                "status": "no_subscription",
-                "plan": "free",
-                "can_access": True,
-                "trial_ends_at": None
-            }
-            
+        return {"status": "no_subscription", "plan": "free", "can_access": True, "trial_ends_at": None}
     except Exception as e:
-        print(f"Subscription check error: {e}")
-        return {
-            "status": "error",
-            "plan": "free",
-            "can_access": True,
-            "message": "Unable to verify subscription"
-        }
+        logger.error(f"Subscription check error: {e}")
+        return {"status": "error", "plan": "free", "can_access": True, "message": "Unable to verify subscription"}
 
 
-# ============================================
-# NEW: VERIFY EMAIL (Callback)
-# ============================================
+# ---------------------------------------------------------------------------
+# VERIFY EMAIL
+# ---------------------------------------------------------------------------
+
 @router.get("/verify-email")
-async def verify_email_callback(token: str, type: str, db: Session = Depends(get_db)):
-    """
-    Handle email verification callback from Supabase.
-    Supabase redirects here after user clicks verification link.
-    """
+async def verify_email_callback(token: str, type: str):
+    """Handle email verification callback from Supabase."""
     from services.supabase_service import supabase_service
-    
+
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
-    
+
     try:
-        if type == "signup" or type == "email":
-            # Verify the token with Supabase
-            response = supabase_service.client.auth.verify_otp({
-                "token_hash": token,
-                "type": type
-            })
-            
+        if type in ("signup", "email"):
+            response = supabase_service.client.auth.verify_otp({"token_hash": token, "type": type})
             if response.user:
-                return {
-                    "message": "Email verified successfully",
-                    "success": True,
-                    "redirect": "/login"
-                }
-        
+                return {"message": "Email verified successfully", "success": True, "redirect": "/login"}
         raise HTTPException(status_code=400, detail="Invalid verification link")
-        
     except Exception as e:
-        print(f"Email verification error: {e}")
+        logger.error(f"Email verification error: {e}")
         raise HTTPException(status_code=400, detail="Invalid or expired verification link")
 
 
-# ============================================
-# NEW: RESEND VERIFICATION EMAIL
-# ============================================
+# ---------------------------------------------------------------------------
+# RESEND VERIFICATION
+# ---------------------------------------------------------------------------
+
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
+
 @router.post("/resend-verification")
 async def resend_verification_email(request: ResendVerificationRequest):
-    """
-    Resend email verification link.
-    """
+    """Resend email verification link."""
     from services.supabase_service import supabase_service
-    
+
     if not supabase_service.client:
         raise HTTPException(status_code=503, detail="Cloud service unavailable")
-    
+
     try:
         supabase_service.client.auth.resend(
             type="signup",
             email=request.email,
-            options={
-                "redirect_to": "https://your-app.vercel.app/auth/callback"
-            }
+            options={"redirect_to": "https://your-app.vercel.app/auth/callback"}
         )
     except Exception as e:
-        print(f"Resend verification error: {e}")
-    
-    # Always return success
+        logger.warning(f"Resend verification error: {e}")
+
     return {
         "message": "If an unverified account exists, a verification email has been sent.",
         "success": True
