@@ -111,20 +111,26 @@ class SupabaseHTTPService:
         return None
     
     def create_user_profile(self, user_id: str, email: str, full_name: str) -> Dict:
-        """Create user profile with auto-generated tenant_id"""
+        """Upsert user profile (insert or update on id conflict)."""
         if not self.client:
             raise Exception("Supabase client not initialized")
-        
+
+        # Use Supabase REST upsert: POST with resolution=merge-duplicates
+        upsert_headers = {
+            **self._get_headers(use_service_key=True),
+            "Prefer": "return=representation,resolution=merge-duplicates",
+        }
+
         response = httpx.post(
-            self._rest_url('user_profiles'),
-            headers=self._get_headers(use_service_key=True),
+            f"{self._rest_url('user_profiles')}?on_conflict=id",
+            headers=upsert_headers,
             json={"id": user_id, "full_name": full_name},
             timeout=10
         )
-        
+
         if response.status_code not in [200, 201]:
-            raise Exception(f"Failed to create profile: {response.text}")
-        
+            raise Exception(f"Failed to upsert profile: {response.text}")
+
         data = response.json()
         return data[0] if isinstance(data, list) else data
     
@@ -217,10 +223,14 @@ class SupabaseHTTPService:
         return None
     
     def create_subscription(self, user_id: str, tenant_id: str, plan: str = "free") -> Dict:
-        """Create a subscription for a user"""
+        """Create a free-trial subscription stub for a new user."""
         if not self.client:
             raise Exception("Supabase client not initialized")
-        
+
+        from datetime import timezone, timedelta
+        now = datetime.now(timezone.utc)
+        trial_ends_at = (now + timedelta(days=14)).isoformat()
+
         response = httpx.post(
             self._rest_url('subscriptions'),
             headers=self._get_headers(use_service_key=True),
@@ -228,15 +238,16 @@ class SupabaseHTTPService:
                 "user_id": user_id,
                 "tenant_id": tenant_id,
                 "plan": plan,
-                "status": "active",
-                "device_limit": 1
+                "status": "trial",
+                "trial_starts_at": now.isoformat(),
+                "trial_ends_at": trial_ends_at,
             },
             timeout=10
         )
-        
+
         if response.status_code not in [200, 201]:
             raise Exception(f"Failed to create subscription: {response.text}")
-        
+
         data = response.json()
         return data[0] if isinstance(data, list) else data
     
