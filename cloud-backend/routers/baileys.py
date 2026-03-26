@@ -298,22 +298,12 @@ async def process_batch(
         processor = BulkBillProcessor(max_concurrent=10)
         api_key = os.getenv("GOOGLE_API_KEY")
         
-        # Check if auto-post is enabled for this tenant
-        # Try to get from user settings or default to False
-        auto_post_enabled = False
-        try:
-            tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-            if tenant and hasattr(tenant, 'auto_post_to_tally'):
-                auto_post_enabled = tenant.auto_post_to_tally
-        except Exception as e:
-            logger.warning(f"Could not check auto_post setting: {e}")
-        
         # Process batch in parallel with auto-execution
         result = await processor.process_batch(
             image_paths=image_paths,
             user_id=tenant_id,
             api_key=api_key,
-            auto_post_enabled=auto_post_enabled
+            auto_post_enabled=False
         )
         
         # ============ COMPILE STATS ============

@@ -43,7 +43,6 @@ class User(TenantMixin, Base):
     is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
     last_login = Column(DateTime, nullable=True)
-    auto_post_to_tally = Column(Boolean, default=False)
 
 class UserSettings(TenantMixin, Base):
     __tablename__ = "user_settings"
@@ -57,4 +56,3 @@ class UserSettings(TenantMixin, Base):
     auto_backup = Column(Boolean, default=True)
     tally_url = Column(String, default="http://localhost:9000")
     google_api_key = Column(String, nullable=True)
-    auto_post_to_tally = Column(Boolean, default=False)

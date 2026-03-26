@@ -188,7 +188,7 @@ class TenantService:
     def update_tenant(self, db_session, tenant_id: str, **kwargs) -> Optional[object]:
         """
         Update tenant in local database.
-        Accepts: company_name, tally_company_name, whatsapp_number, auto_post_to_tally
+        Accepts: company_name, tally_company_name, whatsapp_number
         """
         from database import Tenant
         
