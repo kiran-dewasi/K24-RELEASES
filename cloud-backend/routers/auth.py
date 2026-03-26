@@ -129,6 +129,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
             id=supabase_user_id,
             tenant_id=tenant_id,
             full_name=user_data.full_name,
+            company_name=user_data.company_name,
             role=user_data.role,
             language=user_data.language,
             is_active=True,
@@ -138,11 +139,12 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         db.add(user)
     else:
         # profile already exists (e.g. DB trigger beat us) – patch missing fields
-        user.tenant_id = user.tenant_id or tenant_id
-        user.full_name = user.full_name or user_data.full_name
-        user.role = user.role or user_data.role
-        user.language = user.language or user_data.language
-        user.updated_at = datetime.utcnow()
+        user.tenant_id    = user.tenant_id    or tenant_id
+        user.full_name    = user.full_name    or user_data.full_name
+        user.company_name = user.company_name or user_data.company_name
+        user.role         = user.role         or user_data.role
+        user.language     = user.language     or user_data.language
+        user.updated_at   = datetime.utcnow()
 
     db.commit()
     db.refresh(user)
