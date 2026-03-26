@@ -1,5 +1,7 @@
 "use client";
 
+const CLOUD_API = "https://weare-production.up.railway.app";
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -7,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Lock, Mail, Zap, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -25,11 +26,16 @@ export default function LoginPage() {
 
         try {
             // apiRequest uses NEXT_PUBLIC_API_URL → https://weare-production.up.railway.app in dev
-            const data = await apiRequest<{ access_token: string; user: any }>(
-                "/api/auth/login",
-                "POST",
-                { email: formData.email, password: formData.password }
-            );
+            const response = await fetch(`${CLOUD_API}/api/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: formData.email, password: formData.password })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || "Login failed");
+            }
+            const data = await response.json();
 
             localStorage.setItem("k24_token", data.access_token);
             // Optionally store user info or rely on /me
