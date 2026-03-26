@@ -9,7 +9,7 @@ import os
 import logging
 import asyncio
 import time
-from typing import Optional, Callable, Tuple, AsyncGenerator
+from typing import Optional, Callable, Tuple, AsyncGenerator, List, Any
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
 from dotenv import load_dotenv
