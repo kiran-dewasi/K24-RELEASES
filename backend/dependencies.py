@@ -1,4 +1,4 @@
-﻿
+
 from fastapi import Security, HTTPException, status
 from fastapi.security.api_key import APIKeyHeader
 import os
@@ -82,3 +82,15 @@ def get_tenant_id() -> str:
     )
     return "default"
 
+
+async def get_optional_current_user():
+    """
+    Optional current-user dependency for routes that accept both
+    authenticated and unauthenticated requests.
+
+    The desktop backend uses x-api-key authentication, not bearer tokens,
+    so there is no JWT-based user lookup. This function always returns None,
+    satisfying Optional[User] type hints in routers like customers.py
+    without raising errors.
+    """
+    return None
