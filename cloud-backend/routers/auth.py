@@ -161,18 +161,18 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # 5. Issue a local JWT (tenant_id embedded for API filtering)
     # ------------------------------------------------------------------
     access_token = create_access_token(data={
-        "sub": supabase_user_id,
-        "tenant_id": tenant_id,
+        "sub": str(supabase_user_id),
+        "tenant_id": str(tenant_id) if tenant_id else None,
     })
 
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "id": user.id,
+            "id": str(user.id),
             "full_name": user.full_name,
             "role": user.role,
-            "tenant_id": user.tenant_id,
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
             "language": user.language,
         }
     }
@@ -271,18 +271,18 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     # 4. Issue local JWT
     # ------------------------------------------------------------------
     access_token = create_access_token(data={
-        "sub": user.id,
-        "tenant_id": user.tenant_id,
+        "sub": str(user.id),
+        "tenant_id": str(user.tenant_id) if user.tenant_id else None,
     })
 
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
-            "id": user.id,
+            "id": str(user.id),
             "full_name": user.full_name,
             "role": user.role,
-            "tenant_id": user.tenant_id,
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
             "language": user.language,
         }
     }
