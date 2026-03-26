@@ -1,7 +1,9 @@
 """
-K24 Backend Services
+K24 Cloud Backend Services
 
-Centralized business logic services.
+Cloud-safe service surface only. Local-only services (bulk_processor,
+export_service, query_orchestrator, tenant_service, etc.) must never
+be imported here. Import them directly in local/Tauri routers only.
 """
 
 from services.supabase_service import (
@@ -10,40 +12,10 @@ from services.supabase_service import (
     supabase_http_service,
     supabase_service,
 )
-from services.tenant_service import TenantService, tenant_service
-from services.bulk_processor import BulkBillProcessor, bulk_processor
-from services.export_service import (
-    ExcelGenerator,
-    ExportService,
-    PDFGenerator,
-    export_invoice_to_pdf,
-    export_sales_to_excel,
-    export_statement_to_pdf,
-)
 
 __all__ = [
-    # Supabase
     "SupabaseHTTPService",
     "SupabaseService",
     "supabase_http_service",
     "supabase_service",
-    # Tenant Service
-    "TenantService",
-    "tenant_service",
-    # Bulk processing
-    "BulkBillProcessor",
-    "bulk_processor",
-    # Query Orchestrator
-    "OrchestrationResult",
-    "ParsedQuery",
-    "QueryIntent",
-    "QueryOrchestrator",
-    "process_user_query",
-    # Export Service
-    "ExcelGenerator",
-    "ExportService",
-    "PDFGenerator",
-    "export_invoice_to_pdf",
-    "export_sales_to_excel",
-    "export_statement_to_pdf",
 ]

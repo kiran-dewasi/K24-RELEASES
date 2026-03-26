@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from auth import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+logger = logging.getLogger(__name__)
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -59,7 +61,6 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     Register new user in Supabase + create local session (Hybrid approach)
     """
     from services.supabase_service import supabase_service, supabase_http_service
-    from services.tenant_service import tenant_service
     import uuid
 
     # 1. Supabase Registration (Cloud Master)
@@ -147,10 +148,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Phase 1: Ensure tenant exists locally (synced with cloud)
     # This creates the tenant in SQLite if not already present
     if tenant_id:
-        tenant_service.create_tenant_local(
-            db, tenant_id, user_data.company_name,
-            tally_company_name=None  # Will be set during Tally setup
-        )
+        logger.info(f"Tenant local sync skipped on cloud for user {user_id}")
     
     # Create company locally
     company = Company(
@@ -219,7 +217,6 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     3. Return Local Session Token
     """
     from services.supabase_service import supabase_service, supabase_http_service
-    from services.tenant_service import tenant_service
     
     # 1. Supabase Authentication (Priority)
     # -------------------------------------
@@ -325,11 +322,8 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 db.commit()
                 
                 # Phase 1: Ensure tenant exists in local SQLite
-                tenant_service.create_tenant_local(
-                    db, tenant_id, 
-                    profile.get('company_name', 'My Company'),
-                    tally_company_name=profile.get('tally_company_name')
-                )
+                user_id = supabase_user_id
+                logger.info(f"Tenant local sync skipped on cloud for user {user_id}")
                 
             else:
                 # Neither Cloud nor Local found the user/password valid
@@ -666,4 +660,3 @@ async def resend_verification_email(request: ResendVerificationRequest):
         "message": "If an unverified account exists, a verification email has been sent.",
         "success": True
     }
-
