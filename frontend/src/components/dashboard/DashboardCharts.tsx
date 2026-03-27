@@ -15,13 +15,15 @@ export function DashboardCharts() {
         const fetchData = async () => {
             setLoading(true);
             try {
+                // silent401: 401 from local sidecar must NOT trigger "Session expired" toast
                 const [cfRes, recRes] = await Promise.all([
-                    api.get("/api/dashboard/cashflow"),
-                    api.get("/api/dashboard/receivables")
+                    api.get("/api/dashboard/cashflow",   { silent401: true }),
+                    api.get("/api/dashboard/receivables", { silent401: true })
                 ]);
 
-                if (cfRes.ok) setCashflowData(await cfRes.json());
-                if (recRes.ok) setReceivablesData(await recRes.json());
+                // api.get returns parsed JSON (or null on silent 401)
+                if (cfRes)  setCashflowData(cfRes);
+                if (recRes) setReceivablesData(recRes);
             } catch (error) {
                 console.error("Failed to fetch chart data", error);
             } finally {

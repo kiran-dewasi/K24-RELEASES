@@ -71,19 +71,24 @@ export default function DashboardStats() {
         setLoading(true);
         setError("");
         try {
+            // silent401: a 401 from the local sidecar (e.g. Tally not yet synced)
+            // must NEVER trigger "Session expired" toast — return null silently instead.
             const [statsData, stockData, partyData] = await Promise.all([
-                api.get("/api/dashboard/stats"),
-                api.get("/api/dashboard/stock-summary"),
-                api.get("/api/dashboard/party-analysis"),
+                api.get("/api/dashboard/stats",        { silent401: true }),
+                api.get("/api/dashboard/stock-summary",{ silent401: true }),
+                api.get("/api/dashboard/party-analysis",{ silent401: true }),
             ]);
 
-            setStats(statsData);
-            // Auto-retry once if all financial values are 0 (backend still warming up / Tally not synced yet)
-            if (statsData.cash === 0 && statsData.receivables === 0 && statsData.payables === 0) {
-                setTimeout(() => setRefreshKey(k => k + 1), 4000);
+            // Guard against null (returned when local backend 401s silently)
+            if (statsData) {
+                setStats(statsData);
+                // Auto-retry once if all financial values are 0 (backend still warming up / Tally not synced yet)
+                if (statsData.cash === 0 && statsData.receivables === 0 && statsData.payables === 0) {
+                    setTimeout(() => setRefreshKey(k => k + 1), 4000);
+                }
             }
-            setStockStats(stockData);
-            setPartyStats(partyData);
+            if (stockData)  setStockStats(stockData);
+            if (partyData)  setPartyStats(partyData);
         } catch (err) {
             console.error(err);
             setError("Failed to load dashboard data");

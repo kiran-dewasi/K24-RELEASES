@@ -19,14 +19,12 @@ export function InvoiceStats() {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                // Fetch dashboard stats which includes receivables
-                const dashStats = await api.get("/api/dashboard/stats");
+                // silent401: 401 from local sidecar must NOT trigger "Session expired" toast
+                const dashStats   = await api.get("/api/dashboard/stats",    { silent401: true });
+                const cashflowData = await api.get("/api/dashboard/cashflow", { silent401: true });
 
-                // Fetch cashflow for chart
-                const cashflowData = await api.get("/api/dashboard/cashflow");
-
-                // Convert cashflow to chart format
-                const chartData = cashflowData.slice(-7).map((d: any) => ({
+                // Convert cashflow to chart format (guard null for silent 401)
+                const chartData = (cashflowData ?? []).slice(-7).map((d: any) => ({
                     value: Math.abs(d.value || 0)
                 }));
 

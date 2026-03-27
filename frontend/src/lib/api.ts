@@ -56,8 +56,10 @@ const getAuthToken = (): string | null => {
 export async function apiRequest<T = any>(
     endpoint: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: any
+    body?: any,
+    options?: { silent401?: boolean }
 ): Promise<T> {
+    const silent401 = options?.silent401 ?? false;
     const authToken = getAuthToken();
 
     // In Tauri production build: use Rust backend_request command for security
@@ -81,8 +83,8 @@ export async function apiRequest<T = any>(
         } catch (error: any) {
             console.error('Tauri API request failed:', error);
 
-            // Handle authentication errors
-            if (error.includes?.('401') || error.includes?.('Unauthorized')) {
+            // Handle authentication errors (unless caller opted out with silent401)
+            if (!silent401 && (error.includes?.('401') || error.includes?.('Unauthorized'))) {
                 handleAuthError();
             }
 
@@ -115,7 +117,11 @@ export async function apiRequest<T = any>(
         const response = await fetch(url, options);
 
         if (response.status === 401) {
-            handleAuthError();
+            if (!silent401) {
+                handleAuthError();
+            }
+            // Return null for silent 401s (local-backend routes not yet connected)
+            if (silent401) return null as unknown as T;
             throw new Error('Unauthorized');
         }
 
@@ -201,9 +207,9 @@ export async function startBackend(): Promise<{ port: number; mode: string }> {
 // ============================================================
 
 export const api = {
-    get: <T = any>(endpoint: string) => apiRequest<T>(endpoint, 'GET'),
-    post: <T = any>(endpoint: string, body?: any) => apiRequest<T>(endpoint, 'POST', body),
-    put: <T = any>(endpoint: string, body?: any) => apiRequest<T>(endpoint, 'PUT', body),
+    get: <T = any>(endpoint: string, opts?: { silent401?: boolean }) => apiRequest<T>(endpoint, 'GET', undefined, opts),
+    post: <T = any>(endpoint: string, body?: any, opts?: { silent401?: boolean }) => apiRequest<T>(endpoint, 'POST', body, opts),
+    put: <T = any>(endpoint: string, body?: any, opts?: { silent401?: boolean }) => apiRequest<T>(endpoint, 'PUT', body, opts),
     delete: <T = any>(endpoint: string) => apiRequest<T>(endpoint, 'DELETE'),
 };
 
