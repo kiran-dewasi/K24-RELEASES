@@ -37,7 +37,7 @@ const LOCAL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'k24-secret-key-123';
 /**
  * Get JWT token from localStorage
  */
-const getAuthToken = (): string | null => {
+export const getAuthToken = (): string | null => {
     if (typeof window === 'undefined') return null;
     return localStorage.getItem('k24_token');
 };

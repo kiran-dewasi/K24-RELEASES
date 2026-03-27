@@ -9,7 +9,7 @@ import {
     Wallet, TrendingUp, CreditCard, PiggyBank,
     ArrowUpRight, ArrowDownRight, RefreshCw, Zap
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, getAuthToken } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,10 @@ export default function DashboardStats() {
         setLoading(true);
         setError("");
         try {
+            const token = getAuthToken();
+            console.log(`[DEBUG] dashboard token preview: ${token?.slice(0, 20)}...`);
+            console.log(`[DEBUG] URL being called: /api/dashboard/stats`);
+
             // silent401: a 401 from the local sidecar (e.g. Tally not yet synced)
             // must NEVER trigger "Session expired" toast — return null silently instead.
             const [statsData, stockData, partyData] = await Promise.all([

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from database import User, get_db
@@ -100,6 +100,7 @@ def decode_socket_token(token: str) -> Optional[dict]:
         return None
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    print(f"[DEBUG TOKEN] raw token: {token}")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -117,6 +118,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         if username is None:
             raise credentials_exception
     except JWTError:
+        print("[DEBUG TOKEN] JWTError while decoding token")
         raise credentials_exception
     
     user = db.query(User).filter(User.username == username).first()
@@ -149,11 +151,16 @@ def require_role(required_role: str):
         return current_user
     return role_checker
 
-def get_current_tenant_id(current_user: User = Depends(get_current_active_user)) -> str:
+def get_current_tenant_id(current_user: User = Depends(get_current_active_user), request: Request = None) -> str:
     """
     Extracts tenant_id from the authenticated user.
     Enforces multi-tenancy isolation.
     """
+    path = request.url.path if request else "unknown"
+    auth_header = request.headers.get("Authorization") if request else "N/A"
+    tenant_id = current_user.tenant_id if current_user else "N/A"
+    print(f"[DEBUG AUTH] Path: {path}, Auth present: {bool(auth_header)}, sub: {current_user.username if current_user else 'N/A'}, tenant_id: {tenant_id}")
+
     if not current_user.tenant_id:
         # Fallback for legacy users (should not happen with new constraints)
         return "default"
