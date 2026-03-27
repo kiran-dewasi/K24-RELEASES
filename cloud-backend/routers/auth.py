@@ -294,7 +294,15 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
-    return current_user
+    return {
+        "id": str(current_user.id),
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+        "tenant_id": str(current_user.tenant_id) if current_user.tenant_id else None,
+        "whatsapp_number": current_user.whatsapp_number if hasattr(current_user, "whatsapp_number") else None,
+        "language": current_user.language if hasattr(current_user, "language") else None,
+        "is_active": current_user.is_active,
+    }
 
 
 # ---------------------------------------------------------------------------
