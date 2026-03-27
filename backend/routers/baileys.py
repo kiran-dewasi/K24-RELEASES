@@ -7,7 +7,7 @@ import os
 import asyncio
 from typing import Optional, List
 
-from database import get_db, Ledger, Tenant, User, WhatsAppMapping, WhatsAppKeyPair
+from database import get_db, Ledger, Tenant, User, WhatsAppMapping
 from auth import get_current_tenant_id
 from tools.invoice_tool import invoice_tool
 # from graph import run_agent # Avoiding circular import if possible, or lazy import
