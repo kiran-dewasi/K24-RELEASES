@@ -8,7 +8,7 @@ import calendar
 import io
 
 from database import get_db, Voucher, Ledger, Bill
-from dependencies import get_api_key, get_tenant_id
+from dependencies import get_tenant_id
 from utils.pdf_generator import generate_report_pdf
 import os
 
@@ -148,7 +148,7 @@ def _build_monthly_data(vouchers: list, d_from: Optional[date] = None, d_to: Opt
 # ─────────────────────────────────────────────
 #  Sales Register
 # ─────────────────────────────────────────────
-@router.get("/sales-register", dependencies=[Depends(get_api_key)])
+@router.get("/sales-register")
 def get_sales_register(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -182,7 +182,7 @@ def get_sales_register(
 # ─────────────────────────────────────────────
 #  Purchase Register
 # ─────────────────────────────────────────────
-@router.get("/purchase-register", dependencies=[Depends(get_api_key)])
+@router.get("/purchase-register")
 def get_purchase_register(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -213,7 +213,7 @@ def get_purchase_register(
 # ─────────────────────────────────────────────
 #  Cash Flow  (Receipt + Payment vouchers)
 # ─────────────────────────────────────────────
-@router.get("/cash-flow", dependencies=[Depends(get_api_key)])
+@router.get("/cash-flow")
 def get_cash_flow(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -262,7 +262,7 @@ def get_cash_flow(
 # ─────────────────────────────────────────────
 #  Balance Sheet
 # ─────────────────────────────────────────────
-@router.get("/balance-sheet", dependencies=[Depends(get_api_key)])
+@router.get("/balance-sheet")
 def get_balance_sheet(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -303,7 +303,7 @@ def get_balance_sheet(
 # ─────────────────────────────────────────────
 #  Profit & Loss
 # ─────────────────────────────────────────────
-@router.get("/profit-loss", dependencies=[Depends(get_api_key)])
+@router.get("/profit-loss")
 def get_profit_loss(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -336,7 +336,7 @@ def get_profit_loss(
 # ─────────────────────────────────────────────
 #  Cash Book (legacy – balance only)
 # ─────────────────────────────────────────────
-@router.get("/cash-book", dependencies=[Depends(get_api_key)])
+@router.get("/cash-book")
 def get_cash_book(db: Session = Depends(get_db)):
     cash_ledger = db.query(Ledger).filter(Ledger.name.ilike("Cash")).first()
     if not cash_ledger:
@@ -364,7 +364,7 @@ _REPORT_TITLES = {
 }
 
 
-@router.get("/{slug}/export", dependencies=[Depends(get_api_key)])
+@router.get("/{slug}/export")
 def export_report_pdf(
     slug: str,
     date_from: Optional[str] = Query(None),

@@ -58,7 +58,7 @@ class StockMovementResponse(BaseModel):
 
 # --- Endpoints ---
 
-@router.get("/inventory", dependencies=[Depends(get_api_key)])
+@router.get("/inventory")
 async def get_inventory_items(
     search: Optional[str] = None,
     category: Optional[str] = None,
@@ -169,7 +169,7 @@ async def get_inventory_items(
         logger.exception("Failed to fetch inventory")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/inventory/summary", dependencies=[Depends(get_api_key)])
+@router.get("/inventory/summary")
 async def get_inventory_summary(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -210,7 +210,7 @@ async def get_inventory_summary(
         logger.exception("Failed to fetch summary")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/inventory/movements/all", dependencies=[Depends(get_api_key)])
+@router.get("/inventory/movements/all")
 async def get_all_movements(
     page: int = 1,
     limit: int = 50,
@@ -275,7 +275,7 @@ async def get_all_movements(
          logger.exception("Error fetching global movements")
          raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/inventory/{item_name}", dependencies=[Depends(get_api_key)])
+@router.get("/inventory/{item_name}")
 async def get_item_details(
     item_name: str,
     db: Session = Depends(get_db),
@@ -333,7 +333,7 @@ async def get_item_details(
         logger.exception(f"Error fetching detail for {item_name}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/inventory/{item_name}/movements", dependencies=[Depends(get_api_key)])
+@router.get("/inventory/{item_name}/movements")
 async def get_item_movements(
     item_name: str,
     page: int = 1,

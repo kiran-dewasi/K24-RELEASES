@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
 from typing import List, Dict, Any
@@ -9,7 +9,7 @@ from dependencies import get_api_key
 
 router = APIRouter(prefix="/reports", tags=["gst"])
 
-@router.get("/gst-summary", dependencies=[Depends(get_api_key)])
+@router.get("/gst-summary")
 def get_gst_summary(db: Session = Depends(get_db)):
     """
     Get GST Summary (GSTR-1 vs GSTR-3B Proxy).
@@ -63,14 +63,14 @@ class CalculateTaxRequest(BaseModel):
     company_gstin: str
     tax_rate: float = 18.0
 
-@router.post("/validate", dependencies=[Depends(get_api_key)])
+@router.post("/validate")
 def validate_gstin_endpoint(req: ValidateGSTINRequest):
     """
     Validate a GSTIN format and state code.
     """
     return GSTEngine.validate_gstin(req.gstin)
 
-@router.post("/calculate", dependencies=[Depends(get_api_key)])
+@router.post("/calculate")
 def calculate_tax_endpoint(req: CalculateTaxRequest):
     """
     Calculate GST breakdown (IGST vs CGST/SGST) based on party and company GSTINs.

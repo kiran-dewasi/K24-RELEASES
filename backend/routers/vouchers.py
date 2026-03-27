@@ -99,7 +99,7 @@ import time
 CALLY_CACHE_TTL = 60   # seconds
 _voucher_cache: dict = {}  # key -> {"data": [...], "ledger_map": {...}, "ts": float}
 
-@router.get("/vouchers/detail", dependencies=[Depends(get_api_key)])
+@router.get("/vouchers/detail")
 async def get_voucher_detail(
     voucher_number: Optional[str] = None,
     voucher_type: Optional[str] = None,
@@ -189,7 +189,7 @@ async def get_voucher_detail(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/vouchers", dependencies=[Depends(get_api_key)])
+@router.get("/vouchers")
 async def get_vouchers(
     voucher_type: Optional[str] = None, 
     start_date: Optional[str] = None, 
@@ -368,7 +368,7 @@ async def get_vouchers(
             "total_pages": 0
         }
 
-@router.get("/ledgers/{ledger_name}/vouchers", dependencies=[Depends(get_api_key)])
+@router.get("/ledgers/{ledger_name}/vouchers")
 async def get_ledger_vouchers(ledger_name: str):
     """Fetch vouchers for a specific ledger"""
     try:
@@ -381,7 +381,7 @@ async def get_ledger_vouchers(ledger_name: str):
         logger.exception(f"Failed to fetch vouchers for {ledger_name}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/vouchers", dependencies=[Depends(get_api_key)])
+@router.post("/vouchers")
 async def create_voucher_endpoint(voucher: VoucherDraft, db: Session = Depends(get_db)):
     """
     Create a voucher in Tally via the Sync Engine (Transactional).
@@ -458,7 +458,7 @@ async def create_voucher_endpoint(voucher: VoucherDraft, db: Session = Depends(g
         logger.error(f"Failed to create voucher: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/vouchers/{voucher_id}/undo", dependencies=[Depends(get_api_key)])
+@router.post("/vouchers/{voucher_id}/undo")
 async def undo_voucher_endpoint(voucher_id: int):
     """
     Undo a voucher (Delete from Tally & Local DB).
@@ -471,7 +471,7 @@ async def undo_voucher_endpoint(voucher_id: int):
 
 # --- Migrated Custom Endpoints ---
 
-@router.post("/vouchers/receipt", dependencies=[Depends(get_api_key)])
+@router.post("/vouchers/receipt")
 async def create_receipt_voucher(request: ReceiptVoucherRequest, db: Session = Depends(get_db)):
     """Create a Receipt voucher and push to Tally + Save to Database"""
     try:
@@ -576,7 +576,7 @@ async def create_receipt_voucher(request: ReceiptVoucherRequest, db: Session = D
         logger.exception("Failed to create receipt voucher")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/vouchers/sales", dependencies=[Depends(get_api_key)])
+@router.post("/vouchers/sales")
 async def create_sales_invoice(request: SalesInvoiceRequest, db: Session = Depends(get_db)):
     """Create a Sales Invoice with multiple line items and push to Tally + Save to Database"""
     try:
@@ -697,7 +697,7 @@ async def create_sales_invoice(request: SalesInvoiceRequest, db: Session = Depen
         logger.exception("Failed to create sales invoice")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/vouchers/payment", dependencies=[Depends(get_api_key)])
+@router.post("/vouchers/payment")
 async def create_payment_voucher(request: PaymentVoucherRequest, db: Session = Depends(get_db)):
     """Create a Payment voucher and push to Tally + Save to Database"""
     try:

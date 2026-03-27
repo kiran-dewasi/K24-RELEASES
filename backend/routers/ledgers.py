@@ -53,7 +53,7 @@ class LedgerSearchResponse(BaseModel):
 from database import get_db, StockItem
 from dependencies import get_api_key, get_tenant_id
 
-@router.get("/ledgers/search", dependencies=[Depends(get_api_key)])
+@router.get("/ledgers/search")
 async def search_ledgers_for_autocomplete(
     q: str = Query(..., min_length=1, description="Search query"),
     ledger_type: Optional[str] = Query(None, description="Filter by type: customer, supplier, etc."),
@@ -92,7 +92,7 @@ async def search_ledgers_for_autocomplete(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/ledgers", dependencies=[Depends(get_api_key)])
+@router.post("/ledgers")
 async def create_ledger(
     request: LedgerCreateRequest,
     db: Session = Depends(get_db),
@@ -163,7 +163,7 @@ async def create_ledger(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/ledgers/list", dependencies=[Depends(get_api_key)])
+@router.get("/ledgers/list")
 async def list_ledgers(
     group: Optional[str] = Query(None, description="Filter by parent group"),
     ledger_type: Optional[str] = Query(None, description="Filter by type"),

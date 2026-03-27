@@ -8,7 +8,7 @@ import os
 
 router = APIRouter(prefix="/api/bills", tags=["bills"])
 
-@router.get("/receivables", dependencies=[Depends(get_api_key)])
+@router.get("/receivables")
 async def get_receivables():
     """
     Get Outstanding Receivables.
@@ -28,7 +28,7 @@ async def get_receivables():
     except Exception as e:
         return {"bills": [], "error": str(e)}
 
-@router.get("/payables", dependencies=[Depends(get_api_key)])
+@router.get("/payables")
 async def get_payables():
     """
     Get Outstanding Payables.

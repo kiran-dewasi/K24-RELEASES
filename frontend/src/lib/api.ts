@@ -100,14 +100,15 @@ export async function apiRequest<T = any>(
             'Content-Type': 'application/json',
         };
 
-        // Always send x-api-key for local backend requests
-        headers['x-api-key'] = LOCAL_API_KEY;
-
-        // Only send Authorization header for cloud backend requests
-        const isLocalRequest = url.includes('localhost') ||
-                               url.includes('127.0.0.1');
-        if (authToken && !isLocalRequest) {
+        // Always send Authorization: Bearer when token exists (local + cloud)
+        if (authToken) {
             headers['Authorization'] = `Bearer ${authToken}`;
+        }
+
+        // Also send x-api-key for local backend requests (optional extra)
+        const isLocalRequest = url.includes('localhost') || url.includes('127.0.0.1');
+        if (isLocalRequest) {
+            headers['x-api-key'] = LOCAL_API_KEY;
         }
 
         const options: RequestInit = {

@@ -11,7 +11,7 @@ import logging
 import os
 
 from database import get_db, Ledger, Voucher, StockItem, Bill, SessionLocal
-from dependencies import get_api_key, get_tenant_id
+from dependencies import get_tenant_id
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 logger = logging.getLogger("dashboard")
@@ -19,7 +19,7 @@ logger = logging.getLogger("dashboard")
 # ─────────────────────────────────────────────
 # /stats  — KPI Cards
 # ─────────────────────────────────────────────
-@router.get("/stats", dependencies=[Depends(get_api_key)])
+@router.get("/stats")
 def get_dashboard_stats(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -79,7 +79,7 @@ def get_dashboard_stats(
 # ─────────────────────────────────────────────
 # /receivables  — Top debtors bar chart
 # ─────────────────────────────────────────────
-@router.get("/receivables", dependencies=[Depends(get_api_key)])
+@router.get("/receivables")
 def get_top_receivables(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -105,7 +105,7 @@ def get_top_receivables(
 # ─────────────────────────────────────────────
 # /cashflow  — Daily net cashflow chart
 # ─────────────────────────────────────────────
-@router.get("/cashflow", dependencies=[Depends(get_api_key)])
+@router.get("/cashflow")
 def get_cashflow(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -160,7 +160,7 @@ def get_cashflow(
 # ─────────────────────────────────────────────
 # /stock-summary  — Inventory KPIs
 # ─────────────────────────────────────────────
-@router.get("/stock-summary", dependencies=[Depends(get_api_key)])
+@router.get("/stock-summary")
 def get_dashboard_stock(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -210,7 +210,7 @@ def get_dashboard_stock(
 # ─────────────────────────────────────────────
 # /gst-summary  — GST placeholder
 # ─────────────────────────────────────────────
-@router.get("/gst-summary", dependencies=[Depends(get_api_key)])
+@router.get("/gst-summary")
 def get_dashboard_gst(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
@@ -233,7 +233,7 @@ def get_dashboard_gst(
 # ─────────────────────────────────────────────
 # /party-analysis  — Top customers & suppliers
 # ─────────────────────────────────────────────
-@router.get("/party-analysis", dependencies=[Depends(get_api_key)])
+@router.get("/party-analysis")
 def get_dashboard_party(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
