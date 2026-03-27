@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { apiRequest } from "@/lib/api";
 
+const CLOUD_API = "https://weare-production.up.railway.app";
+
 // ============================================================
 // Types
 // ============================================================
@@ -43,6 +45,14 @@ const UserContext = createContext<UserContextValue>({
 // Provider
 // ============================================================
 
+function handleCloudAuthError() {
+    if (typeof window !== "undefined") {
+        localStorage.removeItem("k24_token");
+        localStorage.removeItem("k24_user");
+        window.location.href = "/login";
+    }
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
@@ -60,7 +70,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
             setLoading(true);
             setError(null);
 
-            const data = await apiRequest<User>("/api/auth/me");
+            const token = typeof window !== "undefined" ? localStorage.getItem("k24_token") : null;
+            const res = await fetch(`${CLOUD_API}/api/auth/me`, {
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+            });
+            if (res.status === 401) {
+                handleCloudAuthError();
+                throw new Error("Unauthorized");
+            }
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || `HTTP ${res.status}`);
+            }
+            const data: User = await res.json();
             setUser(data);
 
             // Cache user data for offline fallback

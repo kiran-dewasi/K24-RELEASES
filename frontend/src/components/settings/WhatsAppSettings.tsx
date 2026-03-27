@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/api";
+
+const CLOUD_API = "https://weare-production.up.railway.app";
 import Link from "next/link";
 
 interface UserStatus {
@@ -49,14 +51,22 @@ export function WhatsAppSettings() {
     const fetchAll = async () => {
         setLoading(true);
         try {
-            const [userRes, botRes, statsRes, custRes] = await Promise.allSettled([
-                apiRequest<UserStatus>("/api/auth/me"),
+            const token = typeof window !== "undefined" ? localStorage.getItem("k24_token") : null;
+            const meRes = await fetch(`${CLOUD_API}/api/auth/me`, {
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+            });
+            const userStatusData: UserStatus | null = meRes.ok ? await meRes.json() : null;
+
+            const [botRes, statsRes, custRes] = await Promise.allSettled([
                 apiRequest<BotStatus>("/api/baileys/status"),
                 apiRequest<MessageStats>("/api/whatsapp/message-stats"),
                 apiRequest<{ mappings: any[]; total: number }>("/api/whatsapp/customers"),
             ]);
 
-            if (userRes.status === "fulfilled") setUserStatus(userRes.value);
+            if (userStatusData) setUserStatus(userStatusData);
             if (botRes.status === "fulfilled") setBotStatus(botRes.value);
             if (statsRes.status === "fulfilled") setStats(statsRes.value);
             if (custRes.status === "fulfilled") setCustomerCount(custRes.value.total ?? 0);
