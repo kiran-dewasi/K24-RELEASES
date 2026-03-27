@@ -19,6 +19,7 @@ if not SECRET_KEY:
     raise ValueError("JWT_SECRET_KEY not set in environment")
 
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
 print(f"[DEBUG SECRET] SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
 print(f"[DEBUG SECRET] ALGORITHM: {ALGORITHM}")
@@ -110,8 +111,9 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
+        tenant_id_from_token = payload.get("tenant_id")
         
         # Check expiration
         exp = payload.get("exp")
@@ -124,8 +126,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         print("[DEBUG TOKEN] JWTError while decoding token")
         raise credentials_exception
     
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(User.id == username).first()
     if user is None:
+        if tenant_id_from_token:
+            return User(id=username, tenant_id=tenant_id_from_token, username=username, is_active=True, role="viewer")
         raise credentials_exception
     return user
 
