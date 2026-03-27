@@ -98,10 +98,15 @@ export async function apiRequest<T = any>(
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'x-api-key': LOCAL_API_KEY,  // Required by dashboard & other routes using Depends(get_api_key)
         };
 
-        if (authToken) {
+        // Always send x-api-key for local backend requests
+        headers['x-api-key'] = LOCAL_API_KEY;
+
+        // Only send Authorization header for cloud backend requests
+        const isLocalRequest = url.includes('localhost') ||
+                               url.includes('127.0.0.1');
+        if (authToken && !isLocalRequest) {
             headers['Authorization'] = `Bearer ${authToken}`;
         }
 
