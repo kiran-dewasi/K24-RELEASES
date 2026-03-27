@@ -171,6 +171,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     company = Company(
         name=user_data.company_name,
         created_at=datetime.now(),
+        # TODO: demo/test fallback. NOT used for authenticated flows.
         tenant_id=tenant_id or "offline-default" # Sync tenant_id
     )
     db.add(company)
@@ -186,6 +187,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         full_name=user_data.full_name,
         role=user_data.role,
         company_id=company.id,
+        # TODO: demo/test fallback. NOT used for authenticated flows.
         tenant_id=tenant_id or "offline-default", # Sync tenant_id
         is_verified=True,  # Auto-verify first user
         created_at=datetime.now(),
@@ -196,6 +198,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     db.refresh(user)
     
     # Create default settings
+    # TODO: demo/test fallback. NOT used for authenticated flows.
     settings = UserSettings(user_id=user.id, tenant_id=tenant_id or "offline-default")
     db.add(settings)
     db.commit()

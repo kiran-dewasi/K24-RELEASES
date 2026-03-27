@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tenant Service - Central Hub for Multi-Tenant Operations
 =========================================================
 This service ensures tenant data is consistent across Supabase (Cloud) and SQLite (Local).
@@ -33,6 +33,7 @@ class TenantService:
             returns = "TENANT-84F03F7D"
         """
         if not user_id:
+            # TODO: demo/test fallback. NOT used for authenticated flows.
             return "TENANT-UNKNOWN"
         
         # Remove hyphens and take first 8 chars
