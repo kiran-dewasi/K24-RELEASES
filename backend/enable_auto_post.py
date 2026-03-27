@@ -1,16 +1,15 @@
-﻿"""
+"""
 Enable Auto-Post to Tally for the default tenant.
 """
 from sqlalchemy.orm import Session
 from database import get_db, Tenant, engine
 from database import Base # Ensure models are loaded
 
-def enable_auto_post():
+def enable_auto_post(tenant_id: str):
     from database import SessionLocal # Use direct session
     db = SessionLocal()
     try:
         # Find the tenant (assuming default or the one used in testing)
-        tenant_id = "TENANT-12345" # The forced override ID in baileys.py
         
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         if not tenant:
@@ -30,5 +29,5 @@ def enable_auto_post():
         db.close()
 
 if __name__ == "__main__":
-    enable_auto_post()
+    enable_auto_post("TENANT-12345")
 

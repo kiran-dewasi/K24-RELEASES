@@ -1,10 +1,10 @@
-﻿from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session
 from database import SessionLocal, User, Company, UserSettings, Tenant, Ledger, WhatsAppMapping, init_db
 from auth import get_password_hash
 from datetime import datetime
 import uuid
 
-def create_default_user():
+def create_default_user(tenant_id: str):
     init_db() # Ensure tables exist
     db = SessionLocal()
     try:
@@ -34,7 +34,7 @@ def create_default_user():
             print(f"âœ“ Created Company: {company_name}")
 
         # 3. Create Tenant Record (for Multi-tenancy)
-        tenant_id = "TENANT-12345"
+        
         tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         if not tenant:
             tenant = Tenant(
@@ -82,5 +82,5 @@ def create_default_user():
         db.close()
 
 if __name__ == "__main__":
-    create_default_user()
+    create_default_user("TENANT-12345")
 

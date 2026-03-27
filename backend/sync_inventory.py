@@ -1,10 +1,10 @@
-﻿from database import SessionLocal, StockItem, InventoryEntry
+from database import SessionLocal, StockItem, InventoryEntry
 from tally_reader import TallyReader
 import logging
 
 logger = logging.getLogger("InventorySync")
 
-def sync_tally_stock_items(tenant_id="TENANT-12345"):
+def sync_tally_stock_items(tenant_id: str):
     """
     Fetches all Stock Items from Tally and updates local DB.
     """
@@ -67,8 +67,8 @@ def sync_tally_stock_items(tenant_id="TENANT-12345"):
         print(f"âœ… Synced {count} Stock Items from Tally.")
         
     except Exception as e:
-        print(f"âŒ Inventory Sync Failed: {e}")
+        print(f"â Œ Inventory Sync Failed: {e}")
 
 if __name__ == "__main__":
-    sync_tally_stock_items()
+    sync_tally_stock_items("TENANT-12345")
 

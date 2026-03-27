@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from credit_engine import record_event, get_tenant_usage, CreditDecision
 from credit_engine.models import EventType, EventSubtype
 from dependencies import get_api_key
+from auth import get_current_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ class RecordEventRequest(BaseModel):
     response_model=None,
     summary="Record a business event and apply credit accounting",
 )
-async def record_usage_event(req: RecordEventRequest):
+async def record_usage_event(req: RecordEventRequest, tenant_id: str = Depends(get_current_tenant_id)):
     """
     Record a business event (voucher created, document processed, message action)
     and atomically apply credit accounting for the tenant's current billing cycle.
@@ -98,7 +99,7 @@ async def record_usage_event(req: RecordEventRequest):
             )
 
         decision: CreditDecision = record_event(
-            tenant_id     = req.tenant_id,
+            tenant_id     = tenant_id,
             event_type    = req.event_type,
             event_subtype = req.event_subtype,
             company_id    = req.company_id,

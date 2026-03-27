@@ -1,4 +1,4 @@
-﻿
+
 import asyncio
 import json
 import os
@@ -198,7 +198,7 @@ def logic_process_whatsapp_message(from_phone, message_text, message_id, webhook
         "processed_at": datetime.now().isoformat()
     }).eq("message_id", message_id).execute()
 
-async def logic_create_ledger_async(ledger_data: dict, user_id: str = "agent", 
+async def logic_create_ledger_async(ledger_data: dict, tenant_id: str, user_id: str = "agent", 
                       thread_id: str = None, triggered_by_message_id: str = None):
     try:
         task_id = str(uuid.uuid4())
@@ -247,7 +247,7 @@ async def logic_create_ledger_async(ledger_data: dict, user_id: str = "agent",
              
              if not existing:
                   new_l = Ledger(
-                      tenant_id="TENANT-12345",
+                      tenant_id=tenant_id,
                       name=l_name,
                       parent=parent_group,
                       gstin=ledger_data.get("gst"),
@@ -280,7 +280,7 @@ async def logic_create_ledger_async(ledger_data: dict, user_id: str = "agent",
             await task_repo.update_task_progress(celery_task_id=task_id, status="failed", progress_percent=100, error=str(e))
         raise e
 
-async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent", 
+async def logic_create_voucher_async(voucher_data: dict, tenant_id: str, user_id: str = "agent", 
                        thread_id: str = None, triggered_by_message_id: str = None):
     print(f"DEBUG: Starting Logic for {voucher_data}")
     try:
@@ -360,7 +360,7 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
                      print(f"DEBUG: Ledger '{party_name}' NOT found locally. Auto-creating...")
                      
                      new_ledger = Ledger(
-                         tenant_id="TENANT-12345", # Match the tenant used in Voucher
+                         tenant_id=tenant_id, # Match the tenant used in Voucher
                          name=party_name,
                          parent=parent_grp,
                          opening_balance=0.0, 
@@ -420,7 +420,7 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
              try:
                  v_num_cand = "TEMP-TASK-" + task_id[:6]
                  new_v = Voucher(
-                     tenant_id="TENANT-12345",
+                     tenant_id=tenant_id,
                      voucher_number=v_num_cand, 
                      date=datetime.strptime(v_date, "%Y-%m-%d"),
                      party_name=voucher_data.get("party"),
@@ -450,7 +450,7 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
                          if not s_item:
                              print(f"DEBUG: Auto-Creating Stock Item: {item_name}")
                              s_item = StockItem(
-                                 tenant_id="TENANT-12345",
+                                 tenant_id=tenant_id,
                                  name=item_name,
                                  closing_balance=0.0 # Will update
                              )
@@ -470,7 +470,7 @@ async def logic_create_voucher_async(voucher_data: dict, user_id: str = "agent",
                          
                          # 3. Create Inventory Entry
                          inv_entry = InventoryEntry(
-                             tenant_id="TENANT-12345",
+                             tenant_id=tenant_id,
                              voucher_id=new_v.id,
                              item_id=s_item.id,
                              actual_qty=qty,
