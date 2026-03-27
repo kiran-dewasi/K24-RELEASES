@@ -19,7 +19,9 @@ if not SECRET_KEY:
     raise ValueError("JWT_SECRET_KEY not set in environment")
 
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET") or ""
+if not SUPABASE_JWT_SECRET:
+    raise ValueError("SUPABASE_JWT_SECRET not set in environment")
 
 print(f"[DEBUG SECRET] SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
 print(f"[DEBUG SECRET] ALGORITHM: {ALGORITHM}")

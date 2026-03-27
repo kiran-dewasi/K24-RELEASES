@@ -1,15 +1,15 @@
+from dotenv import load_dotenv
+load_dotenv()
+
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body, Depends, BackgroundTasks, Security, Request
 # Trigger Reload
 
 from fastapi.responses import StreamingResponse
-from dotenv import load_dotenv
 import os
 from contextlib import asynccontextmanager
 import json
 import uuid
-
-# Load environment variables IMMEDIATELY
-load_dotenv()
 
 # Task 2.1: Sentry Error Monitoring (optional - may not work on Python 3.14)
 try:
