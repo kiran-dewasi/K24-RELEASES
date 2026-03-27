@@ -63,7 +63,6 @@ class RecordEventRequest(BaseModel):
     "/event",
     response_model=None,
     summary="Record a business event and apply credit accounting",
-    dependencies=[Depends(get_api_key)],
 )
 async def record_usage_event(req: RecordEventRequest):
     """
@@ -139,7 +138,6 @@ async def record_usage_event(req: RecordEventRequest):
 @router.get(
     "/tenant/{tenant_id}",
     summary="Get current usage snapshot for a tenant",
-    dependencies=[Depends(get_api_key)],
 )
 async def get_usage_snapshot(tenant_id: str):
     """

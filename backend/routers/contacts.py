@@ -10,7 +10,7 @@ from auth import get_current_tenant_id
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
-@router.get("/detailed", dependencies=[Depends(get_api_key)])
+@router.get("/detailed")
 async def get_contacts_detailed(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id)
@@ -127,7 +127,7 @@ class ContactUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
 
-@router.put("/{contact_id}", dependencies=[Depends(get_api_key)])
+@router.put("/{contact_id}")
 async def update_contact(
     contact_id: int, 
     update_data: ContactUpdate,

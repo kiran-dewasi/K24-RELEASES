@@ -121,7 +121,7 @@ class Customer360Response(BaseModel):
 
 # --- Main 360° Endpoint ---
 
-@router.get("/{customer_id}/360", response_model=Customer360Response, dependencies=[Depends(get_api_key)])
+@router.get("/{customer_id}/360", response_model=Customer360Response)
 async def get_customer_360(
     customer_id: int,
     db: Session = Depends(get_db),
@@ -627,7 +627,7 @@ def calculate_customer_insights(
 
 # --- Additional Utility Endpoints ---
 
-@router.get("/search", dependencies=[Depends(get_api_key)])
+@router.get("/search")
 async def search_customers(
     q: str = Query(..., min_length=1, description="Search query"),
     ledger_type: Optional[str] = Query(None, description="customer, supplier, or all"),
@@ -683,7 +683,7 @@ async def search_customers(
     }
 
 
-@router.get("/top", dependencies=[Depends(get_api_key)])
+@router.get("/top")
 async def get_top_customers(
     by: str = Query("sales", description="Rank by: sales, balance, transactions"),
     limit: int = Query(10, ge=1, le=50),
@@ -785,7 +785,7 @@ async def get_top_customers(
         }
 
 
-@router.get("/{customer_id}/aging", dependencies=[Depends(get_api_key)])
+@router.get("/{customer_id}/aging")
 async def get_customer_aging(
     customer_id: int,
     db: Session = Depends(get_db),

@@ -45,7 +45,7 @@ async def get_tenant_by_whatsapp(wa_number: str, db: Session = Depends(get_db)):
         "tally_company_name": tenant.tally_company_name
     }
 
-@router.get("/contacts/by-whatsapp/{wa_number}", dependencies=[Depends(get_api_key)])
+@router.get("/contacts/by-whatsapp/{wa_number}")
 async def get_contact_by_whatsapp(
     wa_number: str, 
     db: Session = Depends(get_db),
@@ -161,7 +161,7 @@ async def get_contact_by_whatsapp(
 class TenantUpdate(BaseModel):
     whatsapp_number: str
 
-@router.get("/settings/whatsapp", dependencies=[Depends(get_api_key)])
+@router.get("/settings/whatsapp")
 async def get_whatsapp_settings(
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id)
@@ -181,7 +181,7 @@ async def get_whatsapp_settings(
         "connected": True
     }
 
-@router.put("/settings/whatsapp", dependencies=[Depends(get_api_key)])
+@router.put("/settings/whatsapp")
 async def update_whatsapp_settings(
     settings: TenantUpdate,
     db: Session = Depends(get_db),
