@@ -1,4 +1,4 @@
-﻿from typing import Optional
+from typing import Optional
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from tools import TOOLS
@@ -12,7 +12,8 @@ class ModelRouter:
     """
     
     FLASH_MODEL = os.getenv("GEMINI_FLASH_MODEL", "gemini-2.0-flash")
-    PRO_MODEL = os.getenv("GEMINI_PRO_MODEL", "gemini-2.0-flash")
+    PRO_MODEL = os.getenv("GEMINI_PRO_MODEL", "gemini-1.5-flash")
+    FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-1.5-pro")
     
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
@@ -53,9 +54,24 @@ class ModelRouter:
                 temperature=0.1,
                 top_p=0.95,
                 google_api_key=self.api_key
-            )
-            # Bind tools dynamically so the agent can always use them
-            return llm.bind_tools(TOOLS)
+            ).bind_tools(TOOLS)
+            
+            if model_name == self.PRO_MODEL:
+                from google.api_core.exceptions import ResourceExhausted
+                fallback_llm = ChatGoogleGenerativeAI(
+                    model=self.FALLBACK_MODEL,
+                    transport="rest",
+                    temperature=0.1,
+                    top_p=0.95,
+                    google_api_key=self.api_key
+                ).bind_tools(TOOLS)
+                # with_fallbacks will catch exceptions (like 429) and route to fallback
+                llm = llm.with_fallbacks(
+                    [fallback_llm],
+                    exceptions_to_handle=(Exception,) # or specifically ResourceExhausted
+                )
+                
+            return llm
         except Exception as e:
             print(f"âŒ Error initializing {model_name}: {e}")
             # Fallback to Flash if Pro fails (rudimentary fallback)

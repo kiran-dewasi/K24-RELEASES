@@ -6,12 +6,14 @@ from tally_connector import TallyConnector, get_customer_details
 from tally_live_update import create_voucher_safely, TallyResponse
 from tally_xml_builder import TallyXMLValidationError
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 # New LangChain Imports
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from tools import TOOLS
 from ai_engine.router import router
+from utils.message_trimmer import trim_messages
 import json
 
 load_dotenv()
@@ -146,6 +148,17 @@ CRITICAL SAFEGUARDS (NO HALLUCINATIONS):
 REMEMBER: Tool output is the source of truth. If a tool returns data, that data MUST appear in your response!
 """
 
+def is_rate_limit_error(exception):
+    return "429" in str(exception) or "RESOURCE_EXHAUSTED" in str(exception)
+
+@retry(
+    retry=retry_if_exception(is_rate_limit_error),
+    wait=wait_exponential(multiplier=1, min=40, max=160),
+    stop=stop_after_attempt(3)
+)
+async def llm_invoke_with_retry(llm, messages):
+    return await llm.ainvoke(messages)
+
 # Simple Adapter to replace AgentExecutor until installation is fixed
 class SimpleAgentAdapter:
     def __init__(self, llm_runnable, system_prompt):
@@ -162,6 +175,9 @@ class SimpleAgentAdapter:
         thread_id = input_dict.get("thread_id", "unknown_thread")
         user_id = input_dict.get("user_id", "unknown_user")
         
+        # Trim history safely keeping last 3 human turns
+        messages = trim_messages(messages, max_pairs=3)
+        
         # Prepend system prompt if not present in messages or history
         full_history = [SystemMessage(content=self.system_prompt)] + messages
         
@@ -174,7 +190,7 @@ class SimpleAgentAdapter:
                 # Bind tools dynamically
                 llm_with_tools = llm.bind_tools(TOOLS)
                 
-                response = await llm_with_tools.ainvoke(full_history)
+                response = await llm_invoke_with_retry(llm_with_tools, full_history)
                 
                 # 2. Check for Tool Calls
                 if response.tool_calls:
@@ -211,6 +227,11 @@ class SimpleAgentAdapter:
                     return {"output": response.content}
                     
             except Exception as e:
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning("[QUOTA] Rate limit hit. Tenacity retrying...")
+                    raise  # Let tenacity handle it
                 import traceback
                 traceback.print_exc()
                 print(f"Agent Error Details: {e}")

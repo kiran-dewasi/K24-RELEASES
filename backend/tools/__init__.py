@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tool definitions for the K24 agent.
 These are functions the agent can call to take actions.
 """
@@ -708,7 +708,11 @@ def get_tally_ledger_details(name: str) -> str:
         from tally_reader import TallyReader
         reader = TallyReader()
         res = reader.get_ledger_details(name)
-        return json.dumps(res, indent=2)
+        if res.get("exists"):
+            return f"Ledger '{res.get('name', name)}' exists. Balance: ₹{res.get('closing_balance', '0')}. Full data available on request."
+        else:
+            cands = res.get("candidates", [])
+            return f"Ledger '{name}' not found. Similar: {', '.join(cands[:3])}. Full data available on request."
     except Exception as e:
         return f"Error checking ledger: {e}"
 
@@ -740,7 +744,10 @@ def create_purchase_voucher_verified(
             "items": items
         }
         res = engine.process_purchase_request(payload)
-        return json.dumps(res)
+        if res.get("status") == "success":
+            return f"Success: Voucher created. {res.get('message', '')}. Full data available on request."
+        else:
+            return f"Error: {res.get('message', 'Failed to create voucher')}. Full data available on request."
     except Exception as e:
         return f"Error creating voucher: {e}"
 
@@ -758,16 +765,10 @@ def check_stock_levels() -> str:
         try:
             items = db.query(StockItem).filter(StockItem.tenant_id == tenant_id).all()
             if items:
-                data = [
-                    {
-                        "name": i.name,
-                        "closing_balance": i.closing_balance or 0,
-                        "rate": i.rate or 0,
-                        "value": (i.closing_balance or 0) * (i.rate or 0)
-                    }
-                    for i in items
-                ]
-                return json.dumps(data)
+                total_val = sum((i.closing_balance or 0) * (i.rate or 0) for i in items)
+                top = sorted(items, key=lambda x: (x.closing_balance or 0)*(x.rate or 0), reverse=True)[:3]
+                top_str = ", ".join([f"{i.name} ({i.closing_balance})" for i in top])
+                return f"Found {len(items)} stock items. Total Value: ₹{total_val:,.2f}. Top items: {top_str}. Full data available on request."
         finally:
             db.close()
 
@@ -775,9 +776,16 @@ def check_stock_levels() -> str:
         from tally_reader import TallyReader
         reader = TallyReader()
         data = reader.get_stock_summary()
-        return json.dumps(data)
+        if isinstance(data, list):
+            try:
+                total_val = sum(float(str(d.get("value", 0) or 0).replace(",", "")) for d in data)
+            except Exception:
+                total_val = 0
+            top_names = ", ".join([d.get("name", "") for d in data[:3]])
+            return f"Found {len(data)} stock items. Total Value: ₹{total_val:,.2f}. Top items: {top_names}. Full data available on request."
+        return f"Stock data fetched. Full data available on request."
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return f"Error fetching stock levels: {str(e)}"
 
 
 @tool
@@ -799,11 +807,9 @@ def check_outstanding_payments() -> str:
                 Ledger.closing_balance > 0
             ).order_by(desc(Ledger.closing_balance)).all()
             if debtors:
-                data = [
-                    {"party_name": d.name, "amount": d.closing_balance}
-                    for d in debtors
-                ]
-                return json.dumps(data)
+                total_val = sum(d.closing_balance for d in debtors)
+                top_str = ", ".join([f"{d.name} (₹{d.closing_balance})" for d in debtors[:3]])
+                return f"Found {len(debtors)} records. Total outstanding: ₹{total_val:,.2f}. Top items: {top_str}. Full data available on request."
         finally:
             db.close()
 
@@ -811,9 +817,16 @@ def check_outstanding_payments() -> str:
         from tally_reader import TallyReader
         reader = TallyReader()
         data = reader.get_receivables()
-        return json.dumps(data)
+        if isinstance(data, list):
+            try:
+                total_val = sum(abs(float(str(d.get("closing_balance", d.get("amount", 0)) or 0).replace(",", ""))) for d in data)
+            except Exception:
+                total_val = 0
+            top_names = ", ".join([str(d.get("name", "")) for d in data[:3]])
+            return f"Found {len(data)} records. Total outstanding: ₹{total_val:,.2f}. Top items: {top_names}. Full data available on request."
+        return f"Outstanding data fetched. Full data available on request."
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return f"Error fetching outstanding payments: {str(e)}"
 
 @tool
 def create_tally_voucher(

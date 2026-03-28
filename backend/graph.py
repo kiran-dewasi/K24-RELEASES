@@ -1,13 +1,15 @@
-﻿from typing import Annotated, Literal, TypedDict, Union, Optional
+from typing import Annotated, Literal, TypedDict, Union, Optional
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, ToolMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from tools import ALL_TOOLS, SAFE_TOOLS, SENSITIVE_TOOLS
 from agent_system import SYSTEM_INSTRUCTIONS # optional, or inline
+from utils.message_trimmer import trim_messages
 import os
 import json
 
@@ -75,12 +77,11 @@ def agent_node(state: AgentState):
     else:
         current_instructions += "\n\nNOTE: For reports (Stock, Receivables), use the `check_...` tools and ALWAYS present the JSON data as a Markdown Table."
 
-    # Limit history to last 6 messages to reduce token usage
-    if len(messages) > 6:
-        limited_messages = messages[-6:]  # type: ignore
-    else:
-        limited_messages = messages
-    final_messages = [SystemMessage(content=current_instructions)] + limited_messages
+    # Evaluate the full context including the dynamically built system instructions
+    messages_with_sys = [SystemMessage(content=current_instructions)] + messages
+    
+    # Safely trim to last 3 conversational turns to reduce token usage
+    final_messages = trim_messages(messages_with_sys, max_pairs=3)
     
     # ANALYZE COMPLEXITY
     # Check for images in the messages
@@ -223,6 +224,17 @@ def build_graph(checkpointer=None):
         interrupt_before=[] # ["human_review"] # TEMPORARY: Allow auto-execution for debugging
     )
 
+def is_rate_limit_error(exception):
+    return "429" in str(exception) or "RESOURCE_EXHAUSTED" in str(exception)
+
+@retry(
+    retry=retry_if_exception(is_rate_limit_error),
+    wait=wait_exponential(multiplier=1, min=40, max=160),
+    stop=stop_after_attempt(3)
+)
+async def invoke_with_retry(app, state, **kwargs):
+    return await app.ainvoke(state, **kwargs)
+
 # Compiled graph instance (lazy loaded)
 _app = None
 
@@ -269,7 +281,7 @@ async def run_agent(message_text: str, thread_id: str = "default", user_id: str 
     }
 
     try:
-        final_state = await _app.ainvoke(input_state, config=config)
+        final_state = await invoke_with_retry(_app, input_state, config=config)
         messages = final_state["messages"]
         if messages and isinstance(messages[-1], AIMessage):
             return messages[-1].content
