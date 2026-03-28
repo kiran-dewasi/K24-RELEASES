@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
+from jose import jwt, JWTError, ExpiredSignatureError
+from jose.exceptions import JWTClaimsError
 import bcrypt
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -23,8 +24,8 @@ SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET") or ""
 if not SUPABASE_JWT_SECRET:
     raise ValueError("SUPABASE_JWT_SECRET not set in environment")
 
-print(f"[DEBUG SECRET] SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
-print(f"[DEBUG SECRET] ALGORITHM: {ALGORITHM}")
+print(f"[STARTUP] SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
+print(f"[STARTUP] ALGORITHM: {ALGORITHM}")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 365))  # 1 year default for dev
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -106,33 +107,49 @@ def decode_socket_token(token: str) -> Optional[dict]:
         return None
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    print(f"[DEBUG TOKEN] raw token: {token}")
+    print(f"[DEBUG TOKEN] raw token: {token[:15]}...{token[-15:]}")
+    print(f"[DEBUG TOKEN] using SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         tenant_id_from_token = payload.get("tenant_id")
-        
-        # Check expiration
-        exp = payload.get("exp")
-        if exp and datetime.fromtimestamp(exp) < datetime.utcnow():
-             raise HTTPException(status_code=401, detail="Token expired")
-             
+
         if username is None:
+            print("[DEBUG TOKEN] Missing 'sub' claim in token.")
             raise credentials_exception
-    except JWTError:
-        print("[DEBUG TOKEN] JWTError while decoding token")
+
+    except ExpiredSignatureError as e:
+        print(f"[DEBUG TOKEN] Token Expired: {e}")
+        raise HTTPException(status_code=401, detail="Token expired")
+
+    except JWTClaimsError as e:
+        print(f"[DEBUG TOKEN] Claims Error: {e}")
         raise credentials_exception
-    
+
+    except JWTError as e:
+        print(f"[DEBUG TOKEN] Decoding failed — Type: {type(e).__name__}, Msg: {e}")
+        raise credentials_exception
+
     user = db.query(User).filter(User.id == username).first()
     if user is None:
         if tenant_id_from_token:
-            return User(id=username, tenant_id=tenant_id_from_token, username=username, is_active=True, role="viewer")
+            return User(
+                id=username,
+                tenant_id=tenant_id_from_token,
+                username=username,
+                is_active=True,
+                role="viewer"
+            )
+        print(f"[DEBUG TOKEN] User '{username}' not found in DB.")
         raise credentials_exception
+
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)):
