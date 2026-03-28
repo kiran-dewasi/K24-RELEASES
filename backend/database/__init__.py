@@ -1,4 +1,4 @@
-﻿"""
+"""
 K24 Shadow Database
 The high-speed local store that mirrors Tally.
 """
@@ -439,6 +439,18 @@ class Tenant(Base):
     auto_post_to_tally = Column(Boolean, default=False)  # If True, auto-post high-confidence vouchers
     
     created_at = Column(DateTime, default=datetime.now)
+
+class TenantConfig(Base):
+    """
+    Single source of truth for Tenant Configuration.
+    Specially controls WhatsApp integration state.
+    """
+    __tablename__ = "tenant_config"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, index=True, unique=True)
+    whatsapp_number = Column(String, nullable=True)
+    is_whatsapp_active = Column(Boolean, default=True)
 
 class WhatsAppMapping(TenantMixin, Base):
     """

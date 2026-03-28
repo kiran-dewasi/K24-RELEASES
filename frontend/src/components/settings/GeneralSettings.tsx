@@ -26,11 +26,32 @@ export function GeneralSettings() {
     const [mobile, setMobile] = useState("");
     const [saving, setSaving] = useState(false);
 
+    // Business (Tenant) WhatsApp state
+    const [businessWhatsappNumber, setBusinessWhatsappNumber] = useState("");
+    const [savingBusiness, setSavingBusiness] = useState(false);
+
     // Sync controlled inputs when user data loads
     useEffect(() => {
         if (user) {
             setFullName(user.full_name || "");
             setMobile(user.whatsapp_number || "");
+        }
+    }, [user]);
+
+    // Attempt to pre-fill business whatsapp number if read endpoint exists
+    useEffect(() => {
+        const fetchTenantConfig = async () => {
+            try {
+                const data = await apiRequest("/api/tenant/whatsapp-config", "GET");
+                if (data && data.whatsapp_number) {
+                    setBusinessWhatsappNumber(data.whatsapp_number);
+                }
+            } catch (err) {
+                // Read endpoint might not exist yet, skip silently
+            }
+        };
+        if (user && (user.role === "owner" || user.role === "admin")) {
+            fetchTenantConfig();
         }
     }, [user]);
 
@@ -81,6 +102,37 @@ export function GeneralSettings() {
             }
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleSaveBusinessConfig = async () => {
+        try {
+            setSavingBusiness(true);
+            const token = typeof window !== "undefined" ? localStorage.getItem("k24_token") : null;
+            if (!token) {
+                toast({
+                    title: "Session expired",
+                    description: "Please log in again to save changes.",
+                    variant: "destructive",
+                });
+                setTimeout(() => { window.location.href = "/login"; }, 1500);
+                return;
+            }
+
+            await apiRequest("/api/tenant/whatsapp-config", "PUT", {
+                whatsapp_number: businessWhatsappNumber,
+                is_active: true,
+            });
+
+            toast({ title: "✓ Saved", description: "WhatsApp bot configuration updated." });
+        } catch (err: any) {
+            toast({
+                title: "Error saving config",
+                description: "Failed to save WhatsApp config: " + (err?.message || "Unknown error"),
+                variant: "destructive",
+            });
+        } finally {
+            setSavingBusiness(false);
         }
     };
 
@@ -176,6 +228,35 @@ export function GeneralSettings() {
                     {saving ? "Saving…" : saveSuccess ? "✓ Saved!" : "Save Changes"}
                 </Button>
             </div>
+
+            {user && (user.role === "owner" || user.role === "admin") && (
+                <Card className="mt-8 border-l-4 border-l-blue-500">
+                    <CardHeader>
+                        <CardTitle>WhatsApp Bot Configuration</CardTitle>
+                        <CardDescription>
+                            Set the tenant-level Business WhatsApp Number that receives bot interactions and routes Tally data.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2 max-w-md">
+                            <Label htmlFor="businessMobile">Business WhatsApp Number (Bot)</Label>
+                            <Input
+                                id="businessMobile"
+                                value={businessWhatsappNumber}
+                                onChange={(e) => setBusinessWhatsappNumber(e.target.value)}
+                                placeholder="+91 98765 43210"
+                            />
+                        </div>
+                        <Button
+                            onClick={handleSaveBusinessConfig}
+                            disabled={savingBusiness || !businessWhatsappNumber.trim()}
+                        >
+                            {savingBusiness && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {savingBusiness ? "Saving…" : "Save WhatsApp Config"}
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
 
         </div>
     );

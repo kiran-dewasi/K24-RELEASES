@@ -183,6 +183,8 @@ app.include_router(inventory.router, prefix="/api", dependencies=protected_deps)
 app.include_router(items.router, dependencies=protected_deps) # Phase I: Items 360° Profile (No prefix, handles own paths)
 app.include_router(customers.router, prefix="/api", dependencies=protected_deps) # Phase I: Customer 360° Profile
 
+from routers import tenant_config as tenant_config_router
+app.include_router(tenant_config_router.router)
 
 # Restoring routers preserved from previous versions
 app.include_router(contacts.router, dependencies=protected_deps) 

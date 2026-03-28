@@ -481,14 +481,15 @@ async def update_profile(
                 )
 
             # 2. Update public.tenants.whatsapp_number when phone changes
-            if new_whatsapp is not None and tenant_id:
-                httpx.patch(
-                    f"{supabase_http_service.url}/rest/v1/tenants?id=eq.{tenant_id}",
-                    headers=headers,
-                    json={"whatsapp_number": new_whatsapp},
-                    timeout=10
-                )
-                print(f"✅ Synced whatsapp_number to Supabase tenant {tenant_id}: {new_whatsapp}")
+            # ---> REMOVED: tenant_config is now the single source of truth for whatsapp_number.
+            # if new_whatsapp is not None and tenant_id:
+            #     httpx.patch(
+            #         f"{supabase_http_service.url}/rest/v1/tenants?id=eq.{tenant_id}",
+            #         headers=headers,
+            #         json={"whatsapp_number": new_whatsapp},
+            #         timeout=10
+            #     )
+            #     print(f"✅ Synced whatsapp_number to Supabase tenant {tenant_id}: {new_whatsapp}")
 
     except Exception as e:
         print(f"⚠️ Supabase profile sync warning (non-fatal): {e}")
