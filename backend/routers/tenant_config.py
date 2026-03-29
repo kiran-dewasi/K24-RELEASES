@@ -11,6 +11,19 @@ class TenantWhatsappConfigRequest(BaseModel):
     whatsapp_number: str | None = None
     is_active: bool = True
 
+@router.get("/tenant/whatsapp-config")
+async def get_tenant_whatsapp_config(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    tenant_id = current_user.tenant_id
+    cfg = db.query(TenantConfig).filter(TenantConfig.tenant_id == tenant_id).first()
+    return {
+        "tenant_id": tenant_id,
+        "whatsapp_number": cfg.whatsapp_number if cfg else None,
+        "is_active": cfg.is_whatsapp_active if cfg else True,
+    }
+
 @router.put("/tenant/whatsapp-config")
 async def update_tenant_whatsapp_config(
     body: TenantWhatsappConfigRequest,
@@ -18,7 +31,8 @@ async def update_tenant_whatsapp_config(
     db: Session = Depends(get_db),
 ):
     # 1. Authorize: only owner/admin.
-    if current_user.role not in ["owner", "admin"]:
+    print(f"[DEBUG ROLE] current_user.role = '{current_user.role}'")
+    if str(current_user.role).lower() not in ["owner", "admin"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
     tenant_id = current_user.tenant_id

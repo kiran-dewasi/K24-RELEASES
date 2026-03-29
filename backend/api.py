@@ -154,9 +154,9 @@ app.add_middleware(DesktopSecurityMiddleware)
 # Enable CORS — must be added AFTER DesktopSecurityMiddleware so it wraps outside it
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://localhost:8001", "*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
