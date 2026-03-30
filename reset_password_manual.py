@@ -1,3 +1,11 @@
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.join(current_dir, 'backend')
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 from sqlalchemy.orm import Session
 from backend.database import SessionLocal, User
 from backend.auth import get_password_hash
@@ -27,5 +35,5 @@ if __name__ == "__main__":
         print(f" - {u.email} ({u.username})")
     db.close()
     
-    email = "kirankdewasi19@gmail.com"
-    reset_password(email, "password")
+    email = "ai.krisha24@gmail.com"
+    reset_password(email, "password123")
