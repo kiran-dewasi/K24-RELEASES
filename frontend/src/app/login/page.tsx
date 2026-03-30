@@ -26,7 +26,7 @@ export default function LoginPage() {
 
         try {
             // apiRequest uses NEXT_PUBLIC_API_URL → https://weare-production.up.railway.app in dev
-            const response = await fetch(`${CLOUD_API}/api/auth/login`, {
+            const response = await fetch(`http://localhost:8001/api/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email: formData.email, password: formData.password })

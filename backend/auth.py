@@ -138,6 +138,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
 
     user = db.query(User).filter(User.username == username).first()
+    if not user:
+        # Fallback to lookup by google_api_key (stores Supabase UUID)
+        user = db.query(User).filter(
+            User.google_api_key == username
+        ).first()
+
     if user is None:
         if tenant_id_from_token:
             return User(

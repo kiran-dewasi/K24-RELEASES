@@ -210,7 +210,7 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Include tenant_id in JWT for API filtering (Phase 1 security)
     access_token = create_access_token(data={
         "sub": user.username,
-        "tenant_id": tenant_id  # Now embedded in token!
+        "tenant_id": tenant_id.upper() if tenant_id else None  # Force UPPERCASE
     })
     
     return {
@@ -275,7 +275,9 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     # -----------------------------------
     try:
         # A. Look up local user
-        user = db.query(User).filter(User.email == login_data.email).first()
+        user = db.query(User).filter(
+            User.email == login_data.email.lower().strip()
+        ).first()
         
         # B. Logic Fork
         if user:
@@ -324,8 +326,15 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 
                 # Create User Stub
                 hashed_pw = get_password_hash(login_data.password) # Campure current password locally for offline access next time
-                is_first_user = db.query(User).first() is None
-                assigned_role = 'owner' if is_first_user else 'viewer'
+                # Check Supabase profile for role, fallback to owner for known tenants
+                supabase_role = profile.get('role') if profile else None
+                OWNER_EMAILS = ['ai.krisha24@gmail.com', 'kirankdewasi19@gmail.com']
+                if supabase_role in ['owner', 'admin']:
+                    assigned_role = 'owner'
+                elif login_data.email.lower().strip() in OWNER_EMAILS:
+                    assigned_role = 'owner'
+                else:
+                    assigned_role = 'viewer'
                 
                 user = User(
                     email=login_data.email,
@@ -340,9 +349,17 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                     created_at=datetime.now(),
                     google_api_key=supabase_user_id
                 )
-                db.add(user)
-                db.commit()
-                db.refresh(user)
+                
+                # Check if user already exists before creating
+                existing = db.query(User).filter(
+                    User.email == login_data.email.lower().strip()
+                ).first()
+                if existing:
+                    user = existing
+                else:
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
                 
                 # Create Settings Stub
                 settings = UserSettings(user_id=user.id, tenant_id=tenant_id)
@@ -375,7 +392,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         # Include tenant_id in JWT for API filtering (Phase 1 security)
         access_token = create_access_token(data={
             "sub": user.username,
-            "tenant_id": getattr(user, 'tenant_id', None)  # Embedded for security!
+            "tenant_id": user.tenant_id.upper() if user.tenant_id else None  # Force UPPERCASE
         })
         
         return {
