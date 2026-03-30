@@ -60,24 +60,35 @@ async def update_tenant_whatsapp_config(
     # 4. Sync to Supabase tenant_config via HTTP PATCH/UPSERT
     try:
         from services.supabase_service import supabase_http_service
+        # Get company name for sync (it might be required for INSERT part of UPSERT)
+        company_name = None
+        if current_user.company_id:
+            from database import Company
+            company = db.query(Company).filter(Company.id == current_user.company_id).first()
+            if company:
+                company_name = company.name
+
         if supabase_http_service.client:
             import httpx
             headers = supabase_http_service._get_headers(use_service_key=True)
+            # Add Prefer header for upsert via PostgREST
+            headers["Prefer"] = "resolution=merge-duplicates"
 
             payload = {
                 "tenant_id": tenant_id,
                 "whatsapp_number": body.whatsapp_number,
-                "is_whatsapp_active": body.is_active,
+                "user_email": current_user.email,
+                "company_name": company_name,
             }
 
-            # Use upsert semantics via POST with on_conflict if your setup supports it,
-            # or PATCH if row is guaranteed to exist.
-            httpx.post(
+            # Use upsert semantics via POST
+            res = httpx.post(
                 f"{supabase_http_service.url}/rest/v1/tenant_config?on_conflict=tenant_id",
                 headers=headers,
                 json=payload,
                 timeout=10,
             )
+            print(f"✅ Supabase tenant_config sync success: {res.status_code}")
     except Exception as e:
         print(f"⚠️ Supabase tenant_config sync warning (non-fatal): {e}")
 

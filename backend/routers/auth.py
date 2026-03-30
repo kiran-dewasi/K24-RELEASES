@@ -19,7 +19,7 @@ class UserRegister(BaseModel):
     password: str
     full_name: str
     company_name: str
-    role: str = "admin"  # First user is always admin
+    role: str = "viewer"  # Default role; fixed up during creation
 
 class CompanySetup(BaseModel):
     gstin: str | None = None
@@ -180,12 +180,15 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     
     # Create user locally
     hashed_password = get_password_hash(user_data.password)
+    is_first_user = db.query(User).first() is None
+    assigned_role = 'owner' if is_first_user else 'viewer'
+    
     user = User(
         email=user_data.email,
         username=user_data.username,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
-        role=user_data.role,
+        role=assigned_role,
         company_id=company.id,
         # TODO: demo/test fallback. NOT used for authenticated flows.
         tenant_id=tenant_id or "offline-default", # Sync tenant_id
@@ -289,7 +292,8 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                     )
             else:
                 # Cloud login SUCCESS. Sync tenant_id from Supabase if local is wrong/missing.
-                if user.tenant_id in [None, '', 'offline-default']:
+                LEGACY_TENANT_IDS = ['TENANT-12345', 'tenant-12345', '12345', 'offline-default', '']
+                if user.tenant_id is None or user.tenant_id in LEGACY_TENANT_IDS:
                     # Fetch tenant_id from Supabase profile
                     profile = supabase_service.get_user_profile(supabase_user_id)
                     if profile and profile.get('tenant_id'):
@@ -306,7 +310,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 # Fetch profile for extra details
                 profile = supabase_service.get_user_profile(supabase_user_id)
                 full_name = profile.get('full_name') if profile else "Supabase User"
-                tenant_id = profile.get('tenant_id') if profile else f"TENANT-{supabase_user_id[:8]}"
+                tenant_id = profile.get('tenant_id') if profile else f"TENANT-{supabase_user_id[:8].upper()}"
                 
                 # Create Company Stub
                 company = Company(
@@ -320,12 +324,15 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 
                 # Create User Stub
                 hashed_pw = get_password_hash(login_data.password) # Campure current password locally for offline access next time
+                is_first_user = db.query(User).first() is None
+                assigned_role = 'owner' if is_first_user else 'viewer'
+                
                 user = User(
                     email=login_data.email,
                     username=login_data.email.split('@')[0], # Fallback username
                     hashed_password=hashed_pw,
                     full_name=full_name,
-                    role='admin', # Default to admin for first sync
+                    role=assigned_role,
                     company_id=company.id,
                     tenant_id=tenant_id,
                     is_verified=True,
@@ -444,16 +451,20 @@ async def update_profile(
     db: Session = Depends(get_db)
 ):
     """Update user profile (full_name, whatsapp_number, mobile). Syncs to Supabase."""
-    if profile_data.full_name is not None:
-        current_user.full_name = profile_data.full_name
+    # NEW CODE START
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    # Accept both field names for the phone number
+    if profile_data.full_name is not None:
+        user.full_name = profile_data.full_name
+
     new_whatsapp = profile_data.whatsapp_number or profile_data.mobile
     if new_whatsapp is not None:
-        current_user.whatsapp_number = new_whatsapp
+        user.whatsapp_number = new_whatsapp
 
     db.commit()
-    db.refresh(current_user)
+    db.refresh(user)
 
     # ── Sync to Supabase (non-blocking, best-effort) ──────────────────────────
     supabase_user_id = current_user.google_api_key  # Supabase UUID stored here
@@ -497,8 +508,8 @@ async def update_profile(
     return {
         "status": "success",
         "user": {
-            "full_name": current_user.full_name,
-            "whatsapp_number": current_user.whatsapp_number,
+            "full_name": user.full_name,
+            "whatsapp_number": user.whatsapp_number,
             "email": current_user.email,
             "role": current_user.role,
         }

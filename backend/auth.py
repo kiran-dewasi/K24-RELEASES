@@ -137,7 +137,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         print(f"[DEBUG TOKEN] Decoding failed — Type: {type(e).__name__}, Msg: {e}")
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == username).first()
+    user = db.query(User).filter(User.username == username).first()
     if user is None:
         if tenant_id_from_token:
             return User(
