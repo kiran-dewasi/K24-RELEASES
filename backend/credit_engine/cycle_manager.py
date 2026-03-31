@@ -1,4 +1,4 @@
-﻿"""
+"""
 Credit Engine â€” Billing Cycle Manager
 ======================================
 Manages `billing_cycles` rows in Supabase.
