@@ -79,45 +79,53 @@ async def process_baileys_message(
         logger.info(f"📬 Processing message from {sender_phone}")
         
         # ============ STEP 1: STRICT TENANT LOOKUP ============
-        # Priority 1: Check if it's a Dashboard User (Personal Assistant Mode)
-        from database import WhatsAppMapping
-        
-        user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
+        from database import get_supabase_client
+        supabase = get_supabase_client()
         
         tenant_id = None
 
+        # Priority 1: Check if it's a Dashboard User (Personal Assistant Mode)
+        user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
+
         if user_binding:
             tenant_id = user_binding.tenant_id
-            logger.info(f"✅ Authenticated Dashboard User: {user_binding.username} (Tenant: {tenant_id})")
-        
-        # --- HARDCODE OVERRIDE FOR 7339906200 & LID ---
-        elif "7339906200" in sender_phone or "185628738236618" in sender_phone:
-             logger.info(f"🔒 DEBUG OVERRIDE: Forcing {sender_phone} to TENANT-12345")
-             # Ensure mapping exists so we don't fall into onboarding next time if we remove this block
-             try:
-                 existing = db.query(WhatsAppMapping).filter(WhatsAppMapping.whatsapp_number == sender_phone).first()
-                 if not existing:
-                      logger.info(f"➕ Creating permanent mapping for {sender_phone}")
-                      new_map = WhatsAppMapping(whatsapp_number=sender_phone, tenant_id="TENANT-12345")
-                      db.add(new_map)
-                      db.commit()
-             except Exception as map_err:
-                 logger.error(f"Mapping creation failed: {map_err}")
-             
-             tenant_id = "TENANT-12345"
+            logger.info(f"✅ Authenticated Dashboard User (Tenant: {tenant_id[:8]}...)")
         
         else:
-            # Priority 2: Check if it's a Customer/Vendor (External Onboarding)
-            mapping = db.query(WhatsAppMapping).filter(
-                WhatsAppMapping.whatsapp_number == sender_phone
-            ).first()
+            # Priority 2: Look up sender in whatsapp_customer_mappings (Supabase)
+            try:
+                mapping_result = supabase.table("whatsapp_customer_mappings").select(
+                    "tenant_id"
+                ).eq(
+                    "customer_phone", sender_phone
+                ).eq(
+                    "is_active", True
+                ).limit(1).execute()
+                
+                if mapping_result.data:
+                    tenant_id = mapping_result.data[0]["tenant_id"]
+                    logger.info(f"✅ Tenant resolved via customer mapping: {tenant_id[:8]}...")
+            except Exception as map_err:
+                logger.warning(f"⚠️ whatsapp_customer_mappings lookup failed: {map_err}")
             
-            if mapping:
-                tenant_id = mapping.tenant_id
-                logger.info(f"✅ Tenant verified via Mapping: {tenant_id}")
-            else:
-                # Priority 3: Unknown -> Trigger Onboarding
-                logger.info(f"🆕 Unmapped user: {sender_phone}. Triggering onboarding.")
+            # Priority 3: Fallback — look up tenant_config by whatsapp_number
+            if not tenant_id:
+                try:
+                    config_result = supabase.table("tenant_config").select(
+                        "tenant_id"
+                    ).eq(
+                        "whatsapp_number", sender_phone
+                    ).limit(1).execute()
+                    
+                    if config_result.data:
+                        tenant_id = config_result.data[0]["tenant_id"]
+                        logger.info(f"✅ Tenant resolved via tenant_config: {tenant_id[:8]}...")
+                except Exception as cfg_err:
+                    logger.warning(f"⚠️ tenant_config lookup failed: {cfg_err}")
+            
+            # Priority 4: Unknown -> Trigger Onboarding
+            if not tenant_id:
+                logger.info(f"🆕 Unmapped sender. Triggering onboarding.")
                 from routers.onboarding_utils import handle_onboarding
                 
                 response_text = await handle_onboarding(db, sender_phone, message_text)
@@ -220,41 +228,49 @@ async def process_batch(
         user_binding = None
         tenant_id = None
         
-        # Try direct phone match first
+        # Priority 1: Check if it's a Dashboard User (Personal Assistant Mode)
         user_binding = db.query(User).filter(User.whatsapp_number == sender_phone).first()
         
         if user_binding:
             tenant_id = user_binding.tenant_id
-            logger.info(f"✅ Authenticated Dashboard User: {user_binding.username} (Tenant: {tenant_id})")
+            logger.info(f"✅ Authenticated Dashboard User (Tenant: {tenant_id[:8]}...)")
         else:
-            # Try partial match (for cases like 917339906200 vs 7339906200)
-            if "7339906200" in sender_phone:
-                # Known dev phone - use default tenant
-                tenant_id = "TENANT-12345"
-                logger.info(f"✅ Dev phone match: {sender_phone} -> TENANT-12345")
-            else:
-                # Try WhatsApp mapping table
-                mapping = db.query(WhatsAppMapping).filter(
-                    WhatsAppMapping.whatsapp_number == sender_phone
-                ).first()
+            from database import get_supabase_client
+            supabase = get_supabase_client()
+            
+            # Priority 2: Look up sender in whatsapp_customer_mappings (Supabase)
+            try:
+                mapping_result = supabase.table("whatsapp_customer_mappings").select(
+                    "tenant_id"
+                ).eq(
+                    "customer_phone", sender_phone
+                ).eq(
+                    "is_active", True
+                ).limit(1).execute()
                 
-                if mapping:
-                    tenant_id = mapping.tenant_id
-                    logger.info(f"✅ Found via WhatsApp mapping: {tenant_id}")
-                elif is_lid_format:
-                    # LID format - try to find any tenant with matching LID
-                    # For now, use default tenant for LID messages (they should bind their phone)
-                    logger.warning(f"⚠️ LID format detected: {sender_phone}")
+                if mapping_result.data:
+                    tenant_id = mapping_result.data[0]["tenant_id"]
+                    logger.info(f"✅ Tenant resolved via customer mapping: {tenant_id[:8]}...")
+            except Exception as map_err:
+                logger.warning(f"⚠️ whatsapp_customer_mappings lookup failed: {map_err}")
+            
+            # Priority 3: Fallback — look up tenant_config by whatsapp_number
+            if not tenant_id:
+                try:
+                    config_result = supabase.table("tenant_config").select(
+                        "tenant_id"
+                    ).eq(
+                        "whatsapp_number", sender_phone
+                    ).limit(1).execute()
                     
-                    # Check if there's a default tenant we can use
-                    from database import Tenant
-                    default_tenant = db.query(Tenant).first()
-                    if default_tenant:
-                        tenant_id = default_tenant.id
-                        logger.info(f"✅ Using default tenant for LID user: {tenant_id}")
+                    if config_result.data:
+                        tenant_id = config_result.data[0]["tenant_id"]
+                        logger.info(f"✅ Tenant resolved via tenant_config: {tenant_id[:8]}...")
+                except Exception as cfg_err:
+                    logger.warning(f"⚠️ tenant_config lookup failed: {cfg_err}")
         
         if not tenant_id:
-            logger.error(f"❌ No tenant found for: {sender_phone}")
+            logger.error(f"❌ No tenant found for batch sender (Phone masked)")
             return {
                 "status": "error",
                 "error": "Unregistered phone number. Please onboard first.",
