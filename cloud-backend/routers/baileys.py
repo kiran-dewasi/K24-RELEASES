@@ -5,6 +5,7 @@ import logging
 import base64
 import os
 import asyncio
+import uuid
 from typing import Optional, List
 
 from database import get_db, Ledger, Tenant, User
@@ -163,22 +164,18 @@ async def process_baileys_message(
             }
             
         except Exception as e:
-            logger.error(f"Agent execution failed: {e}")
+            logger.error("Agent execution failed", exc_info=True)
             return {
-                "status": "error", 
-                "reply_message": "My brain hurts. Please try again.",
-                "error": str(e)
+                "status": "error",
+                "reply_message": "Something went wrong. Please try again."
             }
 
     except Exception as e:
-        logger.error(f"❌ Error in process_baileys_message: {str(e)}")
-        import traceback
-        with open("error_traceback.txt", "w") as f:
-            f.write(traceback.format_exc())
+        error_ref = uuid.uuid4().hex[:8]
+        logger.error("❌ Unhandled error in process_baileys_message [ref=%s]", error_ref, exc_info=True)
         return {
             "status": "error",
-            "reply_message": f"Error: {str(e)}",
-            "error": str(e)
+            "reply_message": f"Something went wrong. (ref: {error_ref})"
         }
 
 @router.get("/health")
@@ -370,17 +367,16 @@ async def process_batch(
         }
         
     except Exception as e:
-        logger.error(f"❌ Batch processing error: {e}")
-        import traceback
-        traceback.print_exc()
-        
+        error_ref = uuid.uuid4().hex[:8]
+        logger.error("❌ Batch processing error [ref=%s]", error_ref, exc_info=True)
+
         # Still schedule cleanup even on error
         if temp_files:
             background_tasks.add_task(cleanup_temp_files, temp_files)
-        
+
         return {
             "status": "error",
-            "error": str(e),
+            "error": f"Batch processing failed. (ref: {error_ref})",
             "vouchers": [],
             "stats": {"total": 0, "success": 0, "failed": 0, "total_items": 0, "total_amount": 0}
         }

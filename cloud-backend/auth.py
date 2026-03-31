@@ -2,10 +2,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from database import User, get_db
+
+logger = logging.getLogger("auth")
 
 # Security configuration
 import os
@@ -35,7 +38,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password, hashed_password)
     except Exception as e:
-        print(f"Bcrypt error: {e}")
+        logger.error("Bcrypt verification error", exc_info=True)
         return False
 
 def get_password_hash(password: str) -> str:
@@ -220,7 +223,7 @@ def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
                             raise HTTPException(status_code=403, detail="Subscription expired")
                     except ValueError:
                         pass
-    except httpx.RequestError as e:
-        print(f"Subscription check network error: {e}")
+    except httpx.RequestError:
+        logger.warning("[AUTH] Subscription check network error", exc_info=True)
 
     return tenant_id

@@ -3,10 +3,13 @@ from typing import Optional
 from jose import jwt, JWTError, ExpiredSignatureError
 from jose.exceptions import JWTClaimsError
 import bcrypt
+import logging
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from database import User, get_db
+
+logger = logging.getLogger("auth")
 
 # Security configuration
 import os
@@ -24,8 +27,7 @@ SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET") or ""
 if not SUPABASE_JWT_SECRET:
     raise ValueError("SUPABASE_JWT_SECRET not set in environment")
 
-print(f"[STARTUP] SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
-print(f"[STARTUP] ALGORITHM: {ALGORITHM}")
+logger.info("[STARTUP] JWT auth module loaded (algorithm: %s)", ALGORITHM)
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 365))  # 1 year default for dev
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -42,7 +44,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password, hashed_password)
     except Exception as e:
-        print(f"Bcrypt error: {e}")
+        logger.error("Bcrypt verification error", exc_info=True)
         return False
 
 def get_password_hash(password: str) -> str:
@@ -107,8 +109,7 @@ def decode_socket_token(token: str) -> Optional[dict]:
         return None
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    print(f"[DEBUG TOKEN] raw token: {token[:15]}...{token[-15:]}")
-    print(f"[DEBUG TOKEN] using SECRET_KEY prefix: {str(SECRET_KEY)[:12]}")
+    logger.debug("[AUTH] Validating bearer token")
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -122,19 +123,19 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         tenant_id_from_token = payload.get("tenant_id")
 
         if username is None:
-            print("[DEBUG TOKEN] Missing 'sub' claim in token.")
+            logger.warning("[AUTH] Token missing 'sub' claim")
             raise credentials_exception
 
-    except ExpiredSignatureError as e:
-        print(f"[DEBUG TOKEN] Token Expired: {e}")
+    except ExpiredSignatureError:
+        logger.warning("[AUTH] Token has expired")
         raise HTTPException(status_code=401, detail="Token expired")
 
-    except JWTClaimsError as e:
-        print(f"[DEBUG TOKEN] Claims Error: {e}")
+    except JWTClaimsError:
+        logger.warning("[AUTH] Token claims error")
         raise credentials_exception
 
     except JWTError as e:
-        print(f"[DEBUG TOKEN] Decoding failed — Type: {type(e).__name__}, Msg: {e}")
+        logger.warning("[AUTH] Token decoding failed: %s", type(e).__name__)
         raise credentials_exception
 
     user = db.query(User).filter(User.username == username).first()
@@ -153,7 +154,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
                 is_active=True,
                 role="viewer"
             )
-        print(f"[DEBUG TOKEN] User '{username}' not found in DB.")
+        logger.warning("[AUTH] User not found in DB for token sub")
         raise credentials_exception
 
     return user
@@ -189,9 +190,8 @@ def get_current_tenant_id(current_user: User = Depends(get_current_active_user),
     Enforces multi-tenancy isolation.
     """
     path = request.url.path if request else "unknown"
-    auth_header = request.headers.get("Authorization") if request else "N/A"
     tenant_id = current_user.tenant_id if current_user else "N/A"
-    print(f"[DEBUG AUTH] Path: {path}, Auth present: {bool(auth_header)}, sub: {current_user.username if current_user else 'N/A'}, tenant_id: {tenant_id}")
+    logger.debug("[AUTH] Tenant resolved: path=%s tenant=%s", path, tenant_id)
 
     if not current_user.tenant_id:
         # Fallback for legacy users (should not happen with new constraints)
@@ -261,7 +261,7 @@ def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
                             raise HTTPException(status_code=403, detail="Subscription expired")
                     except ValueError:
                         pass
-    except httpx.RequestError as e:
-        print(f"Subscription check network error: {e}")
+    except httpx.RequestError:
+        logger.warning("[AUTH] Subscription check network error", exc_info=True)
 
     return tenant_id
