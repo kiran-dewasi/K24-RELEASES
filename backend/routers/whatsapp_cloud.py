@@ -222,10 +222,10 @@ async def cloud_incoming(
             ),
         )
 
-    # ── IMPORTANT: Normalize to LOWERCASE to match Supabase storage ──
+    # —— IMPORTANT: Normalize to UPPERCASE to match Supabase storage ——
     # Supabase's PostgREST eq. filter is case-sensitive.
-    # All existing rows + new rows must use the same case.
-    tenant_id = tenant_id.lower()
+    # All rows in whatsapp_message_queue use UPPERCASE tenant IDs (e.g. 'TENANT-12345').
+    tenant_id = tenant_id.upper()
 
     # ── 3. Enqueue message (LID or phone — we don't care) ─────
     raw_payload = {

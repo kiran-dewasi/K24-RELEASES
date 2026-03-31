@@ -158,9 +158,9 @@ class WhatsAppPoller:
                     await asyncio.sleep(POLL_INTERVAL)
                     continue
 
-                # Fetch jobs using LOWERCASE tenant_id — Supabase eq. is case-sensitive
-                # and all existing queue rows use lowercase IDs (e.g. 'tenant-12345').
-                jobs = await self._fetch_pending_jobs(tenant_id.lower())
+                # Fetch jobs using UPPERCASE tenant_id — Supabase eq. is case-sensitive
+                # and all queue rows are stored with uppercase IDs (e.g. 'TENANT-12345').
+                jobs = await self._fetch_pending_jobs(tenant_id.upper())
 
                 if jobs:
                     logger.info(f"📥 Fetched {len(jobs)} pending job(s) for tenant {tenant_id}")
