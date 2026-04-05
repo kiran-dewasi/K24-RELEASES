@@ -1,0 +1,31 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare
+plugins: anyio-4.12.1, langsmith-0.6.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 15 items
+
+tests/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_spaces PASSED [  6%]
+tests/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_dashes PASSED [ 13%]
+tests/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_parentheses PASSED [ 20%]
+tests/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_plus_sign PASSED [ 26%]
+tests/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_handles_already_normalized PASSED [ 33%]
+tests/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_all_non_digits PASSED [ 40%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_active_subscription_allowed PASSED [ 46%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_trial_with_future_date_allowed PASSED [ 53%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_trial_with_null_date_allowed PASSED [ 60%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_expired_subscription_blocked PASSED [ 66%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_cancelled_subscription_blocked PASSED [ 73%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_expired_trial_blocked PASSED [ 80%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_tenant_not_found_blocked PASSED [ 86%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_unexpected_status_blocked PASSED [ 93%]
+tests/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_normalizes_business_number_for_lookup PASSED [100%]
+
+============================== warnings summary ===============================
+cloud-backend\routers\webhooks.py:34
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\webhooks.py:34: UserWarning: Field name "schema" in "SupabaseWebhookPayload" shadows an attribute in parent "BaseModel"
+    class SupabaseWebhookPayload(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 15 passed, 1 warning in 0.95s ========================

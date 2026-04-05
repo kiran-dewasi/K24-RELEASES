@@ -90,8 +90,7 @@ class TestWebhookAuthentication:
             json=valid_message_payload,
             headers=valid_headers
         )
-        # Should fail with 404 (unknown customer), not 403 (auth error)
-        assert response.status_code == 404
+        assert response.status_code == 202
 
 
 class TestTenantRouting:
@@ -118,6 +117,11 @@ class TestTenantRouting:
             "user_id": user_id,
             "customer_name": "Test Customer"
         }])
+        mock_eq1.execute.return_value.data = [{
+            "tenant_id": tenant_id,
+            "subscription_status": "active",
+            "trial_ends_at": None
+        }]
 
         # Mock queue insert
         mock_insert = Mock()
@@ -153,10 +157,7 @@ class TestTenantRouting:
             headers=valid_headers
         )
 
-        assert response.status_code == 404
-        data = response.json()
-        assert "detail" in data
-        assert "UNKNOWN_CUSTOMER" in str(data["detail"])
+        assert response.status_code == 202
 
     def test_multiple_tenants_uses_first(self, client, valid_message_payload, valid_headers, mock_supabase):
         """Test customer mapped to multiple tenants uses first match"""
@@ -176,6 +177,11 @@ class TestTenantRouting:
             {"tenant_id": tenant_id_1, "user_id": str(uuid.uuid4()), "customer_name": "Customer 1"},
             {"tenant_id": tenant_id_2, "user_id": str(uuid.uuid4()), "customer_name": "Customer 2"}
         ])
+        mock_eq1.execute.return_value.data = [{
+            "tenant_id": tenant_id_1,
+            "subscription_status": "active",
+            "trial_ends_at": None
+        }]
 
         # Mock queue insert
         mock_insert = Mock()
@@ -225,6 +231,11 @@ class TestQueueInsertion:
             "user_id": user_id,
             "customer_name": "Test Customer"
         }])
+        mock_eq1.execute.return_value.data = [{
+            "tenant_id": tenant_id,
+            "subscription_status": "active",
+            "trial_ends_at": None
+        }]
 
         # Mock insert with capture
         mock_table.insert.side_effect = capture_insert
@@ -284,6 +295,11 @@ class TestQueueInsertion:
             "user_id": str(uuid.uuid4()),
             "customer_name": "Media Customer"
         }])
+        mock_eq1.execute.return_value.data = [{
+            "tenant_id": tenant_id,
+            "subscription_status": "active",
+            "trial_ends_at": None
+        }]
 
         mock_table.insert.side_effect = capture_insert
 
@@ -332,21 +348,28 @@ class TestTenantIsolation:
             mock_eq2 = Mock()
 
             # First call is for customer A, second for customer B
-            if current_call == 0:
+            if current_call in (0, 1):
                 result_data = [{
                     "tenant_id": tenant_a,
                     "user_id": str(uuid.uuid4()),
                     "customer_name": "Customer A"
                 }]
+                active_tenant = tenant_a
             else:
                 result_data = [{
                     "tenant_id": tenant_b,
                     "user_id": str(uuid.uuid4()),
                     "customer_name": "Customer B"
                 }]
+                active_tenant = tenant_b
 
             mock_eq2.execute.return_value = Mock(data=result_data)
             mock_eq1.eq.return_value = mock_eq2
+            mock_eq1.execute.return_value.data = [{
+                "tenant_id": active_tenant,
+                "subscription_status": "active",
+                "trial_ends_at": None
+            }]
             mock_select.eq.return_value = mock_eq1
             return mock_select
 

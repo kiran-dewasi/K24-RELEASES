@@ -1,8 +1,9 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
-import { Download, Printer, Share2 } from "lucide-react";
-import { generateProfessionalVoucherPDF } from "@/lib/pdfGenerator";
+import { Download, Printer, Share2, Loader2 } from "lucide-react";
+import { downloadReportFile } from "@/lib/fileDownload";
+import { useState } from "react";
 
 interface Voucher {
     date: string;
@@ -20,15 +21,31 @@ interface TransactionDetailModalProps {
 }
 
 export default function TransactionDetailModal({ isOpen, onClose, voucher }: TransactionDetailModalProps) {
+    const [exporting, setExporting] = useState(false);
     if (!voucher) return null;
 
-    const generatePDF = () => {
-        generateProfessionalVoucherPDF(voucher);
-        toast({
-            title: "PDF Downloaded",
-            description: `Invoice ${voucher.voucher_number} has been saved.`,
-            duration: 3000,
-        });
+    const generatePDF = async () => {
+        setExporting(true);
+        try {
+            await downloadReportFile({
+                slug: "voucher",
+                format: "pdf",
+                params: { id: voucher.voucher_number }
+            });
+            toast({
+                title: "PDF Downloaded",
+                description: `Invoice ${voucher.voucher_number} has been saved.`,
+                duration: 3000,
+            });
+        } catch (err: any) {
+            toast({
+                title: "Export Failed",
+                description: err?.message || "Failed to download PDF.",
+                variant: "destructive",
+            });
+        } finally {
+            setExporting(false);
+        }
     };
 
     return (
@@ -83,8 +100,8 @@ export default function TransactionDetailModal({ isOpen, onClose, voucher }: Tra
                             Share
                         </Button>
                     </div>
-                    <Button onClick={generatePDF} className="bg-blue-600 hover:bg-blue-700">
-                        <Download className="h-4 w-4 mr-2" />
+                    <Button onClick={generatePDF} disabled={exporting} className="bg-blue-600 hover:bg-blue-700">
+                        {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                         Download PDF
                     </Button>
                 </DialogFooter>

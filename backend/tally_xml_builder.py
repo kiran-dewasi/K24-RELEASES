@@ -141,6 +141,9 @@ def _wrap_envelope(company_name: str, report_name: str, payload: str) -> str:
         "    <IMPORTDATA>\n"
         "      <REQUESTDESC>\n"
         f"        <REPORTNAME>{_escape(report_name)}</REPORTNAME>\n"
+        "        <STATICVARIABLES>\n"
+        f"          <SVCURRENTCOMPANY>{_escape(company_name)}</SVCURRENTCOMPANY>\n"
+        "        </STATICVARIABLES>\n"
 
         "      </REQUESTDESC>\n"
         "      <REQUESTDATA>\n"

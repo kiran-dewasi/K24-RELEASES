@@ -10,6 +10,8 @@ import io
 from database import get_db, Voucher, Ledger, Bill
 from dependencies import get_tenant_id
 from utils.pdf_generator import generate_report_pdf
+from utils.excel_generator import generate_report_excel
+from utils.report_template import generate_gst_summary_excel as _tmpl_gst_excel
 import os
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -351,17 +353,10 @@ def get_cash_book(db: Session = Depends(get_db)):
 # ─────────────────────────────────────────────
 #  Universal PDF Export
 # ─────────────────────────────────────────────
-_REPORT_TITLES = {
-    "sales-register":    "Sales Register",
-    "purchase-register": "Purchase Register",
-    "cash-flow":         "Cash Flow Statement",
-    "balance-sheet":     "Balance Sheet",
-    "profit-loss":       "Profit & Loss Account",
-    "receipt-register":  "Receipt Register",
-    "payment-register":  "Payment Register",
-    "journal-register":  "Journal Register",
-    "gst-summary":       "GST Summary",
-}
+# ─────────────────────────────────────────────
+#  Universal PDF / Excel Export
+# ─────────────────────────────────────────────
+
 
 
 @router.get("/{slug}/export")
@@ -375,137 +370,68 @@ def export_report_pdf(
     tenant_id: str = Depends(get_tenant_id),
 ):
     """Universal PDF export for any report slug. Streams a PDF file."""
-    title = _REPORT_TITLES.get(slug, slug.replace("-", " ").title())
-    d_from = _parse_date(date_from)
-    d_to   = _parse_date(date_to)
-    if not d_from or not d_to:
-        d_from, d_to = _default_fy_dates()
-
-    period = f"{d_from.strftime('%d %b %Y')} – {d_to.strftime('%d %b %Y')}"
-    filters_parts = []
-    if party_name:    filters_parts.append(f"Party: {party_name}")
-    if voucher_types: filters_parts.append(f"Types: {voucher_types}")
-    filters_desc = ", ".join(filters_parts) if filters_parts else "All records"
-
-    # ── Fetch data same as the individual endpoints ──
-    data: dict = {}
-
-    if slug in ("sales-register", "purchase-register",
-                "receipt-register", "payment-register", "journal-register"):
-        # Determine default types per slug
-        default_types = {
-            "sales-register":    ["Sales", "Credit Note"],
-            "purchase-register": ["Purchase", "Debit Note"],
-            "receipt-register":  ["Receipt"],
-            "payment-register":  ["Payment"],
-            "journal-register":  ["Journal"],
-        }[slug]
-        vtype_list = (
-            [v.strip() for v in voucher_types.split(",")]
-            if voucher_types else default_types
-        )
-        q = _build_voucher_filters(
-            db.query(Voucher), date_from, date_to, vtype_list, party_name, tenant_id
-        )
-        vouchers = q.order_by(Voucher.date.desc()).all()
-        total = sum(v.amount or 0 for v in vouchers)
-        data = {
-            "total_amount": total,
-            "total_count": len(vouchers),
-            "tax_estimate": total * 0.18,
-            "vouchers": [_voucher_to_dict(v) for v in vouchers],
-        }
-
-    elif slug == "cash-flow":
-        inflows  = _build_voucher_filters(
-            db.query(Voucher), date_from, date_to, ["Receipt", "Sales"], None, tenant_id
-        ).order_by(Voucher.date.desc()).all()
-        outflows = _build_voucher_filters(
-            db.query(Voucher), date_from, date_to, ["Payment", "Purchase"], None, tenant_id
-        ).order_by(Voucher.date.desc()).all()
-        ti = sum(v.amount or 0 for v in inflows)
-        to = sum(v.amount or 0 for v in outflows)
-        combined = [
-            {**_voucher_to_dict(v), "direction": "inflow"}  for v in inflows
-        ] + [
-            {**_voucher_to_dict(v), "direction": "outflow"} for v in outflows
-        ]
-        combined.sort(key=lambda x: x.get("date", ""), reverse=True)
-        data = {
-            "total_inflow": ti,
-            "total_outflow": to,
-            "net_flow": ti - to,
-            "vouchers": combined,
-        }
-
-    elif slug == "balance-sheet":
-        ledgers = db.query(Ledger).filter(Ledger.tenant_id == tenant_id).all()
-        assets, liabilities = [], []
-        ta, tl = 0.0, 0.0
-        for l in ledgers:
-            parent = (l.parent or "").lower()
-            amount = l.closing_balance or 0.0
-            if any(k in parent for k in ["asset", "cash", "bank", "debtor", "receivable"]):
-                assets.append({"name": l.name, "amount": abs(amount), "group": l.parent or "Other Assets"})
-                ta += abs(amount)
-            elif any(k in parent for k in ["liabilit", "capital", "loan", "creditor", "payable"]):
-                liabilities.append({"name": l.name, "amount": abs(amount), "group": l.parent or "Other Liabilities"})
-                tl += abs(amount)
-            else:
-                if amount >= 0:
-                    assets.append({"name": l.name, "amount": amount, "group": "Other Assets"})
-                    ta += amount
-                else:
-                    liabilities.append({"name": l.name, "amount": abs(amount), "group": "Other Liabilities"})
-                    tl += abs(amount)
-        data = {
-            "assets": sorted(assets, key=lambda x: x["amount"], reverse=True),
-            "liabilities": sorted(liabilities, key=lambda x: x["amount"], reverse=True),
-            "total_assets": ta,
-            "total_liabilities": tl,
-            "net_difference": ta - tl,
-        }
-
-    elif slug == "profit-loss":
-        sales_v    = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Sales"], None, tenant_id).all()
-        purchase_v = _build_voucher_filters(db.query(Voucher), date_from, date_to, ["Purchase"], None, tenant_id).all()
-        ts = sum(v.amount or 0 for v in sales_v)
-        tp = sum(v.amount or 0 for v in purchase_v)
-        data = {
-            "income":        {"Sales Accounts": ts, "Direct Income": 0.0},
-            "expenses":      {"Purchase Accounts": tp, "Direct Expenses": 0.0},
-            "total_income":  ts,
-            "total_expenses":tp,
-            "net_profit":    ts - tp,
-        }
-
-    else:
-        raise HTTPException(status_code=404, detail=f"Unknown report: {slug}")
-
-    # ── Generate PDF ──
+    from services.canonical_export_engine import CanonicalExportEngine
+    engine = CanonicalExportEngine(db, tenant_id)
+    
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "voucher_types": voucher_types,
+        "party_name": party_name,
+    }
+    
     try:
-        pdf_bytes = generate_report_pdf(
-            slug=slug,
-            report_title=title,
-            data=data,
-            period=period,
-            date_from=date_from or "",
-            date_to=date_to or "",
-            filters_desc=filters_desc,
-        )
+        result = engine.generate_export_bytes(slug, "pdf", filters)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
-
-    safe_title = slug.replace("-", "_")
-    date_str   = datetime.now().strftime("%Y%m%d")
-    filename   = f"k24_{safe_title}_{date_str}.pdf"
-
+        logger.error(f"Generate PDF error for {slug}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
     return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
+        io.BytesIO(result["bytes"]),
+        media_type=result["mime_type"],
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(len(pdf_bytes)),
+            "Content-Disposition": f'attachment; filename="{result["filename"]}"',
+            "Content-Length": str(len(result["bytes"])),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+    )
+
+
+
+
+@router.get("/{slug}/export-excel")
+def export_report_excel(
+    slug: str,
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    voucher_types: Optional[str] = Query(None),
+    party_name:    Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Universal Excel export for any report slug. Streams an XLSX file."""
+    from services.canonical_export_engine import CanonicalExportEngine
+    engine = CanonicalExportEngine(db, tenant_id)
+    
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "voucher_types": voucher_types,
+        "party_name": party_name,
+    }
+    
+    try:
+        result = engine.generate_export_bytes(slug, "excel", filters)
+    except Exception as e:
+        logger.error(f"Generate Excel error for {slug}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    return StreamingResponse(
+        io.BytesIO(result["bytes"]),
+        media_type=result["mime_type"],
+        headers={
+            "Content-Disposition": f'attachment; filename="{result["filename"]}"',
+            "Content-Length": str(len(result["bytes"])),
             "Cache-Control": "no-store, no-cache, must-revalidate",
         },
     )

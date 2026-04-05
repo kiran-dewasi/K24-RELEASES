@@ -99,14 +99,35 @@ class TallySyncService:
     
     async def sync_all(self, mode: str = "incremental"):
         """
-        Sync all data types from Tally
-        
+        Sync all data types from Tally.
+
         Args:
             mode: "incremental" (default, last 24h) or "full" (all data)
+
+        Returns None and logs a warning (without counting as failure) when no
+        valid tenant is found in the local users table — this happens before
+        the user logs in for the first time on this device.
         """
         start = time.time()
+
+        # Pre-flight: verify a valid tenant exists before wasting cycles
+        # (and before potentially writing "default"-tagged rows to the DB).
+        try:
+            from database import SessionLocal as _SL
+            _db = _SL()
+            try:
+                sync_engine._get_tenant_id(_db)
+            finally:
+                _db.close()
+        except ValueError as no_tenant_err:
+            logger.warning(
+                f"⏭️  Tally sync skipped — {no_tenant_err}. "
+                "Sync will resume automatically after the user logs in."
+            )
+            return None
+
         self.sync_stats["total_syncs"] += 1
-        
+
         try:
             # Use transactional sync with auto-rollback
             # We use "system" as user_id for the single-user desktop app
@@ -114,7 +135,7 @@ class TallySyncService:
                 if mode == "full":
                     # Full comprehensive sync
                     result = await self.run_in_thread(
-                        sync_engine.full_comprehensive_sync, 
+                        sync_engine.full_comprehensive_sync,
                         include_movements=False
                     )
                 else:
@@ -122,28 +143,27 @@ class TallySyncService:
                     # Tally has a single-connection HTTP server (pool_maxsize=1).
                     # Parallel requests overflow the pool: extras are discarded
                     # and Tally returns empty 716-byte responses for all of them.
-                    ledger_result = await self.sync_ledgers()
+                    ledger_result  = await self.sync_ledgers()
                     voucher_result = await self.sync_vouchers_incremental()
-                    stock_result = await self.sync_stock_items()
-                    bill_result = await self.sync_bills()
+                    stock_result   = await self.sync_stock_items()
+                    bill_result    = await self.sync_bills()
 
                     result = {
-                        "ledgers": ledger_result,
-                        "vouchers": voucher_result,
+                        "ledgers":     ledger_result,
+                        "vouchers":    voucher_result,
                         "stock_items": stock_result,
-                        "bills": bill_result,
+                        "bills":       bill_result,
                     }
-            
+
             elapsed = time.time() - start
             self.last_sync_time = datetime.now()
             self.sync_stats["successful_syncs"] += 1
-            
-            logger.info(f"Sync complete in {elapsed:.1f}s: {result}")
-            
+
+            logger.info(f"✅ Sync complete in {elapsed:.1f}s: {result}")
             return result
-            
+
         except Exception as e:
-            logger.error(f"Sync failed: {e}")
+            logger.error(f"❌ Sync failed: {e}")
             self.sync_stats["failed_syncs"] += 1
             self.sync_stats["last_error"] = str(e)
             raise

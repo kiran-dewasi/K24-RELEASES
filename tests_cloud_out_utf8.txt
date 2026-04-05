@@ -1,0 +1,144 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare
+plugins: anyio-4.12.1, langsmith-0.6.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 26 items
+
+tests/cloud/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_missing_auth_header PASSED [  3%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_invalid_auth_header PASSED [  7%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_valid_auth_header FAILED [ 11%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_known_customer_single_tenant FAILED [ 15%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_unknown_customer_returns_404 FAILED [ 19%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_multiple_tenants_uses_first FAILED [ 23%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_message_inserted_with_correct_fields FAILED [ 26%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_media_message_handled_correctly FAILED [ 30%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantIsolation::test_different_customers_different_tenants FAILED [ 34%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestErrorHandling::test_database_error_returns_500 PASSED [ 38%]
+tests/cloud/test_whatsapp_cloud_webhook.py::TestErrorHandling::test_invalid_message_payload PASSED [ 42%]
+tests/cloud/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_spaces PASSED [ 46%]
+tests/cloud/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_dashes PASSED [ 50%]
+tests/cloud/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_parentheses PASSED [ 53%]
+tests/cloud/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_plus_sign PASSED [ 57%]
+tests/cloud/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_handles_already_normalized PASSED [ 61%]
+tests/cloud/test_whatsapp_tenant_access.py::TestNormalizeWhatsAppNumber::test_removes_all_non_digits PASSED [ 65%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_active_subscription_allowed PASSED [ 69%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_trial_with_future_date_allowed PASSED [ 73%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_trial_with_null_date_allowed PASSED [ 76%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_expired_subscription_blocked PASSED [ 80%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_cancelled_subscription_blocked PASSED [ 84%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_expired_trial_blocked PASSED [ 88%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_tenant_not_found_blocked PASSED [ 92%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_unexpected_status_blocked PASSED [ 96%]
+tests/cloud/test_whatsapp_tenant_access.py::TestResolveTenantFromBusinessNumber::test_normalizes_business_number_for_lookup PASSED [100%]
+
+================================== FAILURES ===================================
+______________ TestWebhookAuthentication.test_valid_auth_header _______________
+tests\cloud\test_whatsapp_cloud_webhook.py:94: in test_valid_auth_header
+    assert response.status_code == 404
+E   assert 202 == 404
+E    +  where 202 = <Response [202 Accepted]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  routers.whatsapp_cloud:whatsapp_cloud.py:215 \u26a0\ufe0f Unknown sender +919876543210 (normalized: 919876543210). Not in whatsapp_customer_mappings. Skipping queue. Check LID resolution in the Baileys listener.
+_____________ TestTenantRouting.test_known_customer_single_tenant _____________
+tests\cloud\test_whatsapp_cloud_webhook.py:133: in test_known_customer_single_tenant
+    assert response.status_code == 202
+E   assert 500 == 202
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+_____________ TestTenantRouting.test_unknown_customer_returns_404 _____________
+tests\cloud\test_whatsapp_cloud_webhook.py:156: in test_unknown_customer_returns_404
+    assert response.status_code == 404
+E   assert 202 == 404
+E    +  where 202 = <Response [202 Accepted]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  routers.whatsapp_cloud:whatsapp_cloud.py:215 \u26a0\ufe0f Unknown sender +919876543210 (normalized: 919876543210). Not in whatsapp_customer_mappings. Skipping queue. Check LID resolution in the Baileys listener.
+_____________ TestTenantRouting.test_multiple_tenants_uses_first ______________
+tests\cloud\test_whatsapp_cloud_webhook.py:191: in test_multiple_tenants_uses_first
+    assert response.status_code == 202
+E   assert 500 == 202
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  routers.whatsapp_cloud:whatsapp_cloud.py:227 \u26a0\ufe0f Phone +919876543210 mapped to 2 tenants. Routing to first match.\nERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()\nTraceback (most recent call last):\n  File "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\cloud-backend\\routers\\whatsapp_cloud.py", line 243, in receive_whatsapp_message\n    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)\n  File "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\cloud-backend\\routers\\whatsapp_cloud.py", line 312, in validate_tenant_subscription\n    if not tenant_result.data or len(tenant_result.data) == 0:\n                                 ~~~^^^^^^^^^^^^^^^^^^^^\nTypeError: object of type 'Mock' has no len()
+________ TestQueueInsertion.test_message_inserted_with_correct_fields _________
+tests\cloud\test_whatsapp_cloud_webhook.py:238: in test_message_inserted_with_correct_fields
+    assert response.status_code == 202
+E   assert 500 == 202
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+___________ TestQueueInsertion.test_media_message_handled_correctly ___________
+tests\cloud\test_whatsapp_cloud_webhook.py:296: in test_media_message_handled_correctly
+    assert response.status_code == 202
+E   assert 500 == 202
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+_______ TestTenantIsolation.test_different_customers_different_tenants ________
+tests\cloud\test_whatsapp_cloud_webhook.py:380: in test_different_customers_different_tenants
+    assert response_a.status_code == 202
+E   assert 500 == 202
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+============================== warnings summary ===============================
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sentry_sdk\integrations\fastapi.py:76: 40 warnings
+  C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\Lib\site-packages\sentry_sdk\integrations\fastapi.py:76: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    and not asyncio.iscoroutinefunction(dependant.call)
+
+cloud-backend\routers\webhooks.py:34
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\webhooks.py:34: UserWarning: Field name "schema" in "SupabaseWebhookPayload" shadows an attribute in parent "BaseModel"
+    class SupabaseWebhookPayload(BaseModel):
+
+cloud-backend\routers\auth.py:36
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\cloud-backend\routers\auth.py:36: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_valid_auth_header
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_known_customer_single_tenant
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_unknown_customer_returns_404
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_multiple_tenants_uses_first
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_message_inserted_with_correct_fields
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_media_message_handled_correctly
+FAILED tests/cloud/test_whatsapp_cloud_webhook.py::TestTenantIsolation::test_different_customers_different_tenants
+================== 7 failed, 19 passed, 42 warnings in 1.65s ==================

@@ -1,0 +1,62 @@
+{
+  "USER_PROFILES": "HTTP Error 400: Bad Request",
+  "TENANTS": "HTTP Error 400: Bad Request",
+  "TENANT_CONFIG": [
+    {
+      "tenant_id": "tenant-12345",
+      "whatsapp_number": "917339906200",
+      "user_email": "dev@k24.app",
+      "subscription_status": "active",
+      "trial_ends_at": "2027-12-31T00:00:00+00:00"
+    },
+    {
+      "tenant_id": "TENANT-2965AF26",
+      "whatsapp_number": "placeholder",
+      "user_email": "ai.krisha24@gmail.com",
+      "subscription_status": "active",
+      "trial_ends_at": null
+    }
+  ],
+  "WHATSAPP_MESSAGE_QUEUE": [
+    {
+      "id": "d47ceb98-09f3-4861-af86-5ebcf8adedc0",
+      "tenant_id": "tenant-12345",
+      "customer_phone": "185628738236618",
+      "message_type": "text",
+      "status": "failed",
+      "created_at": "2026-03-19T12:30:21.114235"
+    },
+    {
+      "id": "9c689db0-5b00-4834-8c50-6fdc22adb060",
+      "tenant_id": "tenant-12345",
+      "customer_phone": "185628738236618",
+      "message_type": "text",
+      "status": "failed",
+      "created_at": "2026-03-18T12:17:35.368136"
+    },
+    {
+      "id": "c9e6db7a-515d-4ab9-9ec0-b1b0ebc2f362",
+      "tenant_id": "tenant-12345",
+      "customer_phone": "185628738236618",
+      "message_type": "text",
+      "status": "failed",
+      "created_at": "2026-03-18T11:21:56.205571"
+    },
+    {
+      "id": "fd1e0f07-581f-4c58-aa62-7b24ff5b07bb",
+      "tenant_id": "tenant-12345",
+      "customer_phone": "917339906200",
+      "message_type": "text",
+      "status": "completed",
+      "created_at": "2026-03-16T02:44:55.902983"
+    },
+    {
+      "id": "7e61334e-d6f5-466b-8e29-c1b5ca3cf75a",
+      "tenant_id": "tenant-12345",
+      "customer_phone": "917339906200",
+      "message_type": "text",
+      "status": "completed",
+      "created_at": "2026-03-16T02:44:13.654319"
+    }
+  ]
+}

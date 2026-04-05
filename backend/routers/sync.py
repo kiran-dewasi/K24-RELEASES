@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Request, status
 from dependencies import get_api_key
 from tally_reader import TallyReader
 from database import get_db, Ledger, Voucher, StockItem
@@ -42,13 +42,30 @@ def perform_sync_task(db: Session):
     """
     reader = TallyReader()
 
-    # Resolve tenant_id from the first active local user (single-installation desktop app).
-    # Never hardcode — every row written to the DB must carry the real user's tenant_id.
+    # Resolve tenant_id from the first active local user.
+    # If no valid tenant is found, abort — never stamp data as "default".
     from database import User as _User
-    _user = db.query(_User).filter(_User.is_active == True).first()
-    tenant_id = _user.tenant_id if (_user and _user.tenant_id) else "default"
-    if tenant_id == "default":
-        logger.warning("perform_sync_task: no active user with tenant_id found — data will be tagged 'default'.")
+    _user = (
+        db.query(_User)
+        .filter(
+            _User.is_active == True,
+            _User.tenant_id != None,
+            _User.tenant_id != "default",
+            _User.tenant_id != "offline-default",
+        )
+        .order_by(_User.last_login.desc().nullslast())
+        .first()
+    )
+    tenant_id = _user.tenant_id if (_user and _user.tenant_id) else None
+    if not tenant_id:
+        logger.error(
+            "perform_sync_task: no active user with a valid tenant_id found. "
+            "Call POST /api/sync/full with a valid Bearer token first."
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="No valid tenant found. User must log in before syncing.",
+        )
 
     try:
         # 1. SYNC MASTERS (Ledgers)
@@ -111,9 +128,23 @@ def perform_sync_task(db: Session):
 
         count = 0
         updated = 0
-        for v in vouchers:
-            v_num = v.get("voucher_number") or ""
-            v_guid = v.get("guid") or ""
+        skipped = 0
+
+        logger.info(f"🔎 VOUCHER DEBUG: Processing {len(vouchers)} vouchers from Tally for tenant={tenant_id}")
+
+        for idx, v in enumerate(vouchers):
+            v_type  = v.get('voucher_type') or ''
+            v_num   = v.get('voucher_number') or ''
+            v_guid  = v.get('guid') or ''
+            v_party = v.get('party_name') or ''
+            v_amount = v.get('amount') or '0'
+
+            # ── Log every voucher received from Tally (essential to spot the 2 missing ones) ──
+            logger.info(
+                f"[TALLY_RAW #{idx+1}] type={v_type!r} num={v_num!r} guid={v_guid!r} "
+                f"party={v_party!r} amount={v_amount} date={v.get('date','')!r}"
+            )
+
             # Don't skip blank-numbered vouchers — they are valid accounting entries
             date_raw = str(v.get("date", "") or "").strip()
             try:
@@ -130,7 +161,10 @@ def perform_sync_task(db: Session):
                 # (each sync run produces a unique timestamp, dedup never matches)
                 # Use a recognizable sentinel instead so the same bad-date voucher
                 # gets upserted rather than duplicated.
-                logger.warning(f"Could not parse date '{date_raw}' for voucher #{v_num} — using 1900-01-01 sentinel")
+                logger.warning(
+                    f"⚠️ [SKIP REASON: bad_date] voucher #{v_num} type={v_type} "
+                    f"date_raw={date_raw!r} — using 1900-01-01 sentinel"
+                )
                 v_date = datetime(1900, 1, 1)
 
             # Wrap items/ledgers as JSON-serialisable lists
@@ -141,73 +175,116 @@ def perform_sync_task(db: Session):
             if v_guid:
                 tally_identifiers.add(v_guid)
             else:
-                tally_identifiers.add(f"{v_num}|{v.get('voucher_type')}|{v_date.date()}")
+                tally_identifiers.add(f"{v_num}|{v_type}|{v_date.date()}")
 
-            # Dedup: GUID first, then voucher_number+type+date, then fingerprint
-            exists = None
+            # ── Dedup: GUID first (tenant-scoped!), then composite, then fingerprint ──
+            exists     = None
+            match_path = None
+            from sqlalchemy import cast
+            from sqlalchemy.types import Date
             if v_guid:
-                exists = db.query(Voucher).filter(Voucher.guid == v_guid).first()
+                # FIX Bug 1: must include tenant_id — bare GUID lookup was cross-tenant
+                exists = db.query(Voucher).filter(
+                    Voucher.tenant_id == tenant_id,
+                    Voucher.guid == v_guid,
+                ).first()
+                if exists:
+                    match_path = 'guid_match'
             if not exists and v_num:
-                from sqlalchemy import cast
-                from sqlalchemy.types import Date
                 exists = db.query(Voucher).filter(
                     Voucher.tenant_id == tenant_id,
                     Voucher.voucher_number == v_num,
-                    Voucher.voucher_type == v.get("voucher_type"),
-                    cast(Voucher.date, Date) == v_date.date(),
+                    Voucher.voucher_type == v_type,
+                    Voucher.party_name == v_party,
+                    # SQLite date casting can be fragile. Since voucher_number + type + party
+                    # is constrained uniquely in the schema, using just these is safer to find the match.
                 ).first()
-            if not exists and v.get("party_name") and v.get("amount"):
-                from sqlalchemy import cast
-                from sqlalchemy.types import Date
+                if exists:
+                    match_path = 'composite_match'
+            if not exists and v_party and v_amount:
                 exists = db.query(Voucher).filter(
                     Voucher.tenant_id == tenant_id,
-                    Voucher.voucher_type == v.get("voucher_type"),
-                    Voucher.party_name == v.get("party_name"),
-                    Voucher.amount == abs(float(v.get("amount") or 0)),
-                    cast(Voucher.date, Date) == v_date.date(),
+                    Voucher.voucher_type == v_type,
+                    Voucher.party_name == v_party,
+                    Voucher.amount == abs(float(v_amount or 0)),
                 ).first()
+                if exists:
+                    match_path = 'fingerprint_match'
 
             if exists:
                 # Always refresh line items on re-sync so existing rows get enriched
                 exists.inventory_entries = inv_entries
-                exists.ledger_entries = led_entries
-                exists.party_name = v.get("party_name") or exists.party_name
-                exists.amount = float(v.get("amount") or exists.amount or 0)
-                exists.narration = v.get("narration") or exists.narration
-                exists.guid = v.get("guid") or exists.guid
+                exists.ledger_entries    = led_entries
+                exists.party_name        = v_party or exists.party_name
+                exists.amount            = float(v_amount or exists.amount or 0)
+                exists.narration         = v.get('narration') or exists.narration
+                exists.guid              = v_guid or exists.guid
                 # Un-delete if it was soft-deleted (voucher reappeared in Tally)
                 if exists.is_deleted:
-                    exists.is_deleted = False
-                    exists.deleted_at = None
+                    exists.is_deleted    = False
+                    exists.deleted_at    = None
                     exists.deleted_source = None
+                    logger.info(f"♻️ [UNDELETE] voucher #{v_num} restored via {match_path}")
+                logger.debug(f"[UPDATE] voucher #{v_num} matched via {match_path} — line items refreshed")
                 updated += 1
             else:
-                # ── ATOMIC UPSERT: Try to insert, catch constraint violation ──
+                # ── FIX Bug 3/5: Build a truly unique fallback GUID ──
+                # Old code used f"SYNC-{v_num}" which collapses to "SYNC-" for blank-numbered
+                # vouchers (e.g. Journals), causing all of them to collide on the unique constraint.
+                if v_guid:
+                    fallback_guid = v_guid
+                elif v_num:
+                    fallback_guid = f"SYNC-{v_num}-{v_type}-{v_date.strftime('%Y%m%d')}"
+                else:
+                    fallback_guid = (
+                        f"SYNC-{v_type}-{v_date.strftime('%Y%m%d')}"
+                        f"-{(v_party or 'NOPARTY')[:20]}"
+                        f"-{abs(float(v_amount or 0)):.2f}"
+                        f"-{idx}"
+                    )
+
+                # ── FIX Bug 2: db.rollback() on flush failure rolls back the ENTIRE batch ──
+                # (all vouchers inserted in this loop but not yet committed are lost).
+                # Mitigation: commit before each insert to make each voucher independent.
+                # This is less efficient but prevents the batch-wipe on any constraint hit.
                 try:
+                    db.commit()  # Checkpoint: persist all vouchers processed so far
                     new_voucher = Voucher(
-                        tenant_id=tenant_id,
-                        voucher_number=v_num,
-                        date=v_date,
-                        voucher_type=v.get("voucher_type"),
-                        party_name=v.get("party_name"),
-                        amount=float(v.get("amount") or 0),
-                        narration=v.get("narration"),
-                        sync_status="SYNCED",
-                        source="tally_sync",
-                        guid=v.get("guid") or f"SYNC-{v_num}",
-                        inventory_entries=inv_entries,
-                        ledger_entries=led_entries,
+                        tenant_id         = tenant_id,
+                        voucher_number    = v_num,
+                        date              = v_date,
+                        voucher_type      = v_type,
+                        party_name        = v_party,
+                        amount            = float(v_amount or 0),
+                        narration         = v.get('narration'),
+                        sync_status       = 'SYNCED',
+                        source            = 'tally_sync',
+                        guid              = fallback_guid,
+                        inventory_entries = inv_entries,
+                        ledger_entries    = led_entries,
                     )
                     db.add(new_voucher)
-                    db.flush()  # Catch constraint violation immediately
+                    db.flush()
+                    db.commit()
+                    logger.info(
+                        f"✅ [INSERT] voucher #{v_num} type={v_type} "
+                        f"date={v_date.date()} party={v_party} guid={fallback_guid}"
+                    )
                     count += 1
                 except Exception as insert_err:
-                    # Constraint violation (duplicate) — skip silently, DB blocked it
-                    db.rollback()
-                    logger.warning(f"⚠️ Duplicate voucher blocked by DB constraint: {v_num} (GUID: {v_guid})")
+                    db.rollback()  # Only this row fails; prior commits are safe
+                    logger.warning(
+                        f"⚠️ [SKIP REASON: insert_failed] voucher #{v_num} type={v_type} "
+                        f"date={v_date.date()} party={v_party} guid={fallback_guid} "
+                        f"error={insert_err!r}"
+                    )
+                    skipped += 1
         
         db.commit()
-        logger.info(f"✅ Synced {count} new Vouchers, refreshed line items on {updated} existing.")
+        logger.info(
+            f"✅ Voucher sync complete: {count} inserted, {updated} updated, "
+            f"{skipped} skipped (tenant={tenant_id})"
+        )
 
         # ── STEP B: SOFT-DELETE RECONCILIATION (Enterprise-grade: never lose audit trail) ──
         logger.info("🔍 Reconciling vouchers with Tally (soft-deleting stale entries)...")
@@ -318,7 +395,6 @@ async def get_sync_status():
     Used by Frontend Navbar to show connectivity indicator.
     """
     # Simple check: Try to reach Tally
-    from socket_manager import socket_manager
     tally_connected = False
     try:
         # Check if Tally URL is reachable
@@ -533,3 +609,107 @@ async def health_check():
             "error": str(e)
         }
 
+
+@router.post("/full")
+async def trigger_full_sync_with_tenant(request: Request):
+    """
+    🆕 JWT-aware full sync — resolves tenant from Bearer token.
+
+    Call this once after login (or whenever the dashboard shows ₹0).
+
+    Steps:
+      1. Decode Bearer JWT → extract tenant_id
+      2. Upsert tenant into the local SQLite users table (so background
+         sync picks it up in every future cycle)
+      3. Run a full Tally sync (all ledgers, vouchers, stock items, bills)
+         with the correct tenant_id stamped on every row
+    """
+    import os
+    from jose import jwt as _jwt, JWTError
+    from database import SessionLocal, User
+    from datetime import datetime as _dt
+
+    # ── 1. Resolve tenant_id from JWT ───────────────────────────────────────
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer token required for full sync.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = auth_header[7:]
+    try:
+        secret = os.getenv("JWT_SECRET_KEY")
+        algo   = os.getenv("JWT_ALGORITHM", "HS256")
+        if not secret:
+            raise HTTPException(status_code=500, detail="JWT_SECRET_KEY not configured")
+        payload = _jwt.decode(token, secret, algorithms=[algo])
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid or expired token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    tenant_id = payload.get("tenant_id")
+    username  = payload.get("sub")
+
+    if not tenant_id or tenant_id in ("", "default", "offline-default"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT does not contain a valid tenant_id claim. Please log in again.",
+        )
+    tenant_id = tenant_id.upper()
+
+    # ── 2. Upsert tenant into local users table (cache for background sync) ─
+    db = SessionLocal()
+    try:
+        user = None
+        if username:
+            user = db.query(User).filter(User.username == username).first()
+            if not user:
+                user = db.query(User).filter(User.google_api_key == username).first()
+
+        if user:
+            user.tenant_id = tenant_id
+            user.is_active = True
+            user.last_login = _dt.now()
+            db.commit()
+            logger.info(f"[sync/full] Updated user '{username}' → tenant_id={tenant_id}")
+        else:
+            # First time on this device — create a minimal stub
+            stub = User(
+                username=username or tenant_id,
+                email=username or f"{tenant_id}@local",
+                hashed_password="",
+                full_name="Synced User",
+                role="viewer",
+                tenant_id=tenant_id,
+                is_active=True,
+                is_verified=True,
+                created_at=_dt.now(),
+                last_login=_dt.now(),
+                google_api_key=username,
+            )
+            db.add(stub)
+            db.commit()
+            logger.info(f"[sync/full] Created local user stub for tenant_id={tenant_id}")
+    except Exception as e:
+        logger.error(f"[sync/full] Failed to upsert local user: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+    # ── 3. Run full sync ─────────────────────────────────────────────────────
+    try:
+        result = await tally_sync_service.sync_all(mode="full")
+        return {
+            "status": "success",
+            "tenant_id": tenant_id,
+            "mode": "full",
+            "result": result,
+        }
+    except Exception as e:
+        logger.error(f"[sync/full] Sync failed for tenant={tenant_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")

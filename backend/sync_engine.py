@@ -27,15 +27,32 @@ class SyncEngine:
     def _get_tenant_id(self, db: Session) -> str:
         """
         Derive the real tenant_id from the first active local user.
-        This is the single source of truth for all data written to the DB.
-        Never returns a hardcoded value — logs a warning if no user is found.
+
+        Resolution order:
+          1. Active user in local SQLite (populated after login)
+
+        Raises ValueError if no valid tenant is found. Callers should catch
+        this to skip the sync rather than stamping data with a wrong tenant.
         """
         from database import User as _User
-        user = db.query(_User).filter(_User.is_active == True).first()
+        user = (
+            db.query(_User)
+            .filter(
+                _User.is_active == True,
+                _User.tenant_id != None,
+                _User.tenant_id != "default",
+                _User.tenant_id != "offline-default",
+            )
+            .order_by(_User.last_login.desc().nullslast())
+            .first()
+        )
         if user and user.tenant_id:
             return user.tenant_id
-        logger.warning("SyncEngine._get_tenant_id: no active user with tenant_id found.")
-        return "default"
+
+        raise ValueError(
+            "SyncEngine._get_tenant_id: no active user with a valid tenant_id found. "
+            "Sync skipped — user must log in first so tenant_id is populated."
+        )
 
     def _prepare_voucher_payload(self, voucher_data: dict):
         """Transform flat voucher_data into modern XML builder components"""

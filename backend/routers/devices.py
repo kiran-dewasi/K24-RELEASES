@@ -23,9 +23,8 @@ async def register_device(
 ):
     """
     Register device after web authentication.
-    Returns a SIGNED socket_token (JWT) for secure Socket.IO auth.
+    Returns license_key and tenant_id for the device.
     """
-    from auth import create_socket_token
     from database import User
     
     device_id = payload.get("device_id")
@@ -59,16 +58,8 @@ async def register_device(
         existing_device.last_validated_at = datetime.now()
         db.commit()
         
-        # Generate signed socket token (Phase 2 security)
-        socket_token = create_socket_token(
-            user_id=user_id,
-            tenant_id=tenant_id,
-            license_key=existing_device.license_key
-        )
-        
         return {
             "license_key": existing_device.license_key,
-            "socket_token": socket_token,  # <-- Signed JWT for socket auth!
             "tenant_id": tenant_id
         }
 
@@ -94,16 +85,8 @@ async def register_device(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     
-    # Generate signed socket token (Phase 2 security)
-    socket_token = create_socket_token(
-        user_id=user_id,
-        tenant_id=tenant_id,
-        license_key=license_key
-    )
-    
     return {
         "license_key": license_key,
-        "socket_token": socket_token,  # <-- Signed JWT for socket auth!
         "tenant_id": tenant_id
     }
 

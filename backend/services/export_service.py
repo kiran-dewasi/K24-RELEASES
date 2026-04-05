@@ -513,170 +513,7 @@ class ExcelGenerator:
             bottom=Side(style='thin')
         )
     
-    def generate_sales_register(
-        self, 
-        date_from: datetime = None, 
-        date_to: datetime = None
-    ) -> Tuple[str, str]:
-        """
-        Generate Sales Register Excel report.
-        
-        Returns:
-            Tuple of (file_path, filename)
-        """
-        if not date_from:
-            date_from = datetime.now() - timedelta(days=30)
-        if not date_to:
-            date_to = datetime.now()
-        
-        # Query sales vouchers
-        vouchers = self.db.query(Voucher).filter(
-            Voucher.voucher_type == "Sales",
-            Voucher.date >= date_from,
-            Voucher.date <= date_to,
-            Voucher.tenant_id == self.tenant_id
-        ).order_by(Voucher.date).all()
-        
-        # Create workbook
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Sales Register"
-        
-        # Title
-        ws.merge_cells('A1:E1')
-        ws['A1'] = f"Sales Register ({date_from.strftime('%d-%b-%Y')} to {date_to.strftime('%d-%b-%Y')})"
-        ws['A1'].font = Font(bold=True, size=14)
-        ws['A1'].alignment = Alignment(horizontal='center')
-        
-        # Company name
-        ws['A2'] = "KRISHA SALES"
-        ws['A2'].font = Font(bold=True, size=10, color="666666")
-        
-        # Headers - simplified without VoucherItem dependency
-        headers = ["Date", "Voucher No", "Party Name", "Amount", "Narration"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=4, column=col, value=header)
-            cell.font = self.header_font
-            cell.fill = self.header_fill
-            cell.alignment = Alignment(horizontal='center')
-            cell.border = self.border
-        
-        # Data rows
-        total_amount = 0.0
-        
-        for row_idx, voucher in enumerate(vouchers, 5):
-            ws.cell(row=row_idx, column=1, value=voucher.date.strftime("%d-%b-%Y") if voucher.date else "")
-            ws.cell(row=row_idx, column=2, value=voucher.voucher_number or "")
-            ws.cell(row=row_idx, column=3, value=voucher.party_name or "Cash")
-            
-            amount = voucher.amount or 0
-            ws.cell(row=row_idx, column=4, value=amount).number_format = '₹#,##0.00'
-            ws.cell(row=row_idx, column=5, value=voucher.narration or "")
-            
-            total_amount += amount
-            
-            # Apply borders
-            for col in range(1, 6):
-                ws.cell(row=row_idx, column=col).border = self.border
-        
-        # Total row
-        total_row = len(vouchers) + 5
-        ws.cell(row=total_row, column=3, value="TOTAL:").font = Font(bold=True)
-        ws.cell(row=total_row, column=4, value=total_amount).number_format = '₹#,##0.00'
-        ws.cell(row=total_row, column=4).font = Font(bold=True)
-        
-        # Auto-fit columns
-        ws.column_dimensions['A'].width = 12
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 30
-        ws.column_dimensions['D'].width = 15
-        ws.column_dimensions['E'].width = 30
-        
-        # Save
-        filename = f"Sales_Register_{date_from.strftime('%Y%m%d')}_to_{date_to.strftime('%Y%m%d')}.xlsx"
-        filepath = self.exports_dir / filename
-        wb.save(filepath)
-        
-        logger.info(f"Generated sales register Excel: {filepath}")
-        return str(filepath), filename
-    
-    def generate_purchase_register(
-        self, 
-        date_from: datetime = None, 
-        date_to: datetime = None
-    ) -> Tuple[str, str]:
-        """Generate Purchase Register Excel report."""
-        if not date_from:
-            date_from = datetime.now() - timedelta(days=30)
-        if not date_to:
-            date_to = datetime.now()
-        
-        vouchers = self.db.query(Voucher).filter(
-            Voucher.voucher_type == "Purchase",
-            Voucher.date >= date_from,
-            Voucher.date <= date_to,
-            Voucher.tenant_id == self.tenant_id
-        ).order_by(Voucher.date).all()
-        
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Purchase Register"
-        
-        # Title
-        ws.merge_cells('A1:E1')
-        ws['A1'] = f"Purchase Register ({date_from.strftime('%d-%b-%Y')} to {date_to.strftime('%d-%b-%Y')})"
-        ws['A1'].font = Font(bold=True, size=14)
-        ws['A1'].alignment = Alignment(horizontal='center')
-        
-        # Company name
-        ws['A2'] = "KRISHA SALES"
-        ws['A2'].font = Font(bold=True, size=10, color="666666")
-        
-        # Headers - simplified
-        headers = ["Date", "Voucher No", "Supplier Name", "Amount", "Narration"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=4, column=col, value=header)
-            cell.font = self.header_font
-            cell.fill = self.header_fill
-            cell.alignment = Alignment(horizontal='center')
-            cell.border = self.border
-        
-        # Data
-        total_amount = 0.0
-        for row_idx, voucher in enumerate(vouchers, 5):
-            ws.cell(row=row_idx, column=1, value=voucher.date.strftime("%d-%b-%Y") if voucher.date else "")
-            ws.cell(row=row_idx, column=2, value=voucher.voucher_number or "")
-            ws.cell(row=row_idx, column=3, value=voucher.party_name or "Cash")
-            
-            amount = voucher.amount or 0
-            ws.cell(row=row_idx, column=4, value=amount).number_format = '₹#,##0.00'
-            ws.cell(row=row_idx, column=5, value=voucher.narration or "")
-            
-            total_amount += amount
-            
-            for col in range(1, 6):
-                ws.cell(row=row_idx, column=col).border = self.border
-        
-        # Total
-        total_row = len(vouchers) + 5
-        ws.cell(row=total_row, column=3, value="TOTAL:").font = Font(bold=True)
-        ws.cell(row=total_row, column=4, value=total_amount).number_format = '₹#,##0.00'
-        ws.cell(row=total_row, column=4).font = Font(bold=True)
-        
-        # Column widths
-        ws.column_dimensions['A'].width = 12
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 30
-        ws.column_dimensions['D'].width = 15
-        ws.column_dimensions['E'].width = 30
-        
-        filename = f"Purchase_Register_{date_from.strftime('%Y%m%d')}_to_{date_to.strftime('%Y%m%d')}.xlsx"
-        filepath = self.exports_dir / filename
-        wb.save(filepath)
-        
-        logger.info(f"Generated purchase register Excel: {filepath}")
-        return str(filepath), filename
-    
+
     def generate_outstanding_report(self, report_type: str = "receivable") -> Tuple[str, str]:
         """
         Generate Outstanding Receivables or Payables Excel report.
@@ -820,26 +657,30 @@ class ExcelGenerator:
 class ExportService:
     """
     Main Export Service - Unified interface for all export types.
-    Used by the Query Orchestrator when user requests PDF/Excel.
+    Used by the Query Orchestrator and WhatsApp poller when user requests PDF/Excel.
+    Now acts as a thin adapter for the CanonicalExportEngine.
     """
     
     def __init__(self, db: Session, tenant_id: str = "default"):
         self.db = db
         self.tenant_id = tenant_id
-        self.pdf = PDFGenerator(db, tenant_id)
-        self.excel = ExcelGenerator(db, tenant_id)
+        from services.canonical_export_engine import CanonicalExportEngine
+        self.engine = CanonicalExportEngine(db, tenant_id)
     
+    def _format_result(self, result: dict, rtype: str, file_ext: str, format_name: str) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "file_path": result["file_path"],
+            "filename": result["filename"],
+            "type": file_ext,
+            "message": f"📄 {rtype} {format_name} generated: {result['filename']}"
+        }
+
     def export_invoice_pdf(self, voucher_id: int) -> Dict[str, Any]:
         """Export a single invoice as PDF"""
         try:
-            filepath, filename = self.pdf.generate_invoice_pdf(voucher_id)
-            return {
-                "success": True,
-                "file_path": filepath,
-                "filename": filename,
-                "type": "pdf",
-                "message": f"📄 Invoice PDF generated: {filename}"
-            }
+            res = self.engine.generate_export_file("invoice", "pdf", {"voucher_id": voucher_id})
+            return self._format_result(res, "Invoice", "pdf", "PDF")
         except Exception as e:
             logger.error(f"PDF export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -847,14 +688,8 @@ class ExportService:
     def export_statement_pdf(self, party_name: str) -> Dict[str, Any]:
         """Export outstanding statement as PDF"""
         try:
-            filepath, filename = self.pdf.generate_outstanding_statement(party_name)
-            return {
-                "success": True,
-                "file_path": filepath,
-                "filename": filename,
-                "type": "pdf",
-                "message": f"📄 Statement PDF generated: {filename}"
-            }
+            res = self.engine.generate_export_file("statement", "pdf", {"party_name": party_name})
+            return self._format_result(res, "Statement", "pdf", "PDF")
         except Exception as e:
             logger.error(f"Statement PDF export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -866,14 +701,9 @@ class ExportService:
     ) -> Dict[str, Any]:
         """Export sales register as Excel"""
         try:
-            filepath, filename = self.excel.generate_sales_register(date_from, date_to)
-            return {
-                "success": True,
-                "file_path": filepath,
-                "filename": filename,
-                "type": "excel",
-                "message": f"📊 Sales Register Excel generated: {filename}"
-            }
+            filters = {"date_from": date_from, "date_to": date_to}
+            res = self.engine.generate_export_file("sales-register", "excel", filters)
+            return self._format_result(res, "Sales Register", "excel", "Excel")
         except Exception as e:
             logger.error(f"Sales Excel export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -885,14 +715,9 @@ class ExportService:
     ) -> Dict[str, Any]:
         """Export purchase register as Excel"""
         try:
-            filepath, filename = self.excel.generate_purchase_register(date_from, date_to)
-            return {
-                "success": True,
-                "file_path": filepath,
-                "filename": filename,
-                "type": "excel",
-                "message": f"📊 Purchase Register Excel generated: {filename}"
-            }
+            filters = {"date_from": date_from, "date_to": date_to}
+            res = self.engine.generate_export_file("purchase-register", "excel", filters)
+            return self._format_result(res, "Purchase Register", "excel", "Excel")
         except Exception as e:
             logger.error(f"Purchase Excel export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -900,14 +725,9 @@ class ExportService:
     def export_outstanding_excel(self, report_type: str = "receivable") -> Dict[str, Any]:
         """Export outstanding report as Excel"""
         try:
-            filepath, filename = self.excel.generate_outstanding_report(report_type)
-            return {
-                "success": True,
-                "file_path": filepath,
-                "filename": filename,
-                "type": "excel",
-                "message": f"📊 Outstanding Report Excel generated: {filename}"
-            }
+            slug = "receivables" if report_type == "receivable" else "payables"
+            res = self.engine.generate_export_file(slug, "excel", {})
+            return self._format_result(res, "Outstanding Report", "excel", "Excel")
         except Exception as e:
             logger.error(f"Outstanding Excel export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -915,14 +735,8 @@ class ExportService:
     def export_stock_excel(self) -> Dict[str, Any]:
         """Export stock report as Excel"""
         try:
-            filepath, filename = self.excel.generate_stock_report()
-            return {
-                "success": True,
-                "file_path": filepath,
-                "filename": filename,
-                "type": "excel",
-                "message": f"📊 Stock Report Excel generated: {filename}"
-            }
+            res = self.engine.generate_export_file("stock", "excel", {})
+            return self._format_result(res, "Stock Report", "excel", "Excel")
         except Exception as e:
             logger.error(f"Stock Excel export failed: {e}")
             return {"success": False, "error": str(e)}
@@ -962,3 +776,4 @@ def export_sales_to_excel(
         return service.export_sales_excel(date_from, date_to)
     finally:
         db.close()
+

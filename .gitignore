@@ -32,6 +32,10 @@ target/
 frontend/.env.local
 backend/.env
 
+# Persisted desktop session (contains JWT — must NOT be committed)
+.session.json
+backend/.session.json
+
 # Frontend build outputs
 frontend/out/
 frontend/.next/

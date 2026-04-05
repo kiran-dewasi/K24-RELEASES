@@ -17,9 +17,9 @@ class TestTallyResponseParser(unittest.TestCase):
         """
         response = parse_tally_response(xml)
         self.assertTrue(response.succeeded)
-        self.assertEqual(response.created, 1)
-        self.assertEqual(response.status, "Success")
-        self.assertEqual(response.errors, [])
+        self.assertEqual(response.tally_response.get("created"), 1)
+        self.assertEqual(response.tally_status, "Success")
+        self.assertEqual(response.error_details, "")
 
     def test_parse_failure_with_errors(self):
         xml = """
@@ -42,8 +42,8 @@ class TestTallyResponseParser(unittest.TestCase):
         
         response = parse_tally_response(xml)
         self.assertFalse(response.succeeded)
-        self.assertIn("Invalid Date", response.errors)
-        self.assertIn("Missing Ledger", response.errors)
+        self.assertIn("Invalid Date", response.error_details)
+        self.assertIn("Missing Ledger", response.error_details)
 
     def test_parse_ignored(self):
         xml = """
@@ -55,13 +55,13 @@ class TestTallyResponseParser(unittest.TestCase):
         </RESPONSE>
         """
         response = parse_tally_response(xml)
-        self.assertTrue(response.is_ignored)
+        self.assertTrue(response.tally_response.get("is_ignored"))
         self.assertFalse(response.succeeded)
 
     def test_parse_invalid_xml(self):
         xml = "Not XML"
         response = parse_tally_response(xml)
-        self.assertEqual(response.status, "XML Error")
+        self.assertEqual(response.tally_status, "XML Error")
         self.assertEqual(response.raw_xml, "Not XML")
 
 if __name__ == '__main__':

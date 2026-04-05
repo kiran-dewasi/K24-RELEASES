@@ -62,51 +62,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def create_socket_token(user_id: str, tenant_id: str, license_key: str, expires_days: int = 365) -> str:
-    """
-    Create a long-lived signed JWT for Socket.IO authentication.
-    This prevents impersonation attacks where someone guesses a tenant_id.
-    
-    Args:
-        user_id: The user's ID (from auth system)
-        tenant_id: The tenant ID (e.g., TENANT-84F03F7D)
-        license_key: The device license key
-        expires_days: Token validity in days (default 1 year)
-    
-    Returns:
-        Signed JWT token for socket authentication
-    """
-    expire = datetime.utcnow() + timedelta(days=expires_days)
-    payload = {
-        "sub": user_id,
-        "tenant_id": tenant_id,
-        "license_key": license_key,
-        "type": "socket_auth",  # Distinguish from web auth tokens
-        "exp": expire
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-def decode_socket_token(token: str) -> Optional[dict]:
-    """
-    Decode and verify a socket authentication token.
-    
-    Args:
-        token: The JWT token from socket auth
-    
-    Returns:
-        Decoded payload with tenant_id, user_id, license_key if valid
-        None if invalid or expired
-    """
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        
-        # Verify it's a socket auth token
-        if payload.get("type") != "socket_auth":
-            return None
-        
-        return payload
-    except JWTError:
-        return None
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     logger.debug("[AUTH] Validating bearer token")
@@ -188,15 +143,28 @@ def get_current_tenant_id(current_user: User = Depends(get_current_active_user),
     """
     Extracts tenant_id from the authenticated user.
     Enforces multi-tenancy isolation.
+
+    Resolution order:
+      1. JWT payload → current_user.tenant_id (populated by get_current_user)
+      2. Raises 401 — never falls back to "default" or any hardcoded string.
     """
     path = request.url.path if request else "unknown"
-    tenant_id = current_user.tenant_id if current_user else "N/A"
+    tenant_id = current_user.tenant_id if current_user else None
     logger.debug("[AUTH] Tenant resolved: path=%s tenant=%s", path, tenant_id)
 
-    if not current_user.tenant_id:
-        # Fallback for legacy users (should not happen with new constraints)
-        return "default"
-    return current_user.tenant_id
+    if not tenant_id or tenant_id in ("default", "offline-default", ""):
+        logger.error(
+            "[AUTH] get_current_tenant_id: user %s has no valid tenant_id (got %r). "
+            "Possible causes: JWT missing tenant_id claim, or user record stale.",
+            getattr(current_user, "username", "?"), tenant_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not resolve tenant identity. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return tenant_id.upper()  # Always uppercase for consistency
 
 
 def get_optional_current_user(

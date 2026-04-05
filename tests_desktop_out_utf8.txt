@@ -1,0 +1,155 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare
+plugins: anyio-4.12.1, langsmith-0.6.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 20 items
+
+tests/desktop/middleware/test_middleware.py::test_message_validation_valid PASSED [  5%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_empty PASSED [ 10%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_too_long PASSED [ 15%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_sql_injection PASSED [ 20%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_prompt_injection PASSED [ 25%]
+tests/desktop/middleware/test_middleware.py::test_rate_limiting PASSED   [ 30%]
+tests/desktop/middleware/test_middleware.py::test_quota_tracking PASSED  [ 35%]
+tests/desktop/test_gstin_workflow.py::test_gstin_update PASSED           [ 40%]
+tests/desktop/test_reconciliation_workflow.py::test_reconciliation PASSED [ 45%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_failure_with_errors FAILED [ 50%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_ignored FAILED [ 55%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_invalid_xml FAILED [ 60%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_success FAILED [ 65%]
+tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_offline_mode FAILED [ 70%]
+tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_success FAILED [ 75%]
+tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_tally_rejection FAILED [ 80%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_ledger_create_xml FAILED [ 85%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_stock_item_create_xml PASSED [ 90%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_voucher_create_xml PASSED [ 95%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_validation_error PASSED [100%]
+
+================================== FAILURES ===================================
+___________ TestTallyResponseParser.test_parse_failure_with_errors ____________
+backend\tally_response_parser.py:80: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+
+During handling of the above exception, another exception occurred:
+tests\desktop\test_tally_response_parser.py:43: in test_parse_failure_with_errors
+    response = parse_tally_response(xml)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tally_response_parser.py:101: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+------------------------------ Captured log call ------------------------------
+ERROR    tally_response_parser:tally_response_parser.py:100 Unexpected error in parse_tally_response
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\tally_response_parser.py", line 80, in parse_tally_response
+    return TallyResponse(
+        raw_xml=xml_response,
+    ...<7 lines>...
+        is_ignored=(status == "Ignored")
+    )
+TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+_________________ TestTallyResponseParser.test_parse_ignored __________________
+backend\tally_response_parser.py:80: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+
+During handling of the above exception, another exception occurred:
+tests\desktop\test_tally_response_parser.py:57: in test_parse_ignored
+    response = parse_tally_response(xml)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tally_response_parser.py:101: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+------------------------------ Captured log call ------------------------------
+ERROR    tally_response_parser:tally_response_parser.py:100 Unexpected error in parse_tally_response
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\tally_response_parser.py", line 80, in parse_tally_response
+    return TallyResponse(
+        raw_xml=xml_response,
+    ...<7 lines>...
+        is_ignored=(status == "Ignored")
+    )
+TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+_______________ TestTallyResponseParser.test_parse_invalid_xml ________________
+backend\tally_response_parser.py:23: in parse_tally_response
+    root = ET.fromstring(xml_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\xml\etree\ElementTree.py:1352: in XML
+    parser.feed(text)
+E   xml.etree.ElementTree.ParseError: syntax error: line 1, column 0
+
+During handling of the above exception, another exception occurred:
+tests\desktop\test_tally_response_parser.py:63: in test_parse_invalid_xml
+    response = parse_tally_response(xml)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tally_response_parser.py:94: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+------------------------------ Captured log call ------------------------------
+ERROR    tally_response_parser:tally_response_parser.py:93 Failed to parse XML: Not XML...
+_________________ TestTallyResponseParser.test_parse_success __________________
+backend\tally_response_parser.py:80: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+
+During handling of the above exception, another exception occurred:
+tests\desktop\test_tally_response_parser.py:18: in test_parse_success
+    response = parse_tally_response(xml)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tally_response_parser.py:101: in parse_tally_response
+    return TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+------------------------------ Captured log call ------------------------------
+ERROR    tally_response_parser:tally_response_parser.py:100 Unexpected error in parse_tally_response
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\tally_response_parser.py", line 80, in parse_tally_response
+    return TallyResponse(
+        raw_xml=xml_response,
+    ...<7 lines>...
+        is_ignored=(status == "Ignored")
+    )
+TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+_____________ TestSyncEngine.test_push_voucher_safe_offline_mode ______________
+tests\desktop\test_tally_sync_engine.py:85: in test_push_voucher_safe_offline_mode
+    self.assertTrue(result["success"])
+E   AssertionError: False is not true
+------------------------------ Captured log call ------------------------------
+WARNING  backend.sync_engine:sync_engine.py:234 Tally Unreachable or Error. Saving to Offline Queue. Error: write() argument must be str, not dict
+ERROR    backend.sync_engine:sync_engine.py:279 Shadow DB Commit Failed: (sqlite3.IntegrityError) UNIQUE constraint failed: vouchers.tenant_id, vouchers.voucher_number, vouchers.voucher_type, vouchers.party_name
+[SQL: INSERT INTO vouchers (guid, voucher_number, date, voucher_type, party_name, amount, narration, sync_status, last_synced, status, tds_section, gst_reconciled, is_backdated, is_weekend_entry, source, tally_voucher_id, ledger_id, is_deleted, deleted_at, deleted_source, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('PENDING-1775284580.808106', 'V003', '2024-04-01 00:00:00.000000', 'Sales', 'Customer C', 200.0, None, 'PENDING', '2026-04-04 12:06:20.808111', 'Draft', None, 0, 0, 0, 'web', None, None, 0, None, None, 'default')]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+________________ TestSyncEngine.test_push_voucher_safe_success ________________
+tests\desktop\test_tally_sync_engine.py:19: in test_push_voucher_safe_success
+    mock_create_voucher.return_value = TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+____________ TestSyncEngine.test_push_voucher_safe_tally_rejection ____________
+tests\desktop\test_tally_sync_engine.py:50: in test_push_voucher_safe_tally_rejection
+    mock_create_voucher.return_value = TallyResponse(
+E   TypeError: TallyResponse.__init__() got an unexpected keyword argument 'status'
+______________ TestTallyXMLBuilder.test_build_ledger_create_xml _______________
+tests\desktop\test_tally_xml_builder.py:22: in test_build_ledger_create_xml
+    self.assertIn('<SVCURRENTCOMPANY>Test Company</SVCURRENTCOMPANY>', xml)
+E   AssertionError: '<SVCURRENTCOMPANY>Test Company</SVCURRENTCOMPANY>' not found in '<ENVELOPE>\n  <HEADER>\n    <TALLYREQUEST>Import Data</TALLYREQUEST>\n  </HEADER>\n  <BODY>\n    <IMPORTDATA>\n      <REQUESTDESC>\n        <REPORTNAME>All Masters</REPORTNAME>\n      </REQUESTDESC>\n      <REQUESTDATA>\n        <TALLYMESSAGE xmlns:UDF="TallyUDF">\n          <LEDGER NAME="Test Ledger" ACTION="Create">\n        <NAME>Test Ledger</NAME>\n        <PARENT>Sundry Debtors</PARENT>\n        <OPENINGBALANCE>1000</OPENINGBALANCE>\n          </LEDGER>\n        </TALLYMESSAGE>\n      </REQUESTDATA>\n    </IMPORTDATA>\n  </BODY>\n</ENVELOPE>'
+============================== warnings summary ===============================
+backend\database\__init__.py:58
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\database\__init__.py:58: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/desktop/test_reconciliation_workflow.py::test_reconciliation
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\orchestration\workflows\invoice_reconciliation.py:193: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    response = result.dict()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_failure_with_errors
+FAILED tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_ignored
+FAILED tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_invalid_xml
+FAILED tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_success
+FAILED tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_offline_mode
+FAILED tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_success
+FAILED tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_tally_rejection
+FAILED tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_ledger_create_xml
+================== 8 failed, 12 passed, 2 warnings in 32.22s ==================

@@ -301,6 +301,49 @@ async def get_vouchers(
                         norm_v["ledger_id"] = ledger_map[p_name]
                     norm_v["source"] = "tally_live"
                     normalized_vouchers.append(norm_v)
+
+                # Persist to DB so customer 360 and future queries hit DB directly
+                saved = 0
+                for norm_v in normalized_vouchers:
+                    v_num = norm_v.get("voucher_number") or ""
+                    v_type = norm_v.get("voucher_type") or ""
+                    if not v_num:
+                        continue
+                    try:
+                        v_date_str = norm_v.get("date", "")
+                        v_date = datetime.strptime(v_date_str, "%Y-%m-%d") if v_date_str else None
+                    except ValueError:
+                        v_date = None
+                    if v_date and not db.query(Voucher).filter(
+                        Voucher.tenant_id == tenant_id,
+                        Voucher.voucher_number == v_num,
+                        Voucher.voucher_type == v_type,
+                    ).first():
+                        try:
+                            new_v = Voucher(
+                                tenant_id=tenant_id,
+                                voucher_number=v_num,
+                                date=v_date,
+                                voucher_type=v_type,
+                                party_name=norm_v.get("party_name"),
+                                amount=float(norm_v.get("amount") or 0),
+                                narration=norm_v.get("narration"),
+                                sync_status="SYNCED",
+                                source="tally_live",
+                                guid=norm_v.get("reference") or f"LIVE-{v_num}",
+                                inventory_entries=norm_v.get("items"),
+                                ledger_entries=norm_v.get("ledgers"),
+                                ledger_id=norm_v.get("ledger_id"),
+                            )
+                            db.add(new_v)
+                            db.flush()
+                            saved += 1
+                        except Exception as _save_err:
+                            db.rollback()
+                            logger.debug(f"Skip duplicate voucher {v_num}: {_save_err}")
+                if saved:
+                    db.commit()
+                    logger.info(f"💾 Persisted {saved} Tally live vouchers to DB for future queries")
             except Exception as te:
                 logger.warning(f"Tally fallback failed: {te}")
                 normalized_vouchers = []

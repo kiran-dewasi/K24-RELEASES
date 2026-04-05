@@ -1,0 +1,67 @@
+{
+  "USERS": [
+    {
+      "id": 1,
+      "full_name": "Kittu",
+      "email": "kittu@krishasales.com",
+      "role": "admin",
+      "tenant_id": "TENANT-12345"
+    },
+    {
+      "id": 2,
+      "full_name": "Fixed Test User",
+      "email": "fixed.user.999@gmail.com",
+      "role": "admin",
+      "tenant_id": "TENANT-12345"
+    },
+    {
+      "id": 3,
+      "full_name": "Narayan Dewasi",
+      "email": "xhide3073@gmail.com",
+      "role": "admin",
+      "tenant_id": "TENANT-12345"
+    },
+    {
+      "id": 4,
+      "full_name": "Kittu@123",
+      "email": "kirankdewasi19@gmail.com",
+      "role": "admin",
+      "tenant_id": "TENANT-12345"
+    },
+    {
+      "id": 5,
+      "full_name": "parag",
+      "email": "kanha12@gmail.com",
+      "role": "admin",
+      "tenant_id": "TENANT-12345"
+    },
+    {
+      "id": 6,
+      "full_name": "sumit",
+      "email": "kanha312@gmail.com",
+      "role": "admin",
+      "tenant_id": "TENANT-12345"
+    }
+  ],
+  "TENANTS": [
+    {
+      "id": "TENANT-12345",
+      "company_name": "Krishna Sales",
+      "tally_company_name": "Krishna Sales",
+      "whatsapp_number": "+919999999999",
+      "license_key": null,
+      "created_at": "2026-01-27 16:04:26.544135",
+      "auto_post_to_tally": 1
+    },
+    {
+      "id": "12345",
+      "company_name": "Default Tenant",
+      "tally_company_name": null,
+      "whatsapp_number": null,
+      "license_key": null,
+      "created_at": "2026-01-28 10:03:09",
+      "auto_post_to_tally": 0
+    }
+  ],
+  "TENANT_CONFIG": []
+}

@@ -12,6 +12,7 @@ import { Plus, RefreshCw, FileDown, FileUp, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from "@/components/ui/use-toast";
 import InventoryDetailPage from '@/components/pages/InventoryDetailPage';
+import { downloadReportFile } from '@/lib/fileDownload';
 
 function InventoryContent() {
     const searchParams = useSearchParams();
@@ -42,6 +43,7 @@ function InventoryListPage() {
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [exportingInventory, setExportingInventory] = useState(false);
 
     // Filters
     const [searchQuery, setSearchQuery] = useState('');
@@ -99,6 +101,24 @@ function InventoryListPage() {
         setCategoryFilter('all');
     };
 
+    const handleInventoryExport = async () => {
+        setExportingInventory(true);
+        try {
+            await downloadReportFile({
+                slug: 'balance-sheet',
+                format: 'excel'
+            });
+        } catch (err: any) {
+            toast({
+                title: 'Export failed',
+                description: err?.message || 'Could not generate export. Is the backend running?',
+                variant: 'destructive',
+            });
+        } finally {
+            setExportingInventory(false);
+        }
+    };
+
     return (
         <div className="flex flex-col space-y-6 md:p-8 p-4 pt-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -115,8 +135,10 @@ function InventoryListPage() {
                         <FileUp className="mr-2 h-4 w-4" />
                         Import
                     </Button>
-                    <Button variant="outline" size="sm">
-                        <FileDown className="mr-2 h-4 w-4" />
+                    <Button variant="outline" size="sm" onClick={handleInventoryExport} disabled={exportingInventory} id="btn-inventory-export">
+                        {exportingInventory
+                            ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            : <FileDown className="mr-2 h-4 w-4" />}
                         Export
                     </Button>
                     <Button size="sm" onClick={() => router.push('/inventory/new')} className="bg-primary text-primary-foreground shadow hover:bg-primary/90">

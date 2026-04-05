@@ -259,7 +259,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 pass
 
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="User account is disabled")
+        raise HTTPException(status_code=403, detail="Account is disabled. Contact support.")
 
     # ------------------------------------------------------------------
     # 3. Update last_login_at
@@ -273,6 +273,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     access_token = create_access_token(data={
         "sub": str(user.id),
         "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+        "email_verification_pending": not getattr(user, 'is_verified', True)
     })
 
     return {
@@ -284,6 +285,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
             "role": user.role,
             "tenant_id": str(user.tenant_id) if user.tenant_id else None,
             "language": user.language,
+            "email_verification_pending": not getattr(user, 'is_verified', True)
         }
     }
 

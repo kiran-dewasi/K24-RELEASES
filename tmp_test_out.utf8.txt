@@ -1,0 +1,2 @@
+﻿Path: ['C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\tests\\..\\backend', 'C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\tests\\..\\cloud-backend', 'C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\tests']
+No module named 'sqlalchemy'

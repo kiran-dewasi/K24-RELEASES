@@ -38,7 +38,6 @@ type AuthResponse = {
 
 type DeviceRegisterResponse = {
     license_key: string;
-    socket_token?: string;
     tenant_id?: string | null;
 };
 
@@ -160,10 +159,6 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
             })
         );
         localStorage.setItem("k24_user_id", activatedUserId);
-
-        if (deviceData.socket_token) {
-            localStorage.setItem("k24_socket_token", deviceData.socket_token);
-        }
 
         document.cookie = `k24_token=${authData.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 

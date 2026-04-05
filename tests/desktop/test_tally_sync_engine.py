@@ -18,12 +18,14 @@ class TestSyncEngine(unittest.TestCase):
         # Setup mocks
         mock_create_voucher.return_value = TallyResponse(
             raw_xml="<RESPONSE>OK</RESPONSE>",
-            status="Success",
-            created=1
+            success=True,
+            tally_status="Success",
+            tally_response={"created": 1}
         )
         
+        import uuid
         voucher_data = {
-            "voucher_number": "V001",
+            "voucher_number": f"V001-{uuid.uuid4().hex[:8]}",
             "date": "20240401",
             "voucher_type": "Sales",
             "party_name": "Customer A",
@@ -45,16 +47,19 @@ class TestSyncEngine(unittest.TestCase):
         mock_create_voucher.assert_called()
 
     @patch("backend.sync_engine.create_voucher_in_tally")
-    def test_push_voucher_safe_tally_rejection(self, mock_create_voucher):
+    @patch("backend.sync_engine.create_ledger_safely")
+    def test_push_voucher_safe_tally_rejection(self, mock_create_ledger, mock_create_voucher):
         # Setup mock to simulate Tally rejection
         mock_create_voucher.return_value = TallyResponse(
             raw_xml="<RESPONSE>Error</RESPONSE>",
-            status="Failure",
-            errors=["Invalid Date"]
+            success=False,
+            tally_status="Failure",
+            error_details="Invalid Date"
         )
         
+        import uuid
         voucher_data = {
-            "voucher_number": "V002",
+            "voucher_number": f"V002-{uuid.uuid4().hex[:8]}",
             "date": "20240401",
             "voucher_type": "Sales",
             "party_name": "Customer B",
@@ -67,13 +72,15 @@ class TestSyncEngine(unittest.TestCase):
         self.assertIn("Tally Rejected", result["error"])
 
     @patch("backend.sync_engine.create_voucher_in_tally")
-    def test_push_voucher_safe_offline_mode(self, mock_create_voucher):
+    @patch("backend.sync_engine.create_ledger_safely")
+    def test_push_voucher_safe_offline_mode(self, mock_create_ledger, mock_create_voucher):
         # Setup mock to raise exception (Network Error)
         import requests
         mock_create_voucher.side_effect = requests.ConnectionError("Connection failed")
         
+        import uuid
         voucher_data = {
-            "voucher_number": "V003",
+            "voucher_number": f"V003-{uuid.uuid4().hex[:8]}",
             "date": "20240401",
             "voucher_type": "Sales",
             "party_name": "Customer C",

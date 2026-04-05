@@ -59,6 +59,7 @@ class TallyResponse:
     tally_response: Dict[str, Any] = field(default_factory=dict)
     error_details: str = ""
     raw_response: str = ""
+    raw_xml: Optional[str] = None
 
     def to_dict(self):
         return {
@@ -379,31 +380,7 @@ def _run_async_internal(coro):
 async def post_to_tally_async(xml_payload: str, tally_url: str = TALLY_URL) -> TallyResponse:
     print(f"📦 [TallyLiveUpdate] Sending XML Async ({len(xml_payload)} bytes)")
     
-    # 1. Try Socket.IO Agent First
-    try:
-        from socket_manager import socket_manager
-        
-        if socket_manager.active_tenants:
-            tenant_id = list(socket_manager.active_tenants.keys())[0]
-            
-            # Direct Await (No thread bridging needed)
-            print(f"🔌 [TallyLiveUpdate] Awaiting Agent Dispatch (Async)...")
-            response_data = await socket_manager.send_command(tenant_id, 'execute_tally_xml', {
-                'xml': xml_payload,
-                'party_name': 'Unknown'
-            }, timeout=20)
-
-            if response_data:
-                if response_data.get('status') == 'success':
-                    xml = response_data.get('response', '')
-                    return parse_tally_response(xml)
-                else:
-                    err = response_data.get('error', 'Agent Execution Failed')
-                    return TallyResponse(success=False, error_details=f"Agent Error: {err}", raw_response=str(response_data))
-    except Exception as e:
-         print(f"⚠️ Agent Dispatch Error (Async): {e}")
-
-    # 2. Fallback to Direct HTTP
+    # Direct HTTP to Tally
     headers = {'Content-Type': 'text/xml;charset=UTF-8'}
     try:
         # We need async http request or wrap synchronous requests
@@ -446,62 +423,7 @@ def post_to_tally(xml_payload: str, tally_url: str = TALLY_URL, wait: bool = Tru
     print(f"📦 [TallyLiveUpdate] Sending XML ({len(xml_payload)} bytes)")
     # 'wait' arg is preserved for signature compatibility but ignored for safety - we always wait now.
     
-    # 1. Try Socket.IO Agent First
-    try:
-        from socket_manager import socket_manager
-        import asyncio
-        
-        if socket_manager.active_tenants:
-            tenant_id = list(socket_manager.active_tenants.keys())[0]
-            print(f"DEBUG: Inside post_to_tally. Thread: {threading.current_thread().name}") 
-            
-            response_data = None
-            
-            # CHECK THREAD CONTEXT
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop and loop.is_running():
-                # We are in Main Loop! e.g. async view call.
-                # We CANNOT block here.
-                # If wait=True is demanded but we are in async, we technically should await.
-                # BUT this function is defined as sync. 
-                # Ideally caller should be async.
-                
-                # For now, skipping Agent dispatch if we are in async loop to avoid blocking deadlock
-                # UNLESS we use nest_asyncio to block.
-                # Or we can try to fire-and-forget if possible, but we want result.
-                
-                print("⚠️ [TallyLiveUpdate] Skipped Agent (In Async Loop). Fallback to HTTP.")
-                pass
-            else:
-                # We are in a Thread (Celery Worker)
-                # Use Thread-Safe Bridge
-                print(f"🔌 [TallyLiveUpdate] Dispatching to Agent (Thread Safe) - Wait: {wait}")
-                print(f"DEBUG: Emitting Socket Event: execute_tally_xml")
-                print("DEBUG: Waiting for result...")
-                response_data = socket_manager.execute_sync(tenant_id, 'execute_tally_xml', {
-                    'xml': xml_payload,
-                    'party_name': 'Unknown'
-                }, timeout=20)
-                print(f"DEBUG: Result received: {response_data}")
-
-            if response_data:
-                if response_data.get('status') == 'success':
-                    xml = response_data.get('response', '')
-                    return parse_tally_response(xml)
-                else:
-                    err = response_data.get('error', 'Agent Execution Failed')
-                    return TallyResponse(success=False, error_details=f"Agent Error: {err}", raw_response=str(response_data))
-
-    except ImportError:
-        pass
-    except Exception as e:
-         print(f"⚠️ Agent Dispatch Error: {e}")
-
-    # 2. Fallback to Direct HTTP
+    # Direct HTTP to Tally
     headers = {'Content-Type': 'text/xml;charset=UTF-8'}
     try:
         # Retry logic: Retry once

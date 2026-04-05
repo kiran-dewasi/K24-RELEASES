@@ -1,0 +1,57 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare
+plugins: anyio-4.12.1, langsmith-0.6.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 20 items
+
+tests/desktop/middleware/test_middleware.py::test_message_validation_valid PASSED [  5%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_empty PASSED [ 10%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_too_long PASSED [ 15%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_sql_injection PASSED [ 20%]
+tests/desktop/middleware/test_middleware.py::test_message_validation_prompt_injection PASSED [ 25%]
+tests/desktop/middleware/test_middleware.py::test_rate_limiting PASSED   [ 30%]
+tests/desktop/middleware/test_middleware.py::test_quota_tracking PASSED  [ 35%]
+tests/desktop/test_gstin_workflow.py::test_gstin_update PASSED           [ 40%]
+tests/desktop/test_reconciliation_workflow.py::test_reconciliation PASSED [ 45%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_failure_with_errors PASSED [ 50%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_ignored FAILED [ 55%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_invalid_xml PASSED [ 60%]
+tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_success PASSED [ 65%]
+tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_offline_mode PASSED [ 70%]
+tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_success FAILED [ 75%]
+tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_tally_rejection PASSED [ 80%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_ledger_create_xml PASSED [ 85%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_stock_item_create_xml PASSED [ 90%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_build_voucher_create_xml PASSED [ 95%]
+tests/desktop/test_tally_xml_builder.py::TestTallyXMLBuilder::test_validation_error PASSED [100%]
+
+================================== FAILURES ===================================
+_________________ TestTallyResponseParser.test_parse_ignored __________________
+tests\desktop\test_tally_response_parser.py:59: in test_parse_ignored
+    self.assertFalse(response.succeeded)
+E   AssertionError: True is not false
+________________ TestSyncEngine.test_push_voucher_safe_success ________________
+tests\desktop\test_tally_sync_engine.py:39: in test_push_voucher_safe_success
+    self.assertTrue(result["success"])
+E   AssertionError: False is not true
+------------------------------ Captured log call ------------------------------
+ERROR    backend.sync_engine:sync_engine.py:279 Shadow DB Commit Failed: (sqlite3.IntegrityError) UNIQUE constraint failed: vouchers.tenant_id, vouchers.voucher_number, vouchers.voucher_type, vouchers.party_name
+[SQL: INSERT INTO vouchers (guid, voucher_number, date, voucher_type, party_name, amount, narration, sync_status, last_synced, status, tds_section, gst_reconciled, is_backdated, is_weekend_entry, source, tally_voucher_id, ledger_id, is_deleted, deleted_at, deleted_source, tenant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: ('TALLY-1775285036.564327', 'V001', '2024-04-01 00:00:00.000000', 'Sales', 'Customer A', 1000.0, 'Test', 'SYNCED', '2026-04-04 12:13:56.564337', 'Draft', None, 0, 0, 0, 'web', None, None, 0, None, None, 'default')]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+============================== warnings summary ===============================
+backend\database\__init__.py:58
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\database\__init__.py:58: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/desktop/test_reconciliation_workflow.py::test_reconciliation
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend\orchestration\workflows\invoice_reconciliation.py:193: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    response = result.dict()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/desktop/test_tally_response_parser.py::TestTallyResponseParser::test_parse_ignored
+FAILED tests/desktop/test_tally_sync_engine.py::TestSyncEngine::test_push_voucher_safe_success
+================== 2 failed, 18 passed, 2 warnings in 36.11s ==================

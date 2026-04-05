@@ -5,9 +5,8 @@ Salesforce-style complete customer view with all interactions, transactions, and
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_, desc
-from database import get_db, Ledger, Voucher, StockItem, Bill, SessionLocal, User
-from dependencies import get_api_key, get_tenant_id, get_optional_current_user
-from auth import get_current_tenant_id
+from database import get_db, Ledger, Voucher, StockItem, Bill, StockMovement
+from dependencies import get_api_key, get_tenant_id
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -17,43 +16,6 @@ import logging
 router = APIRouter(prefix="/customers", tags=["customers"])
 logger = logging.getLogger("customers")
 
-
-def _resolve_tenant_id(current_user: Optional[User], db: Session) -> Optional[str]:
-    """
-    Resolve the correct tenant_id for the current request.
-
-    Priority order:
-      1. JWT-authenticated user  →  use their tenant_id directly (multi-tenant safe)
-      2. API-key-only request    →  derive from the first active user in the local DB
-                                   (single-installation desktop app fallback)
-      3. No user found anywhere  →  return None (caller can decide to 404 or return empty)
-
-    This ensures every data query is scoped to the real tenant — never a hardcoded string.
-    """
-    # Placeholder values that mean "not yet assigned a real tenant"
-    _INVALID_TENANTS = {"offline-default", "default", "", None}
-
-    if current_user and current_user.tenant_id not in _INVALID_TENANTS:
-        return current_user.tenant_id
-
-    # JWT user exists but has a placeholder tenant_id, OR no JWT at all.
-    # Fall back to the first active user that has a real tenant_id.
-    # On a single-installation desktop app there is exactly one real tenant.
-    fallback_user = (
-        db.query(User)
-        .filter(User.is_active == True, User.tenant_id.notin_(list(_INVALID_TENANTS)))
-        .first()
-    )
-    if fallback_user and fallback_user.tenant_id:
-        logger.debug(
-            "tenant resolved via fallback: '%s' (from user '%s')",
-            fallback_user.tenant_id,
-            fallback_user.username,
-        )
-        return fallback_user.tenant_id
-
-    logger.warning("Could not resolve tenant_id — no valid tenant found for any local user.")
-    return None
 
 
 # --- Pydantic Response Models ---
@@ -126,22 +88,17 @@ async def get_customer_360(
     customer_id: int,
     db: Session = Depends(get_db),
     months: int = Query(12, ge=1, le=36, description="Months of history to include"),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    tenant_id: str = Depends(get_tenant_id),
 ):
     """
-    🎯 Get complete 360° view of a customer/party
+    Get complete 360° view of a customer/party.
 
     Aggregates data from: ledgers, vouchers, bills, payments, inventory.
     Returns everything needed for a Salesforce-style customer profile.
 
-    Auth: protected by API key; tenant_id is always derived from the
-    authenticated JWT user (multi-tenant SaaS) or the single local user
-    (single-installation desktop app). Never falls back to a hardcoded string.
+    Auth: protected by API key; tenant_id is resolved via Bearer JWT or
+    .session.json fallback — never hardcoded.
     """
-    # Resolve tenant — always from a real user, never hardcoded
-    tenant_id = _resolve_tenant_id(current_user, db)
-    if tenant_id is None:
-        raise HTTPException(status_code=403, detail="Cannot determine tenant — please log in.")
 
     # 1. Get Basic Customer Info (Ledger)
     ledger = db.query(Ledger).filter(
@@ -633,7 +590,7 @@ async def search_customers(
     ledger_type: Optional[str] = Query(None, description="customer, supplier, or all"),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id)
+    tenant_id: str = Depends(get_tenant_id)
 ):
     """
     Search customers/parties by name, phone, GSTIN, or email
@@ -688,7 +645,7 @@ async def get_top_customers(
     by: str = Query("sales", description="Rank by: sales, balance, transactions"),
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id)
+    tenant_id: str = Depends(get_tenant_id)
 ):
     """
     Get top customers ranked by sales, balance, or transaction count
@@ -789,7 +746,7 @@ async def get_top_customers(
 async def get_customer_aging(
     customer_id: int,
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant_id)
+    tenant_id: str = Depends(get_tenant_id)
 ):
     """
     Get aging analysis for a specific customer's outstanding bills

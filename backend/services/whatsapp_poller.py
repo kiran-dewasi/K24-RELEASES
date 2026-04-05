@@ -144,17 +144,9 @@ class WhatsAppPoller:
         while self._running:
             try:
                 tenant_id = self._get_tenant_id()
-                
-                # Fallback: if get_tenant_id() fails (no user logged in), 
-                # try to boot from the .env TENANT_ID so the bot still responds.
-                if not tenant_id:
-                    env_tid = os.getenv("TENANT_ID")
-                    if env_tid and env_tid != "default":
-                        tenant_id = env_tid
-                        logger.debug(f"Resolved tenant_id from .env: {tenant_id}")
 
                 if not tenant_id:
-                    logger.debug("No tenant_id resolved yet (Not logged in) — skipping this cycle.")
+                    logger.debug("No tenant_id resolved yet (not logged in) — skipping this cycle.")
                     await asyncio.sleep(POLL_INTERVAL)
                     continue
 
@@ -497,17 +489,45 @@ class WhatsAppPoller:
     def _get_tenant_id(self) -> Optional[str]:
         """
         Get the tenant_id for the currently logged-in user on this desktop.
-        Delegates to the shared get_tenant_id() from dependencies.py which reads
-        the local User table (synced from Supabase at login).
-        Returns None if no user is logged in yet (poller skips that cycle).
+
+        Resolution order:
+          1. Persisted .session.json JWT (survives backend --reload / restarts).
+          2. Local SQLite users table (cache populated at login).
+
+        Returns None if no user is logged in yet — the poller will skip that cycle.
+        Never uses a hardcoded fallback tenant ID.
         """
+        # ── Step 1: Persisted session file (primary — survives restarts) ──────
         try:
-            from dependencies import get_tenant_id
-            tid = get_tenant_id()
-            if tid and tid != "default":
-                return tid
+            from session_store import get_tenant_id_from_session
+            tid = get_tenant_id_from_session()
+            if tid and tid not in ("", "default", "offline-default"):
+                return tid.upper()
         except Exception as e:
-            logger.debug(f"Could not resolve tenant_id: {e}")
+            logger.debug("session_store unavailable: %s", e)
+
+        # ── Step 2: Local SQLite users table (populated at login) ─────────────
+        try:
+            from database import SessionLocal, User
+            db = SessionLocal()
+            try:
+                user = (
+                    db.query(User)
+                    .filter(
+                        User.is_active == True,
+                        User.tenant_id != None,
+                        User.tenant_id != "default",
+                        User.tenant_id != "offline-default",
+                    )
+                    .order_by(User.last_login.desc().nullslast())
+                    .first()
+                )
+                if user and user.tenant_id:
+                    return user.tenant_id.upper()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.debug("DB tenant lookup failed: %s", e)
 
         logger.warning("⚠️  Could not resolve tenant_id — log in to the dashboard first.")
         return None

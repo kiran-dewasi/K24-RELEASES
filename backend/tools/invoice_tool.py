@@ -3,7 +3,6 @@ from typing import List, Dict, Optional
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from database import Voucher, Ledger, Tenant
-from socket_manager import socket_manager
 # from xml_generator import generate_tally_sales_xml # Deprecated
 from tally_xml_builder import build_sales_voucher_xml, InventoryEntry
 from tally_connector import TallyConnector as _TC
@@ -130,19 +129,11 @@ class InvoiceTool:
                     ledger="Sales"
                 )
 
-            logger.info(f"ðŸ“¡ [SOCKET] Sending to Tally Agent (Tenant: {tenant_id})...")
             
-            # Send to local agent via Socket
-            tally_response = await socket_manager.send_command(
-                tenant_id=tenant_id,
-                event='execute_tally_xml',
-                payload={
-                    'xml': xml_payload,
-                    'party_name': party_name,
-                    'revenue_ledger': "Sales",
-                    'inventory_items': agent_items_payload # <-- Pass items to Agent for Auto-Creation
-                }
-            )
+            # Send directly to Tally via HTTP
+            from tally_live_update import post_to_tally_async
+            _tally_result = await post_to_tally_async(xml_payload)
+            tally_response = _tally_result.raw_response
             
             result["tally_response"] = str(tally_response)
             

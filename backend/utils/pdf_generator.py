@@ -562,6 +562,45 @@ def generate_report_pdf(
     if company is None:
         company = {"name": "Your Company", "address_lines": [], "gstin": "", "pan": ""}
 
+    # ── Delegate to world-class templates where available ──────────────────────
+    _TEMPLATE_SLUGS = {"balance-sheet", "profit-loss", "gst-summary",
+                       "ledger-statement", "aging"}
+    if slug in _TEMPLATE_SLUGS:
+        from utils.report_template import (
+            generate_balance_sheet_pdf   as _tmpl_bs,
+            generate_profit_loss_pdf     as _tmpl_pl,
+            generate_gst_summary_pdf     as _tmpl_gst,
+            generate_ledger_pdf          as _tmpl_ledger,
+            generate_aging_pdf           as _tmpl_aging,
+        )
+        _ci = {
+            "name":    company.get("name", "Your Company"),
+            "address": "\n".join(company.get("address_lines", [])),
+            "gstin":   company.get("gstin", ""),
+            "pan":     company.get("pan", ""),
+        }
+        # Resolve date_from / date_to from period string when not supplied
+        _df = date_from
+        _dt = date_to
+        if not _df and "\u2013" in period:
+            parts = period.split("\u2013")
+            _df, _dt = parts[0].strip(), parts[-1].strip()
+        elif not _df and "\u2014" in period:
+            parts = period.split("\u2014")
+            _df, _dt = parts[0].strip(), parts[-1].strip()
+
+        if slug == "balance-sheet":
+            return _tmpl_bs(data, _ci, _df, _dt)
+        if slug == "profit-loss":
+            return _tmpl_pl(data, _ci, _df, _dt)
+        if slug == "gst-summary":
+            return _tmpl_gst(data, _ci, _df, _dt)
+        if slug == "ledger-statement":
+            return _tmpl_ledger(data, _ci, _df, _dt)
+        if slug == "aging":
+            return _tmpl_aging(data, _ci, _df, _dt)
+    # ─────────────────────────────────────────────────────────────────────────
+
     # ── Build all rows ──
     columns = REPORT_COLUMN_CONFIGS.get(slug, _GENERIC_COLS)
 

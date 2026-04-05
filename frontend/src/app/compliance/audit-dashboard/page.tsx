@@ -13,7 +13,7 @@ import {
     AlertTriangle,
     Download
 } from "lucide-react";
-import { generateAuditReportPDF } from "@/lib/pdfGenerator";
+import { downloadReportFile } from "@/lib/fileDownload";
 
 interface AuditLog {
     id: number;
@@ -38,6 +38,7 @@ export default function AuditDashboard() {
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState(true);
+    const [exporting, setExporting] = useState(false);
     const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
     useEffect(() => {
@@ -63,8 +64,19 @@ export default function AuditDashboard() {
         }
     };
 
-    const handleExportPDF = () => {
-        generateAuditReportPDF(logs, stats);
+    const handleExportPDF = async () => {
+        setExporting(true);
+        try {
+            await downloadReportFile({
+                slug: "audit-logs",
+                format: "pdf"
+            });
+        } catch (error: any) {
+            console.error("Audit export failed", error);
+            // Optionally add a toast here
+        } finally {
+            setExporting(false);
+        }
     };
 
     const formatDiff = (oldVal: string | null, newVal: string | null) => {
@@ -95,11 +107,11 @@ export default function AuditDashboard() {
                         <p className="text-gray-500">MCA Compliance & Forensic Audit Trail</p>
                     </div>
                     <div className="flex gap-2">
-                        <Button onClick={handleExportPDF} className="bg-blue-600 hover:bg-blue-700">
+                        <Button onClick={handleExportPDF} disabled={exporting} className="bg-blue-600 hover:bg-blue-700">
                             <Download className="h-4 w-4 mr-2" />
-                            Export PDF
+                            {exporting ? "Exporting..." : "Export PDF"}
                         </Button>
-                        <Button onClick={fetchData} variant="outline">Refresh Data</Button>
+                        <Button onClick={fetchData} variant="outline" disabled={loading}>Refresh Data</Button>
                     </div>
                 </div>
 

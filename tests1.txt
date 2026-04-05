@@ -1,0 +1,437 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare
+plugins: anyio-4.12.1, langsmith-0.6.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 11 items
+
+tests/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_missing_auth_header PASSED [  9%]
+tests/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_invalid_auth_header PASSED [ 18%]
+tests/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_valid_auth_header FAILED [ 27%]
+tests/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_known_customer_single_tenant FAILED [ 36%]
+tests/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_unknown_customer_returns_404 FAILED [ 45%]
+tests/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_multiple_tenants_uses_first FAILED [ 54%]
+tests/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_message_inserted_with_correct_fields FAILED [ 63%]
+tests/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_media_message_handled_correctly FAILED [ 72%]
+tests/test_whatsapp_cloud_webhook.py::TestTenantIsolation::test_different_customers_different_tenants FAILED [ 81%]
+tests/test_whatsapp_cloud_webhook.py::TestErrorHandling::test_database_error_returns_500 PASSED [ 90%]
+tests/test_whatsapp_cloud_webhook.py::TestErrorHandling::test_invalid_message_payload PASSED [100%]
+
+================================== FAILURES ===================================
+______________ TestWebhookAuthentication.test_valid_auth_header _______________
+
+self = <test_whatsapp_cloud_webhook.TestWebhookAuthentication object at 0x000001F187B5DA70>
+client = <starlette.testclient.TestClient object at 0x000001F187BBC190>
+valid_message_payload = {'from_number': '+919876543210', 'media_url': None, 'message_type': 'text', 'raw_payload': {'messageId': 'test_123', 'timestamp': 1234567890}, ...}
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136875962384'>
+
+    def test_valid_auth_header(self, client, valid_message_payload, valid_headers, mock_supabase):
+        """Test request with valid auth header is accepted"""
+        # Mock customer mapping lookup - return unknown customer for this test
+        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = Mock(
+            data=[]
+        )
+    
+        response = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=valid_message_payload,
+            headers=valid_headers
+        )
+        # Should fail with 404 (unknown customer), not 403 (auth error)
+>       assert response.status_code == 404
+E       assert 202 == 404
+E        +  where 202 = <Response [202 Accepted]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:94: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  routers.whatsapp_cloud:whatsapp_cloud.py:215 \u26a0\ufe0f Unknown sender +919876543210 (normalized: 919876543210). Not in whatsapp_customer_mappings. Skipping queue. Check LID resolution in the Baileys listener.
+_____________ TestTenantRouting.test_known_customer_single_tenant _____________
+
+self = <test_whatsapp_cloud_webhook.TestTenantRouting object at 0x000001F187AE4E10>
+client = <starlette.testclient.TestClient object at 0x000001F187B5FE10>
+valid_message_payload = {'from_number': '+919876543210', 'media_url': None, 'message_type': 'text', 'raw_payload': {'messageId': 'test_123', 'timestamp': 1234567890}, ...}
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136875968768'>
+
+    def test_known_customer_single_tenant(self, client, valid_message_payload, valid_headers, mock_supabase):
+        """Test message from known customer is routed to correct tenant"""
+        tenant_id = "TENANT-ABC123"
+        user_id = str(uuid.uuid4())
+    
+        # Mock customer mapping lookup
+        mock_table = Mock()
+        mock_supabase.table.return_value = mock_table
+    
+        # Setup chained mock for select().eq().eq().execute()
+        mock_select = Mock()
+        mock_table.select.return_value = mock_select
+        mock_eq1 = Mock()
+        mock_select.eq.return_value = mock_eq1
+        mock_eq2 = Mock()
+        mock_eq1.eq.return_value = mock_eq2
+        mock_eq2.execute.return_value = Mock(data=[{
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "customer_name": "Test Customer"
+        }])
+    
+        # Mock queue insert
+        mock_insert = Mock()
+        mock_table.insert.return_value = mock_insert
+        mock_insert.execute.return_value = Mock(data=[{"id": "msg-123"}])
+    
+        response = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=valid_message_payload,
+            headers=valid_headers
+        )
+    
+>       assert response.status_code == 202
+E       assert 500 == 202
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:133: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+_____________ TestTenantRouting.test_unknown_customer_returns_404 _____________
+
+self = <test_whatsapp_cloud_webhook.TestTenantRouting object at 0x000001F187AE5090>
+client = <starlette.testclient.TestClient object at 0x000001F187C9CC30>
+valid_message_payload = {'from_number': '+919876543210', 'media_url': None, 'message_type': 'text', 'raw_payload': {'messageId': 'test_123', 'timestamp': 1234567890}, ...}
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136876860480'>
+
+    def test_unknown_customer_returns_404(self, client, valid_message_payload, valid_headers, mock_supabase):
+        """Test message from unknown customer returns 404"""
+        # Mock empty customer mapping result
+        mock_table = Mock()
+        mock_supabase.table.return_value = mock_table
+        mock_select = Mock()
+        mock_table.select.return_value = mock_select
+        mock_eq1 = Mock()
+        mock_select.eq.return_value = mock_eq1
+        mock_eq2 = Mock()
+        mock_eq1.eq.return_value = mock_eq2
+        mock_eq2.execute.return_value = Mock(data=[])
+    
+        response = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=valid_message_payload,
+            headers=valid_headers
+        )
+    
+>       assert response.status_code == 404
+E       assert 202 == 404
+E        +  where 202 = <Response [202 Accepted]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:156: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  routers.whatsapp_cloud:whatsapp_cloud.py:215 \u26a0\ufe0f Unknown sender +919876543210 (normalized: 919876543210). Not in whatsapp_customer_mappings. Skipping queue. Check LID resolution in the Baileys listener.
+_____________ TestTenantRouting.test_multiple_tenants_uses_first ______________
+
+self = <test_whatsapp_cloud_webhook.TestTenantRouting object at 0x000001F187B5DBA0>
+client = <starlette.testclient.TestClient object at 0x000001F187CC6E70>
+valid_message_payload = {'from_number': '+919876543210', 'media_url': None, 'message_type': 'text', 'raw_payload': {'messageId': 'test_123', 'timestamp': 1234567890}, ...}
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136876864512'>
+
+    def test_multiple_tenants_uses_first(self, client, valid_message_payload, valid_headers, mock_supabase):
+        """Test customer mapped to multiple tenants uses first match"""
+        tenant_id_1 = "TENANT-ABC123"
+        tenant_id_2 = "TENANT-XYZ789"
+    
+        # Mock multiple mappings
+        mock_table = Mock()
+        mock_supabase.table.return_value = mock_table
+        mock_select = Mock()
+        mock_table.select.return_value = mock_select
+        mock_eq1 = Mock()
+        mock_select.eq.return_value = mock_eq1
+        mock_eq2 = Mock()
+        mock_eq1.eq.return_value = mock_eq2
+        mock_eq2.execute.return_value = Mock(data=[
+            {"tenant_id": tenant_id_1, "user_id": str(uuid.uuid4()), "customer_name": "Customer 1"},
+            {"tenant_id": tenant_id_2, "user_id": str(uuid.uuid4()), "customer_name": "Customer 2"}
+        ])
+    
+        # Mock queue insert
+        mock_insert = Mock()
+        mock_table.insert.return_value = mock_insert
+        mock_insert.execute.return_value = Mock(data=[{"id": "msg-123"}])
+    
+        response = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=valid_message_payload,
+            headers=valid_headers
+        )
+    
+>       assert response.status_code == 202
+E       assert 500 == 202
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:191: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  routers.whatsapp_cloud:whatsapp_cloud.py:227 \u26a0\ufe0f Phone +919876543210 mapped to 2 tenants. Routing to first match.\nERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()\nTraceback (most recent call last):\n  File "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\tests\\..\\cloud-backend\\routers\\whatsapp_cloud.py", line 243, in receive_whatsapp_message\n    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)\n  File "C:\\Users\\Krisha Dewasi\\OneDrive\\Desktop\\WEARE\\weare\\tests\\..\\cloud-backend\\routers\\whatsapp_cloud.py", line 312, in validate_tenant_subscription\n    if not tenant_result.data or len(tenant_result.data) == 0:\n                                 ~~~^^^^^^^^^^^^^^^^^^^^\nTypeError: object of type 'Mock' has no len()
+________ TestQueueInsertion.test_message_inserted_with_correct_fields _________
+
+self = <test_whatsapp_cloud_webhook.TestQueueInsertion object at 0x000001F187AE51D0>
+client = <starlette.testclient.TestClient object at 0x000001F187B609E0>
+valid_message_payload = {'from_number': '+919876543210', 'media_url': None, 'message_type': 'text', 'raw_payload': {'messageId': 'test_123', 'timestamp': 1234567890}, ...}
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136876870896'>
+
+    def test_message_inserted_with_correct_fields(self, client, valid_message_payload, valid_headers, mock_supabase):
+        """Test message is inserted into queue with all correct fields"""
+        tenant_id = "TENANT-TEST123"
+        user_id = str(uuid.uuid4())
+    
+        # Track the inserted data
+        inserted_data = None
+    
+        def capture_insert(data):
+            nonlocal inserted_data
+            inserted_data = data
+            mock_result = Mock()
+            mock_result.execute.return_value = Mock(data=[{"id": data.get("id")}])
+            return mock_result
+    
+        # Mock customer mapping
+        mock_table = Mock()
+        mock_supabase.table.return_value = mock_table
+        mock_select = Mock()
+        mock_table.select.return_value = mock_select
+        mock_eq1 = Mock()
+        mock_select.eq.return_value = mock_eq1
+        mock_eq2 = Mock()
+        mock_eq1.eq.return_value = mock_eq2
+        mock_eq2.execute.return_value = Mock(data=[{
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "customer_name": "Test Customer"
+        }])
+    
+        # Mock insert with capture
+        mock_table.insert.side_effect = capture_insert
+    
+        response = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=valid_message_payload,
+            headers=valid_headers
+        )
+    
+>       assert response.status_code == 202
+E       assert 500 == 202
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:238: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+___________ TestQueueInsertion.test_media_message_handled_correctly ___________
+
+self = <test_whatsapp_cloud_webhook.TestQueueInsertion object at 0x000001F187AE5590>
+client = <starlette.testclient.TestClient object at 0x000001F187B63DF0>
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136877483072'>
+
+    def test_media_message_handled_correctly(self, client, valid_headers, mock_supabase):
+        """Test media messages (image, document) are handled correctly"""
+        tenant_id = "TENANT-MEDIA"
+    
+        payload = {
+            "from_number": "+919876543210",
+            "message_type": "image",
+            "text": "Check this invoice",
+            "media_url": "https://example.com/invoice.jpg",
+            "raw_payload": {"media": "base64..."}
+        }
+    
+        inserted_data = None
+    
+        def capture_insert(data):
+            nonlocal inserted_data
+            inserted_data = data
+            mock_result = Mock()
+            mock_result.execute.return_value = Mock(data=[{"id": data.get("id")}])
+            return mock_result
+    
+        # Mock customer mapping
+        mock_table = Mock()
+        mock_supabase.table.return_value = mock_table
+        mock_select = Mock()
+        mock_table.select.return_value = mock_select
+        mock_eq1 = Mock()
+        mock_select.eq.return_value = mock_eq1
+        mock_eq2 = Mock()
+        mock_eq1.eq.return_value = mock_eq2
+        mock_eq2.execute.return_value = Mock(data=[{
+            "tenant_id": tenant_id,
+            "user_id": str(uuid.uuid4()),
+            "customer_name": "Media Customer"
+        }])
+    
+        mock_table.insert.side_effect = capture_insert
+    
+        response = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=payload,
+            headers=valid_headers
+        )
+    
+>       assert response.status_code == 202
+E       assert 500 == 202
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:296: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+_______ TestTenantIsolation.test_different_customers_different_tenants ________
+
+self = <test_whatsapp_cloud_webhook.TestTenantIsolation object at 0x000001F187AE5950>
+client = <starlette.testclient.TestClient object at 0x000001F187CE9E10>
+valid_headers = {'X-Baileys-Secret': 'k24_baileys_secret'}
+mock_supabase = <MagicMock name='get_supabase_client()' id='2136877488448'>
+
+    def test_different_customers_different_tenants(self, client, valid_headers, mock_supabase):
+        """Test that messages from different customers go to different tenants"""
+        tenant_a = "TENANT-AAAA"
+        tenant_b = "TENANT-BBBB"
+    
+        customer_a = "+919111111111"
+        customer_b = "+919222222222"
+    
+        inserted_messages = []
+        call_count = [0]  # Track which call we're on
+    
+        def capture_insert(data):
+            inserted_messages.append(data)
+            mock_result = Mock()
+            mock_result.execute.return_value = Mock(data=[{"id": data.get("id")}])
+            return mock_result
+    
+        # Setup dynamic mocking
+        mock_table = Mock()
+        mock_supabase.table.return_value = mock_table
+    
+        # For select queries - simplified approach
+        def select_side_effect(*args):
+            current_call = call_count[0]
+            call_count[0] += 1
+    
+            mock_select = Mock()
+            mock_eq1 = Mock()
+            mock_eq2 = Mock()
+    
+            # First call is for customer A, second for customer B
+            if current_call == 0:
+                result_data = [{
+                    "tenant_id": tenant_a,
+                    "user_id": str(uuid.uuid4()),
+                    "customer_name": "Customer A"
+                }]
+            else:
+                result_data = [{
+                    "tenant_id": tenant_b,
+                    "user_id": str(uuid.uuid4()),
+                    "customer_name": "Customer B"
+                }]
+    
+            mock_eq2.execute.return_value = Mock(data=result_data)
+            mock_eq1.eq.return_value = mock_eq2
+            mock_select.eq.return_value = mock_eq1
+            return mock_select
+    
+        mock_table.select.side_effect = select_side_effect
+        mock_table.insert.side_effect = capture_insert
+    
+        # Send message from customer A
+        payload_a = {
+            "from_number": customer_a,
+            "message_type": "text",
+            "text": "Message from A"
+        }
+        response_a = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=payload_a,
+            headers=valid_headers
+        )
+    
+        # Send message from customer B
+        payload_b = {
+            "from_number": customer_b,
+            "message_type": "text",
+            "text": "Message from B"
+        }
+        response_b = client.post(
+            "/api/whatsapp/cloud/incoming",
+            json=payload_b,
+            headers=valid_headers
+        )
+    
+>       assert response_a.status_code == 202
+E       assert 500 == 202
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_whatsapp_cloud_webhook.py:380: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+ERROR    routers.whatsapp_cloud:whatsapp_cloud.py:281 Error processing incoming message: object of type 'Mock' has no len()
+Traceback (most recent call last):
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 243, in receive_whatsapp_message
+    tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
+  File "C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\whatsapp_cloud.py", line 312, in validate_tenant_subscription
+    if not tenant_result.data or len(tenant_result.data) == 0:
+                                 ~~~^^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'Mock' has no len()
+============================== warnings summary ===============================
+..\..\..\..\AppData\Local\Programs\Python\Python314\Lib\site-packages\sentry_sdk\integrations\fastapi.py:76: 40 warnings
+  C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python314\Lib\site-packages\sentry_sdk\integrations\fastapi.py:76: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    and not asyncio.iscoroutinefunction(dependant.call)
+
+cloud-backend\routers\webhooks.py:34
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\webhooks.py:34: UserWarning: Field name "schema" in "SupabaseWebhookPayload" shadows an attribute in parent "BaseModel"
+    class SupabaseWebhookPayload(BaseModel):
+
+cloud-backend\routers\auth.py:36
+  C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\tests\..\cloud-backend\routers\auth.py:36: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class UserResponse(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_whatsapp_cloud_webhook.py::TestWebhookAuthentication::test_valid_auth_header
+FAILED tests/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_known_customer_single_tenant
+FAILED tests/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_unknown_customer_returns_404
+FAILED tests/test_whatsapp_cloud_webhook.py::TestTenantRouting::test_multiple_tenants_uses_first
+FAILED tests/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_message_inserted_with_correct_fields
+FAILED tests/test_whatsapp_cloud_webhook.py::TestQueueInsertion::test_media_message_handled_correctly
+FAILED tests/test_whatsapp_cloud_webhook.py::TestTenantIsolation::test_different_customers_different_tenants
+================== 7 failed, 4 passed, 42 warnings in 1.42s ===================

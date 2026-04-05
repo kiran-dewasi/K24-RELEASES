@@ -1,0 +1,17 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Krisha Dewasi\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Krisha Dewasi\OneDrive\Desktop\WEARE\weare\backend
+plugins: anyio-4.13.0
+collecting ... collected 8 items
+
+tests/desktop/test_export_endpoints.py::test_sales_register_pdf_non_empty PASSED [ 12%]
+tests/desktop/test_export_endpoints.py::test_balance_sheet_pdf_non_empty PASSED [ 25%]
+tests/desktop/test_export_endpoints.py::test_profit_loss_pdf_non_empty PASSED [ 37%]
+tests/desktop/test_export_endpoints.py::test_sales_register_excel_non_empty PASSED [ 50%]
+tests/desktop/test_export_endpoints.py::test_balance_sheet_excel_non_empty PASSED [ 62%]
+tests/desktop/test_export_endpoints.py::test_profit_loss_excel_non_empty PASSED [ 75%]
+tests/desktop/test_export_endpoints.py::test_excel_header_row_has_correct_columns PASSED [ 87%]
+tests/desktop/test_export_endpoints.py::test_unknown_slug_falls_back_to_placeholder PASSED [100%]
+
+============================== 8 passed in 0.29s ==============================

@@ -1,4 +1,4 @@
-﻿import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET
 import logging
 from typing import Dict, Any, List, Optional
 from tally_live_update import TallyResponse
@@ -12,9 +12,11 @@ def parse_tally_response(xml_response: str) -> TallyResponse:
     """
     if not xml_response:
         return TallyResponse(
-            raw_xml="",
-            status="Empty Response",
-            errors=["Empty response from Tally"]
+            success=False,
+            tally_status="Empty Response",
+            error_details="Empty response from Tally",
+            raw_response="",
+            raw_xml=""
         )
 
     try:
@@ -78,29 +80,38 @@ def parse_tally_response(xml_response: str) -> TallyResponse:
             pass
 
         return TallyResponse(
+            success=(status == "Success"),
+            tally_status=status,
+            error_details="; ".join(errors) if errors else "",
+            raw_response=xml_response,
             raw_xml=xml_response,
-            status=status,
-            errors=errors,
-            created=created,
-            altered=altered,
-            deleted=deleted,
-            guid=guid,
-            last_vch_id=last_vch_id,
-            is_ignored=(status == "Ignored")
+            tally_response={
+                "created": created,
+                "altered": altered,
+                "deleted": deleted,
+                "errors": errors,
+                "guid": guid,
+                "last_vch_id": last_vch_id,
+                "is_ignored": (status == "Ignored")
+            }
         )
 
     except ET.ParseError as e:
         logger.error(f"Failed to parse XML: {xml_response[:200]}...")
         return TallyResponse(
-            raw_xml=xml_response,
-            status="XML Error",
-            errors=[f"XML Parse Error: {str(e)}"]
+            success=False,
+            tally_status="XML Error",
+            error_details=f"XML Parse Error: {str(e)}",
+            raw_response=xml_response,
+            raw_xml=xml_response
         )
     except Exception as e:
         logger.exception("Unexpected error in parse_tally_response")
         return TallyResponse(
-            raw_xml=xml_response,
-            status="System Error",
-            errors=[f"Unexpected Error: {str(e)}"]
+            success=False,
+            tally_status="System Error",
+            error_details=f"Unexpected Error: {str(e)}",
+            raw_response=xml_response,
+            raw_xml=xml_response
         )
 

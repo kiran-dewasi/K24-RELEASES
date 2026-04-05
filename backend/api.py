@@ -107,13 +107,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Failed to start Tally Sync Service: {e}")
 
-    # Start WhatsApp Poller Service
+    # Start WhatsApp Poller Service (Async)
     try:
         from services.whatsapp_poller import start_whatsapp_poller
         asyncio.create_task(start_whatsapp_poller())
         logger.info("✅ WhatsApp Poller Auto-Started")
     except Exception as e:
         logger.error(f"❌ Failed to start WhatsApp Poller: {e}")
+
     
     yield
     
@@ -352,11 +353,6 @@ async def startup_event():
         except Exception as e:
             logger.error(f"License check failed: {e}")
 
-        # Capture Main Loop for Socket Manager Thread-Safety
-        import asyncio
-        loop = asyncio.get_running_loop()
-        from socket_manager import socket_manager
-        socket_manager.set_main_loop(loop)
         
         agent.init_orchestrator()
         
@@ -1429,6 +1425,3 @@ async def create_ledger_endpoint(ledger: LedgerDraft):
 def root():
     return {"status": "ok", "message": "K24 Backend with KITTU Orchestration & Conversational AI"}
 
-# Mount Socket.IO App (WebSocket) as FINAL fallback
-from socket_manager import socket_manager
-app.mount("/socket.io", socket_manager.app)

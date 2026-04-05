@@ -4,7 +4,7 @@ import { Suspense, useState, useCallback, useEffect } from "react";
 import { KittuInsightBar } from "@/components/reports/KittuInsightBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Download, SlidersHorizontal, Loader2, TrendingUp, TrendingDown, Scale, Wallet, Clock, RefreshCw, Search } from "lucide-react";
+import { Download, FileSpreadsheet, SlidersHorizontal, Loader2, TrendingUp, TrendingDown, Scale, Wallet, Clock, RefreshCw, Search } from "lucide-react";
 import Link from 'next/link';
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,6 +17,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import { apiRequest } from "@/lib/api";
+import { downloadReportFile } from "@/lib/fileDownload";
 
 // ─── Report config map ─────────────────────────────────────────────────────────
 interface ReportConfig {
@@ -229,6 +230,9 @@ function ReportDetailContent({ slug }: { slug: string }) {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [exportingPdf, setExportingPdf] = useState(false);
+    const [exportingExcel, setExportingExcel] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
 
     const fetchData = useCallback(async (f: FilterState) => {
         if (!config.apiPath) return;
@@ -281,38 +285,36 @@ function ReportDetailContent({ slug }: { slug: string }) {
 
     const handleApply = () => fetchData(filters);
 
-    const handleExport = async () => {
+    /** Shared download helper — builds URL, fetches blob, triggers browser download. */
+    const triggerExport = async (
+        format: "pdf" | "excel",
+        setExporting: (v: boolean) => void,
+    ) => {
         if (!data) return;
-        const params = new URLSearchParams({ slug });
-        if (filters.dateFrom) params.set("date_from", filters.dateFrom);
-        if (filters.dateTo) params.set("date_to", filters.dateTo);
-        if (filters.voucherTypes.length) params.set("voucher_types", filters.voucherTypes.join(","));
-        if (filters.partyName) params.set("party_name", filters.partyName);
+        setExportError(null);
+        setExporting(true);
 
         try {
-            // Call the python backend directly, passing the API key
-            const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001'}/reports/${slug}/export?${params.toString()}`;
-            const res = await fetch(backendUrl, {
-                headers: { "x-api-key": process.env.NEXT_PUBLIC_API_KEY || "k24-secret-key-123" }
+            await downloadReportFile({
+                slug,
+                format,
+                params: {
+                    date_from: filters.dateFrom,
+                    date_to: filters.dateTo,
+                    voucher_types: filters.voucherTypes.length ? filters.voucherTypes.join(",") : undefined,
+                    party_name: filters.partyName,
+                }
             });
-            if (!res.ok) {
-                const errJson = await res.json().catch(() => ({ error: res.statusText }));
-                throw new Error(errJson?.error || `HTTP ${res.status}`);
-            }
-            const blob = await res.blob();
-            const objUrl = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = objUrl;
-            a.download = `k24-${slug}-${new Date().toISOString().slice(0, 10)}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(objUrl);
         } catch (err: any) {
-            console.error("PDF export error:", err?.message || err);
-            alert(`Export failed: ${err?.message || "Unknown error — check the backend is running."}`);
+            console.error(`${format.toUpperCase()} export error:`, err?.message || err);
+            setExportError(`Export failed: ${err?.message || "Unknown error — is the backend running?"}`);
+        } finally {
+            setExporting(false);
         }
     };
+
+    const handleExportPdf   = () => triggerExport("pdf",   setExportingPdf);
+    const handleExportExcel = () => triggerExport("excel", setExportingExcel);
 
     const handleReset = () => {
         const f: FilterState = {
@@ -404,13 +406,30 @@ function ReportDetailContent({ slug }: { slug: string }) {
                     {!config.isComingSoon && <KittuInsightBar context={config.title} />}
                     <div className="h-6 w-px bg-border mx-1" />
                     <Button
+                        id="btn-export-pdf"
                         variant="outline"
                         size="sm"
                         className="gap-2"
-                        disabled={config.isComingSoon || !data || tableRows().length === 0}
-                        onClick={handleExport}
+                        disabled={config.isComingSoon || !data || tableRows().length === 0 || exportingPdf}
+                        onClick={handleExportPdf}
                     >
-                        <Download className="h-4 w-4" /> Export PDF
+                        {exportingPdf
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Download className="h-4 w-4" />}
+                        PDF
+                    </Button>
+                    <Button
+                        id="btn-export-excel"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={config.isComingSoon || !data || tableRows().length === 0 || exportingExcel}
+                        onClick={handleExportExcel}
+                    >
+                        {exportingExcel
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <FileSpreadsheet className="h-4 w-4" />}
+                        Excel
                     </Button>
                 </div>
             </div>
@@ -570,6 +589,12 @@ function ReportDetailContent({ slug }: { slug: string }) {
                             {error && (
                                 <div className="p-4 text-sm text-red-600 bg-red-50 border-b border-red-100">
                                     ⚠️ {error} — is Tally synced?
+                                </div>
+                            )}
+                            {exportError && (
+                                <div className="p-3 text-sm text-orange-700 bg-orange-50 border-b border-orange-100 flex items-center justify-between">
+                                    <span>⚠️ {exportError}</span>
+                                    <button className="text-xs underline ml-2" onClick={() => setExportError(null)}>Dismiss</button>
                                 </div>
                             )}
 

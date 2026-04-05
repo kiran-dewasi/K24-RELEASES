@@ -382,7 +382,7 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 )
 
         if not user.is_active:
-            raise HTTPException(status_code=400, detail="User account is disabled")
+            raise HTTPException(status_code=403, detail="Account is disabled. Contact support.")
         
         # Update last login
         user.last_login = datetime.now()
@@ -390,11 +390,24 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         
         # 3. Create Session Token (Local Access)
         # Include tenant_id in JWT for API filtering (Phase 1 security)
+        token_tenant_id = user.tenant_id.upper() if user.tenant_id else None
         access_token = create_access_token(data={
             "sub": user.username,
-            "tenant_id": user.tenant_id.upper() if user.tenant_id else None  # Force UPPERCASE
+            "tenant_id": token_tenant_id,  # Force UPPERCASE
+            "email_verification_pending": not getattr(user, 'is_verified', True)
         })
-        
+
+        # ── Persist session so backend --reload / restarts don't lose auth ──
+        try:
+            from session_store import save_session
+            save_session(
+                access_token=access_token,
+                tenant_id=token_tenant_id,
+                username=user.username,
+            )
+        except Exception as _se:
+            print(f"⚠️ Could not persist session: {_se}")
+
         return {
             "access_token": access_token,
             "token_type": "bearer",
@@ -405,7 +418,8 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 "full_name": user.full_name,
                 "role": user.role,
                 "company_id": user.company_id,
-                "tenant_id": getattr(user, 'tenant_id', None) # Safely get if column missing (handled by migration script)
+                "tenant_id": getattr(user, 'tenant_id', None), # Safely get if column missing (handled by migration script)
+                "email_verification_pending": not getattr(user, 'is_verified', True)
             }
         }
     except HTTPException:
@@ -593,9 +607,13 @@ class PasswordChangeRequest(BaseModel):
 
 @router.post("/logout")
 async def logout():
-    # JWT is stateless, so just return success
-    # Frontend will delete token from localStorage
-    # In a more complex setup, we might blacklist the token here.
+    # JWT is stateless — frontend deletes token from localStorage.
+    # Also clear the persisted session so the poller stops polling.
+    try:
+        from session_store import clear_session
+        clear_session()
+    except Exception as _se:
+        print(f"⚠️ Could not clear persisted session: {_se}")
     return {"message": "Logged out successfully"}
 
 @router.post("/change-password")
