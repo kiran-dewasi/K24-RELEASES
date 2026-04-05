@@ -7,13 +7,15 @@ from datetime import datetime, timezone
 import os
 import uuid
 import re
+import secrets
+import httpx
 
 from database import get_supabase_client
 
 router = APIRouter(tags=["whatsapp-cloud"])
 logger = logging.getLogger(__name__)
 
-SenderType = Literal["known_user", "unknown_lead", "unresolvable"]
+SenderType = Literal["known_user", "known_customer", "unknown_lead", "unresolvable"]
 
 @dataclass
 class SenderIdentity:
@@ -111,28 +113,7 @@ async def resolve_sender_identity(raw_jid: str) -> SenderIdentity:
     except Exception as e:
         print(f"[RESOLVE] tenant_config lookup failed: {e}")
     
-    # --- Step 3: Phone → tenant via whatsapp_customer_mappings ---
-    # Stores phone WITH country code AND might have dirty LID rows — filter those out
-    try:
-        cm = supabase.table("whatsapp_customer_mappings") \
-            .select("tenant_id, user_id") \
-            .in_("customer_phone", [phone, phone_10]) \
-            .eq("is_active", True) \
-            .not_.like("customer_phone", "%@%") \
-            .limit(1) \
-            .execute()
-        
-        if cm.data:
-            return SenderIdentity(
-                raw_jid, phone,
-                cm.data[0]["tenant_id"],
-                str(cm.data[0]["user_id"]) if cm.data[0].get("user_id") else None,
-                "known_user", path
-            )
-    except Exception as e:
-        print(f"[RESOLVE] whatsapp_customer_mappings lookup failed: {e}")
-    
-    # --- Step 4: Unknown lead ---
+    # --- Step 3: Unknown lead ---
     print(f"[RESOLVE] Unknown lead: phone={phone}, path={path}")
     return SenderIdentity(raw_jid, phone, None, None, "unknown_lead", path)
 
@@ -305,6 +286,99 @@ async def sync_lid_mappings(entries: List[LidSyncEntry]):
     print(f"[LID-SYNC] Upserted {len(rows)} mappings from source={entries[0].source}")
     return {"synced": len(rows)}
 
+BAILEYS_SERVICE_URL = os.getenv("BAILEYS_SERVICE_URL", "http://localhost:3000")
+
+async def handle_onboarding_step(phone: str, message_text: str, state: Dict[str, Any], supabase) -> str:
+    """
+    State machine for K24 onboarding flow driven by onboarding_states table.
+    Returns the reply text to send back to the user.
+    """
+    text = (message_text or "").strip()
+    step = state.get("current_step", "awaiting_business_name")
+
+    # RESTART keyword resets from any step
+    if text.upper() == "RESTART":
+        supabase.table("onboarding_states").update({
+            "current_step": "awaiting_business_name",
+            "temp_data": {},
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("phone", phone).execute()
+        return (
+            "Let's start over! 👋\n"
+            "Welcome to K24. What is your *business name*?"
+        )
+
+    data: Dict[str, Any] = state.get("temp_data") or {}
+
+    if step == "awaiting_business_name":
+        data["business_name"] = text
+        supabase.table("onboarding_states").update({
+            "current_step": "awaiting_tally_name",
+            "temp_data": data,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("phone", phone).execute()
+        return (
+            f"Great, *{text}*! 🎉\n"
+            "Now, what is your *Tally company name*?\n"
+            "(This must match exactly as it appears in Tally Prime.)"
+        )
+
+    elif step == "awaiting_tally_name":
+        if text.upper() in ("YES", "SAME"):
+            tally_name = data.get("business_name", text)
+        else:
+            tally_name = text
+        data["tally_name"] = tally_name
+        otp = str(secrets.randbelow(900000) + 100000)  # 6-digit OTP
+        data["otp"] = otp
+        supabase.table("onboarding_states").update({
+            "current_step": "awaiting_otp",
+            "temp_data": data,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("phone", phone).execute()
+        return (
+            f"Got it — Tally company: *{tally_name}*\n\n"
+            f"Your verification OTP is: *{otp}*\n"
+            "Please reply with this OTP to complete setup."
+        )
+
+    elif step == "awaiting_otp":
+        stored_otp = data.get("otp", "")
+        if text == stored_otp:
+            tenant_id = f"TENANT-{secrets.token_hex(4).upper()}"
+            supabase.table("tenant_config").insert({
+                "tenant_id": tenant_id,
+                "whatsapp_number": phone,
+                "subscription_status": "trial",
+                "business_name": data.get("business_name"),
+                "tally_company_name": data.get("tally_name"),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }).execute()
+            supabase.table("onboarding_states").update({
+                "current_step": "complete",
+                "temp_data": {**data, "tenant_id": tenant_id},
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("phone", phone).execute()
+            return (
+                f"✅ *Welcome to K24!*\n\n"
+                f"Your account is live on a *free trial*.\n"
+                f"Business: {data.get('business_name')}\n"
+                f"Tally company: {data.get('tally_name')}\n\n"
+                "Install the K24 desktop app and enter your tenant ID:\n"
+                f"`{tenant_id}`"
+            )
+        else:
+            return (
+                "❌ Incorrect OTP. Please try again, or type *RESTART* to begin over."
+            )
+
+    elif step == "complete":
+        return "Your K24 account is already active. Type *RESTART* if you need to re-register."
+
+    # Fallback — unknown step
+    return "Something went wrong. Type *RESTART* to begin fresh."
+
+
 # Request Models
 class IncomingWhatsAppMessage(BaseModel):
     """Incoming WhatsApp message from Baileys service"""
@@ -348,15 +422,70 @@ async def receive_whatsapp_message(
         
         if identity.sender_type == "unresolvable":
             return {"status": "unresolvable", "reason": "could not resolve JID to phone"}
-        
-        # For now: unknown_lead falls through to existing "unrouted" behavior
-        # Sprint 3 will replace this with proper onboarding routing
+
+        # --- Step: Route known customer (not a K24 user, but belongs to a tenant) ---
         if identity.sender_type == "unknown_lead":
-            return {"status": "unrouted", "phone": identity.resolved_phone}
-        
-        # known_user — continue with existing pipeline using identity fields
+            try:
+                cm = supabase.table("whatsapp_customer_mappings") \
+                    .select("tenant_id, user_id") \
+                    .in_("customer_phone", [identity.resolved_phone, identity.resolved_phone[-10:]]) \
+                    .eq("is_active", True) \
+                    .not_.like("customer_phone", "%@%") \
+                    .limit(1) \
+                    .execute()
+
+                if cm.data:
+                    identity.tenant_id   = cm.data[0]["tenant_id"]
+                    identity.user_id     = str(cm.data[0]["user_id"]) if cm.data[0].get("user_id") else None
+                    identity.sender_type = "known_customer"
+            except Exception as e:
+                print(f"[INBOUND] whatsapp_customer_mappings lookup failed: {e}")
+
+        # Now handle each type
+        if identity.sender_type == "unresolvable":
+            return {"status": "unresolvable"}
+
+        if identity.sender_type == "unknown_lead":
+            phone = identity.resolved_phone
+
+            # Fetch or create onboarding state
+            ob_row = supabase.table("onboarding_states") \
+                .select("*") \
+                .eq("phone", phone) \
+                .limit(1) \
+                .execute()
+
+            if ob_row.data:
+                ob_state = ob_row.data[0]
+            else:
+                supabase.table("onboarding_states").insert({
+                    "phone": phone,
+                    "current_step": "awaiting_business_name",
+                    "temp_data": {},
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }).execute()
+                ob_state = {"phone": phone, "current_step": "awaiting_business_name", "temp_data": {}}
+
+            current_step = ob_state.get("current_step", "awaiting_business_name")
+            reply_text = await handle_onboarding_step(phone, message.text or "", ob_state, supabase)
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    await client.post(
+                        f"{BAILEYS_SERVICE_URL}/send-message",
+                        json={"phone": phone, "message": reply_text}
+                    )
+            except Exception as send_err:
+                logger.warning(f"[ONBOARDING] Reply send failed: {send_err}")
+
+            return {"status": "onboarding", "step": current_step}
+
+        # known_user OR known_customer → both go into the queue pipeline
+        # known_customer messages get routed to their tenant's queue
+        # the existing subscription check and queue insert runs for both
         tenant_id = identity.tenant_id
-        user_id = identity.user_id
+        user_id   = identity.user_id
 
         # Step 3: Validate the resolved tenant's subscription
         tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
