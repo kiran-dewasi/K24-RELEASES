@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import logging
 from datetime import datetime, timezone
 import os
@@ -150,6 +150,36 @@ def resolve_tenant_from_business_number(business_number: str, supabase) -> Dict[
         "subscription_status": subscription_status,
         "trial_ends_at": trial_ends_at
     }
+
+class LidSyncEntry(BaseModel):
+    lid:    str
+    phone:  str
+    source: Optional[str] = "contacts_event"
+
+@router.post("/sync-lid")
+async def sync_lid_mappings(entries: List[LidSyncEntry]):
+    """
+    Called by Baileys listener whenever contacts events reveal LID→phone pairs.
+    Upserts into lid_phone_map. Safe to call repeatedly with same data.
+    """
+    if not entries:
+        return {"synced": 0}
+    
+    rows = [
+        {
+            "lid":        e.lid,
+            "phone":      e.phone,
+            "source":     e.source,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        for e in entries
+    ]
+    
+    supabase = get_supabase_client()
+    supabase.table("lid_phone_map").upsert(rows, on_conflict="lid").execute()
+    
+    print(f"[LID-SYNC] Upserted {len(rows)} mappings from source={entries[0].source}")
+    return {"synced": len(rows)}
 
 # Request Models
 class IncomingWhatsAppMessage(BaseModel):

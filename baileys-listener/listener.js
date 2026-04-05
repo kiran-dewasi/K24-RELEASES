@@ -29,6 +29,21 @@ const logger = pino(
 
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+const CLOUD_BACKEND_URL = process.env.CLOUD_BACKEND_URL || BACKEND_URL;
+
+async function postLidSync(pairs) {
+    if (!pairs || pairs.length === 0) return;
+    try {
+        await axios.post(`${CLOUD_BACKEND_URL}/api/whatsapp/sync-lid`, pairs);
+        console.log(`[LID-SYNC] Pushed ${pairs.length} lid→phone pairs to DB`);
+    } catch (err) {
+        console.error(`[LID-SYNC] Failed to push pairs:`, err.message);
+    }
+}
+
+function stripSuffix(jid) {
+    return jid ? jid.split('@')[0] : null;
+}
 
 // Authentication directory for Baileys multi-file auth state
 // SESSION_DIR can be set in production (e.g. on Railway) to point to a persistent 
@@ -289,6 +304,16 @@ if (process.env.LID_PHONE_MAP) {
     });
 }
 
+// Seed existing env mappings to DB on startup
+const envPairs = Array.from(lidToPhoneCache.entries()).map(([lid, phone]) => ({
+    lid, phone, source: 'env_fallback'
+}));
+if (envPairs.length) {
+    postLidSync(envPairs).then(() => 
+        console.log('[LID-SYNC] Seeded env mappings to DB on startup')
+    );
+}
+
 // Pending conflict resolutions: phone -> { matches, expiresAt }
 const pendingConflicts = new Map();
 const CONFLICT_TTL_MS = 5 * 60 * 1000; // 5 minutes to respond
@@ -517,8 +542,38 @@ async function startBaileys() {
     });
 
     // contacts.upsert fires for incremental updates (new contacts, contact edits)
-    sock.ev.on('contacts.upsert', (contacts) => {
+    sock.ev.on('contacts.upsert', async (contacts) => {
         buildLidCache(contacts);
+        const pairs = contacts
+            .filter(c => c.lid && c.id && !c.id.endsWith('@lid'))
+            .map(c => ({ 
+                lid: stripSuffix(c.lid), 
+                phone: stripSuffix(c.id), 
+                source: 'contacts_upsert' 
+            }));
+        if (pairs.length) await postLidSync(pairs);
+    });
+
+    sock.ev.on('contacts.update', async (updates) => {
+        const pairs = updates
+            .filter(u => u.lid && u.id && !u.id.endsWith('@lid'))
+            .map(u => ({ 
+                lid: stripSuffix(u.lid), 
+                phone: stripSuffix(u.id), 
+                source: 'contacts_update' 
+            }));
+        if (pairs.length) await postLidSync(pairs);
+    });
+
+    sock.ev.on('messaging-history.set', async ({ contacts }) => {
+        const pairs = (contacts || [])
+            .filter(c => c.lid && c.id && !c.id.endsWith('@lid'))
+            .map(c => ({ 
+                lid: stripSuffix(c.lid), 
+                phone: stripSuffix(c.id), 
+                source: 'history_set' 
+            }));
+        if (pairs.length) await postLidSync(pairs);
     });
 
     sock.ev.on('messages.upsert', async (m) => {
