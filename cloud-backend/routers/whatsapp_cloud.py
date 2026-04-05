@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from dataclasses import dataclass
+from typing import Optional, Dict, Any, List, Literal
 import logging
 from datetime import datetime, timezone
 import os
@@ -11,6 +12,129 @@ from database import get_supabase_client
 
 router = APIRouter(tags=["whatsapp-cloud"])
 logger = logging.getLogger(__name__)
+
+SenderType = Literal["known_user", "unknown_lead", "unresolvable"]
+
+@dataclass
+class SenderIdentity:
+    raw_jid:         str
+    resolved_phone:  Optional[str]   # E164 with country code e.g. 917339906200
+    tenant_id:       Optional[str]
+    user_id:         Optional[str]
+    sender_type:     SenderType
+    resolution_path: str  # "db_lid" | "direct_phone" | "env_fallback" | "none"
+
+def normalize_phone(raw: str) -> str:
+    """
+    Strip all non-digits. 
+    If 10 digits → prepend 91 (Indian number).
+    If already has 91 prefix (12 digits starting with 91) → keep as is.
+    If 12 digits but not 91 → keep as is.
+    Returns digits-only string.
+    """
+    digits = ''.join(filter(str.isdigit, raw))
+    if len(digits) == 10:
+        return '91' + digits
+    return digits
+
+def parse_env_lid_map() -> dict:
+    """Parse LID_PHONE_MAP env var. Format: 'lid1:phone1,lid2:phone2'"""
+    raw = os.getenv("LID_PHONE_MAP", "")
+    result = {}
+    if not raw:
+        return result
+    for pair in raw.split(","):
+        parts = pair.strip().split(":")
+        if len(parts) == 2:
+            result[parts[0].strip()] = parts[1].strip()
+    return result
+
+async def resolve_sender_identity(raw_jid: str) -> SenderIdentity:
+    """
+    Single entry point for all inbound sender resolution.
+    Takes raw WhatsApp JID (e.g. "185628738236618@lid" or "917339906200@s.whatsapp.net")
+    Returns complete SenderIdentity with type classification.
+    """
+    supabase = get_supabase_client()
+    
+    is_lid = raw_jid.endswith("@lid")
+    bare = raw_jid.split("@")[0]
+    
+    # --- Step 1: Resolve LID → phone ---
+    phone = None
+    path = "none"
+    
+    if is_lid:
+        # Level 1: DB lookup
+        try:
+            row = supabase.table("lid_phone_map") \
+                .select("phone") \
+                .eq("lid", bare) \
+                .limit(1) \
+                .execute()
+            if row.data:
+                phone = row.data[0]["phone"]
+                path = "db_lid"
+        except Exception as e:
+            print(f"[RESOLVE] lid_phone_map lookup failed: {e}")
+        
+        # Level 2: env fallback (temporary)
+        if not phone:
+            env_map = parse_env_lid_map()
+            if bare in env_map:
+                phone = env_map[bare]
+                path = "env_fallback"
+        
+        if not phone:
+            print(f"[RESOLVE] Unresolvable LID: {bare}")
+            return SenderIdentity(raw_jid, None, None, None, "unresolvable", "none")
+    else:
+        phone = normalize_phone(bare)
+        path = "direct_phone"
+    
+    # --- Step 2: Phone → tenant via tenant_config ---
+    # tenant_config stores phone WITHOUT country code (10 digits)
+    # so try both normalized (12 digit) and stripped (10 digit)
+    phone_10 = phone[-10:] if len(phone) >= 10 else phone
+    
+    try:
+        result = supabase.table("tenant_config") \
+            .select("tenant_id, subscription_status") \
+            .in_("whatsapp_number", [phone, phone_10]) \
+            .limit(1) \
+            .execute()
+        
+        if result.data:
+            row = result.data[0]
+            if row["subscription_status"] in ("active", "trial"):
+                return SenderIdentity(raw_jid, phone, row["tenant_id"], None, "known_user", path)
+    except Exception as e:
+        print(f"[RESOLVE] tenant_config lookup failed: {e}")
+    
+    # --- Step 3: Phone → tenant via whatsapp_customer_mappings ---
+    # Stores phone WITH country code AND might have dirty LID rows — filter those out
+    try:
+        cm = supabase.table("whatsapp_customer_mappings") \
+            .select("tenant_id, user_id") \
+            .in_("customer_phone", [phone, phone_10]) \
+            .eq("is_active", True) \
+            .not_.like("customer_phone", "%@%") \
+            .limit(1) \
+            .execute()
+        
+        if cm.data:
+            return SenderIdentity(
+                raw_jid, phone,
+                cm.data[0]["tenant_id"],
+                str(cm.data[0]["user_id"]) if cm.data[0].get("user_id") else None,
+                "known_user", path
+            )
+    except Exception as e:
+        print(f"[RESOLVE] whatsapp_customer_mappings lookup failed: {e}")
+    
+    # --- Step 4: Unknown lead ---
+    print(f"[RESOLVE] Unknown lead: phone={phone}, path={path}")
+    return SenderIdentity(raw_jid, phone, None, None, "unknown_lead", path)
 
 # Security: Validate incoming requests from Baileys service
 def get_baileys_secret() -> str:
@@ -215,59 +339,24 @@ async def receive_whatsapp_message(
 
         supabase = get_supabase_client()
 
-        # Step 1: Normalize sender phone for consistent lookups
-        normalized_from = normalize_whatsapp_number(message.from_number)
-
-        # Step 2: Resolve tenant by looking up the SENDER's phone in customer mappings.
-        # This is the correct model: one shared bot number, tenant resolved from sender.
-        mapping_result = supabase.table("whatsapp_customer_mappings").select(
-            "tenant_id, user_id, customer_name"
-        ).eq(
-            "customer_phone", normalized_from
-        ).eq(
-            "is_active", True
-        ).execute()
-
-        if not mapping_result.data or len(mapping_result.data) == 0:
-            # Retry with original (un-normalized) number
-            mapping_result = supabase.table("whatsapp_customer_mappings").select(
-                "tenant_id, user_id, customer_name"
-            ).eq(
-                "customer_phone", message.from_number
-            ).eq(
-                "is_active", True
-            ).execute()
-
-        if not mapping_result.data or len(mapping_result.data) == 0:
-            # Unknown sender — not registered with any tenant.
-            # This usually means the LID wasn't resolved to a real phone number.
-            # Return 202 so the listener doesn't crash — but don't queue.
-            logger.warning(
-                f"⚠️ Unknown sender {message.from_number} (normalized: {normalized_from}). "
-                f"Not in whatsapp_customer_mappings. Skipping queue. "
-                f"Check LID resolution in the Baileys listener."
-            )
-            return {
-                "status": "unrouted",
-                "detail": "Sender not registered with any tenant. LID may not have resolved."
-            }
-
-        # Handle conflict: same phone mapped to multiple tenants
-        if len(mapping_result.data) > 1:
-            logger.warning(
-                f"⚠️ Phone {message.from_number} mapped to {len(mapping_result.data)} tenants. "
-                f"Routing to first match."
-            )
-
-        mapping = mapping_result.data[0]
-        tenant_id = mapping.get("tenant_id")
-        user_id = mapping.get("user_id")
-        customer_name = mapping.get("customer_name")
-
-        logger.info(
-            f"✅ Sender resolved: phone={message.from_number}, "
-            f"customer={customer_name}, tenant_id={str(tenant_id)[:8] if tenant_id else 'N/A'}..."
-        )
+        # --- Resolve sender identity ---
+        identity = await resolve_sender_identity(message.from_number)
+        
+        print(f"[INBOUND] jid={message.from_number} type={identity.sender_type} "
+              f"phone={identity.resolved_phone} tenant={identity.tenant_id} "
+              f"path={identity.resolution_path}")
+        
+        if identity.sender_type == "unresolvable":
+            return {"status": "unresolvable", "reason": "could not resolve JID to phone"}
+        
+        # For now: unknown_lead falls through to existing "unrouted" behavior
+        # Sprint 3 will replace this with proper onboarding routing
+        if identity.sender_type == "unknown_lead":
+            return {"status": "unrouted", "phone": identity.resolved_phone}
+        
+        # known_user — continue with existing pipeline using identity fields
+        tenant_id = identity.tenant_id
+        user_id = identity.user_id
 
         # Step 3: Validate the resolved tenant's subscription
         tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
