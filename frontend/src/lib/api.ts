@@ -88,6 +88,21 @@ export async function apiRequest<T = any>(
                 handleAuthError();
             }
 
+            // Paywall intercept for Tauri path
+            try {
+                const errJson = typeof error === "string" ? JSON.parse(error) : error;
+                if (errJson?.payment_required === true || errJson?.blocked === true) {
+                    if (typeof window !== "undefined") {
+                        localStorage.setItem("k24_paywall_reason", errJson?.reason || "TRIAL_EXPIRED");
+                        window.dispatchEvent(new CustomEvent("k24_paywall_triggered"));
+                        window.location.href = "/pricing";
+                    }
+                    return null as unknown as T;
+                }
+            } catch {
+                // Not parseable — ignore
+            }
+
             throw new Error(error?.message || error);
         }
     } else {
@@ -133,6 +148,31 @@ export async function apiRequest<T = any>(
 
         if (!response.ok) {
             const errorText = await response.text();
+
+            // Paywall intercept — handle trial expired / credit limit
+            if (response.status === 402 || response.status === 403) {
+                try {
+                    const errJson = JSON.parse(errorText);
+                    if (errJson?.payment_required === true || errJson?.blocked === true) {
+                        // Store reason so pricing page can read it
+                        if (typeof window !== "undefined") {
+                            localStorage.setItem(
+                                "k24_paywall_reason",
+                                errJson?.reason || "TRIAL_EXPIRED"
+                            );
+                            // Trigger UserContext refresh by dispatching custom event
+                            window.dispatchEvent(new CustomEvent("k24_paywall_triggered"));
+                            // Redirect to pricing
+                            window.location.href = "/pricing";
+                        }
+                        // Return null-ish so callers don't double-error
+                        return null as unknown as T;
+                    }
+                } catch {
+                    // Not JSON — fall through to normal error
+                }
+            }
+
             throw new Error(errorText || `HTTP ${response.status}`);
         }
 

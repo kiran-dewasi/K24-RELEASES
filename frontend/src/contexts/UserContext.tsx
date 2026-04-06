@@ -124,6 +124,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
         fetchUser();
     }, [fetchUser]);
 
+    useEffect(() => {
+        const handler = () => {
+            fetchUser();
+        };
+        window.addEventListener("k24_paywall_triggered", handler);
+        return () => window.removeEventListener("k24_paywall_triggered", handler);
+    }, [fetchUser]);
+
     return (
         <UserContext.Provider value={{ user, loading, error, refreshUser: fetchUser }}>
             {children}
