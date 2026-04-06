@@ -185,15 +185,16 @@ async def razorpay_webhook(request: Request):
             "status": "paid"
         }).eq("id", sub_res.data[0]["id"]).execute()
         
-    # B. Update tenant_config
-    sb.table("tenant_config").update({
-        "subscription_status": "active"
-    }).eq("tenant_id", tenant_id).execute()
-    
     now = datetime.now(timezone.utc)
     cycle_end = now + timedelta(days=365)
     now_iso = now.isoformat()
     cycle_end_iso = cycle_end.isoformat()
+
+    # B. Update tenant_config
+    sb.table("tenant_config").update({
+        "subscription_status": "active",
+        "subscription_ends_at": cycle_end_iso
+    }).eq("tenant_id", tenant_id).execute()
 
     # C. Upsert tenant_plans
     # Check if a row already exists for this tenant

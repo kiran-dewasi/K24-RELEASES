@@ -41,6 +41,9 @@ class UserResponse(BaseModel):
     whatsapp_number: str | None = None
     language: str | None = None
     is_active: bool | None = True
+    subscription_status: str | None = None
+    trial_ends_at: str | None = None
+    subscription_ends_at: str | None = None
 
     class Config:
         from_attributes = True
@@ -296,7 +299,10 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
-    return {
+    from database.supabase_client import get_supabase_client
+
+    # Base user data
+    response = {
         "id": str(current_user.id),
         "full_name": current_user.full_name,
         "role": current_user.role,
@@ -304,7 +310,30 @@ def get_current_user_info(current_user: User = Depends(get_current_active_user))
         "whatsapp_number": current_user.whatsapp_number if hasattr(current_user, "whatsapp_number") else None,
         "language": current_user.language if hasattr(current_user, "language") else None,
         "is_active": current_user.is_active,
+        "subscription_status": None,
+        "trial_ends_at": None,
+        "subscription_ends_at": None,
     }
+
+    # Enrich with subscription data from tenant_config
+    try:
+        sb = get_supabase_client()
+        tenant_id = str(current_user.tenant_id) if current_user.tenant_id else None
+        if tenant_id:
+            tc = sb.table("tenant_config").select(
+                "subscription_status, trial_ends_at, subscription_ends_at"
+            ).eq("tenant_id", tenant_id).limit(1).execute()
+
+            if tc.data:
+                row = tc.data[0]
+                response["subscription_status"] = row.get("subscription_status")
+                response["trial_ends_at"] = row.get("trial_ends_at")
+                response["subscription_ends_at"] = row.get("subscription_ends_at")
+    except Exception as e:
+        logger.warning(f"/me subscription enrich failed: {e}")
+        # Do not fail the whole /me call — just return without subscription data
+
+    return response
 
 
 # ---------------------------------------------------------------------------
