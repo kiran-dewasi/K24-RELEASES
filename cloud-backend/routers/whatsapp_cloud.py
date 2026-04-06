@@ -17,6 +17,64 @@ from services.tenant_onboarding_service import TenantOnboardingPayload, get_or_c
 router = APIRouter(tags=["whatsapp-cloud"])
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Billing helper
+# ---------------------------------------------------------------------------
+
+async def billing_check_and_record(
+    tenant_id: str,
+    event_type: str,
+    event_subtype: str,
+    metadata: Optional[Dict[str, Any]],
+    http_client: httpx.AsyncClient,
+) -> tuple[bool, Dict[str, Any]]:
+    """
+    1) POST /api/billing/check-entitlement
+    2) If allowed, POST /api/billing/record-event
+    Returns (allowed: bool, response_dict: dict)
+    """
+    key = os.getenv("BILLING_INTERNAL_KEY")
+    if not key:
+        logger.warning("[BILLING] No BILLING_INTERNAL_KEY set - allowing by default")
+        return True, {}
+
+    base_url = os.getenv("CLOUD_BILLING_URL", "http://127.0.0.1:8080")
+    headers = {"X-Internal-Key": key, "Content-Type": "application/json"}
+
+    check_payload = {
+        "tenant_id":    tenant_id,
+        "event_type":   event_type,
+        "event_subtype": event_subtype,
+    }
+    
+    try:
+        resp = await http_client.post(
+            f"{base_url}/api/billing/check-entitlement",
+            headers=headers, json=check_payload, timeout=5
+        )
+        resp.raise_for_status()
+        check = resp.json()
+        if not check.get("allowed"):
+            return False, check
+
+        record_payload = {
+            "tenant_id":    tenant_id,
+            "event_type":   event_type,
+            "event_subtype": event_subtype,
+            "metadata":     metadata or {},
+            "source":       "whatsapp",
+        }
+        resp2 = await http_client.post(
+            f"{base_url}/api/billing/record-event",
+            headers=headers, json=record_payload, timeout=5
+        )
+        resp2.raise_for_status()
+        return True, resp2.json()
+    except Exception as e:
+        logger.error(f"[BILLING] Error during check_and_record: {e}")
+        # Fail open as requested initially... wait, the spec says "Fail closed: if the engine throws unexpectedly, return 500."
+        raise HTTPException(status_code=500, detail="Internal Billing Error")
+
 SenderType = Literal["known_user", "known_customer", "unknown_lead", "unresolvable"]
 
 @dataclass
@@ -494,9 +552,46 @@ async def receive_whatsapp_message(
         tenant_id = identity.tenant_id
         user_id   = identity.user_id
 
-        # Step 3: Validate the resolved tenant's subscription
+        # Step 3: Validate the resolved tenant's subscription (time-based + status check)
         tenant_info = validate_tenant_subscription(str(tenant_id), supabase)
         subscription_status = tenant_info["subscription_status"]
+
+        # Step 3b: Credit entitlement check via billing service
+        async with httpx.AsyncClient(timeout=10.0) as billing_client:
+            billing_allowed, billing_resp = await billing_check_and_record(
+                tenant_id=str(tenant_id),
+                event_type="whatsapp_message",
+                event_subtype="inbound",
+                metadata={
+                    "from_number": message.from_number,
+                    "message_type": message.message_type,
+                },
+                http_client=billing_client,
+            )
+
+        if not billing_allowed:
+            reason = billing_resp.get("reason", "Credit limit reached")
+            logger.warning(
+                f"[BILLING] Blocked inbound message for tenant={str(tenant_id)[:8]}... "
+                f"reason={reason}"
+            )
+            # Send a friendly paywall message back via Baileys
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as notify_client:
+                    await notify_client.post(
+                        f"{BAILEYS_SERVICE_URL}/send-message",
+                        json={
+                            "phone": message.from_number,
+                            "message": (
+                                "⚠️ Your K24 trial has reached its credit limit.\n"
+                                "Please upgrade your plan to continue using the service.\n"
+                                "Visit https://k24.ai/upgrade or contact support."
+                            ),
+                        },
+                    )
+            except Exception as notify_err:
+                logger.warning(f"[BILLING] Paywall notify send failed: {notify_err}")
+            return {"status": "blocked", "reason": reason}
 
         # Step 4: Insert into whatsapp_message_queue
         message_id = str(uuid.uuid4())

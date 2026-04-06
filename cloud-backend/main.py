@@ -82,6 +82,7 @@ from routers import whatsapp_cloud
 from routers import devices
 from routers import webhooks
 from routers import auth
+from routers import billing
 
 # Include routers
 app.include_router(auth.router)
@@ -91,6 +92,7 @@ app.include_router(whatsapp_cloud.router, prefix="/api/whatsapp/cloud", tags=["W
 # app.include_router(baileys.router, prefix="/api/baileys", tags=["Baileys"])
 # app.include_router(query.router, prefix="/api/query", tags=["Smart Query"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
+app.include_router(billing.router, prefix="/api/billing", tags=["Billing (internal)"])
 
 @app.get("/")
 async def root():
