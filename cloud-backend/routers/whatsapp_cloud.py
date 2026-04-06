@@ -11,6 +11,8 @@ import secrets
 import httpx
 
 from database import get_supabase_client
+from services.tenant_onboarding_service import TenantOnboardingPayload, get_or_create_tenant
+
 
 router = APIRouter(tags=["whatsapp-cloud"])
 logger = logging.getLogger(__name__)
@@ -346,14 +348,19 @@ async def handle_onboarding_step(phone: str, message_text: str, state: Dict[str,
         stored_otp = data.get("otp", "")
         if text == stored_otp:
             tenant_id = f"TENANT-{secrets.token_hex(4).upper()}"
-            supabase.table("tenant_config").insert({
-                "tenant_id": tenant_id,
-                "whatsapp_number": phone,
-                "subscription_status": "trial",
-                "business_name": data.get("business_name"),
-                "tally_company_name": data.get("tally_name"),
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }).execute()
+            onboarding_res = await get_or_create_tenant(
+                TenantOnboardingPayload(
+                    onboarding_source="whatsapp",
+                    tenant_id=tenant_id,
+                    whatsapp_number=phone,
+                    company_name=data.get("business_name"),
+                    tally_company_name=data.get("tally_name"),
+                    trial_days=9
+                ),
+                supabase
+            )
+            tenant_id = onboarding_res.tenant_id
+
             supabase.table("onboarding_states").update({
                 "current_step": "complete",
                 "temp_data": {**data, "tenant_id": tenant_id},

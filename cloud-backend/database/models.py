@@ -1,3 +1,34 @@
+# ============================================================
+# TENANT_CONFIG TABLE — Supabase (k24-main) — PHASE 1 STATE
+# Updated: 2026-04-05
+# Migration: phase1_tenant_config_additive_columns
+#
+# COLUMNS:
+#   tenant_id              TEXT  NOT NULL  PK
+#   whatsapp_number        TEXT  NOT NULL
+#   user_email             TEXT  NOT NULL
+#   company_name           TEXT  nullable
+#   subscription_status    TEXT  nullable  default='trial'
+#   trial_ends_at          TIMESTAMPTZ nullable
+#   subscription_ends_at   TIMESTAMPTZ nullable
+#   created_at             TIMESTAMPTZ default=now()
+#   updated_at             TIMESTAMPTZ default=now()  (auto-updated by trigger)
+#   owner_name             TEXT  nullable              -- NEW Phase 1
+#   tally_company_name     TEXT  nullable              -- NEW Phase 1
+#   trial_start_at         TIMESTAMPTZ nullable        -- NEW Phase 1
+#   trial_credit_limit     INTEGER     default=90      -- NEW Phase 1
+#   trial_credits_used     INTEGER     default=0       -- NEW Phase 1
+#   onboarding_source      TEXT        default='web'   -- NEW Phase 1 ('web' or 'whatsapp')
+#   razorpay_customer_id   TEXT  nullable              -- NEW Phase 1 (for Phase 3 Razorpay)
+#
+# RULES:
+# - tenant_config is the SINGLE SOURCE OF TRUTH for subscription + trial state
+# - Do NOT use subscriptions table as a gatekeeper; it is a secondary/reporting table
+# - Every tenant creation (web OR WhatsApp) must write to tenant_config
+# - onboarding_source must always be set ('web' or 'whatsapp')
+# - trial_start_at + trial_ends_at MUST both be set on tenant creation
+# ============================================================
+
 from sqlalchemy import Column, String, Boolean, DateTime, Text, Integer
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func

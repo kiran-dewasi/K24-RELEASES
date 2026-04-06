@@ -162,6 +162,34 @@ class SupabaseHTTPService:
             data = response.json()
             return data[0] if data else None
         return None
+
+    def get_tenant_by_email(self, email: str) -> Optional[Dict]:
+        """SELECT * FROM tenant_config WHERE user_email = email LIMIT 1"""
+        if not self.client:
+            return None
+        response = httpx.get(
+            f"{self._rest_url('tenant_config')}?user_email=eq.{email}&limit=1",
+            headers=self._get_headers(use_service_key=True),
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data[0] if data else None
+        return None
+
+    def get_tenant_by_phone(self, phone: str) -> Optional[Dict]:
+        """SELECT * FROM tenant_config WHERE whatsapp_number = phone LIMIT 1"""
+        if not self.client:
+            return None
+        response = httpx.get(
+            f"{self._rest_url('tenant_config')}?whatsapp_number=eq.{phone}&limit=1",
+            headers=self._get_headers(use_service_key=True),
+            timeout=10
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data[0] if data else None
+        return None
     
     def create_tenant_config(self, tenant_id: str, email: str, company_name: str, whatsapp_number: Optional[str] = None) -> Optional[Dict]:
         """Create a default trial configuration in tenant_config table"""
@@ -332,7 +360,13 @@ class SupabaseService:
     
     def get_tenant_by_id(self, tenant_id: str) -> Optional[Dict]:
         return self._http.get_tenant_by_id(tenant_id)
-        
+
+    def get_tenant_by_email(self, email: str) -> Optional[Dict]:
+        return self._http.get_tenant_by_email(email)
+
+    def get_tenant_by_phone(self, phone: str) -> Optional[Dict]:
+        return self._http.get_tenant_by_phone(phone)
+
     def create_tenant_config(self, tenant_id: str, email: str, company_name: str, whatsapp_number: Optional[str] = None) -> Optional[Dict]:
         return self._http.create_tenant_config(tenant_id, email, company_name, whatsapp_number)
     
