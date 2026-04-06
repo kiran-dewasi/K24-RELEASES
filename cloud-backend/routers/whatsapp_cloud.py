@@ -560,8 +560,8 @@ async def receive_whatsapp_message(
         async with httpx.AsyncClient(timeout=10.0) as billing_client:
             billing_allowed, billing_resp = await billing_check_and_record(
                 tenant_id=str(tenant_id),
-                event_type="whatsapp_message",
-                event_subtype="inbound",
+                event_type="MESSAGE",
+                event_subtype="whatsapp_inbound",
                 metadata={
                     "from_number": message.from_number,
                     "message_type": message.message_type,
