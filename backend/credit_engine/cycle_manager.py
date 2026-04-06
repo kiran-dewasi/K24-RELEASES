@@ -145,12 +145,33 @@ def find_or_create_active_cycle(tenant_id: str) -> Optional[Dict[str, Any]]:
         plan_id     = plan["id"]
         max_credits = plan["max_credits_per_cycle"]
     else:
-        # Tenant not in tenant_plans table â†’ graceful fallback
+        # Check tenant_config for subscription_status
+        config_result = supabase.table("tenant_config").select(
+            "subscription_status, trial_credit_limit"
+        ).eq("tenant_id", tenant_id).limit(1).execute()
+
+        if config_result.data:
+            config = config_result.data[0]
+            status = config.get("subscription_status")
+            trial_limit = int(config.get("trial_credit_limit") or 90)
+
+            if status == "active":
+                plan_id = "grace_active"
+                max_credits = 1000
+            elif status == "trial":
+                plan_id = "trial"
+                max_credits = trial_limit
+            else:
+                return None
+        else:
+            status = "unknown"
+            plan_id = "trial"
+            max_credits = 90
+
         logger.warning(
-            f"[CycleManager] Tenant {tenant_id} has no plan â€” defaulting to 'starter' limits."
+            f"[CycleManager] No plan found for {tenant_id}, "
+            f"using status-based fallback: status={status} max_credits={max_credits}"
         )
-        plan_id     = "starter"
-        max_credits = 500
 
     # â”€â”€ 3: Create cycle for current calendar month â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     now                  = datetime.now(timezone.utc)

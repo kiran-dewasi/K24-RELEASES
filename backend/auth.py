@@ -208,7 +208,7 @@ def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
     try:
         headers = supabase_http_service._get_headers(use_service_key=True)
         response = httpx.get(
-            f"{supabase_http_service.url}/rest/v1/tenant_config?tenant_id=eq.{tenant_id}&select=subscription_status,trial_ends_at&limit=1",
+            f"{supabase_http_service.url}/rest/v1/tenant_config?tenant_id=eq.{tenant_id}&select=subscription_status,trial_ends_at,trial_credit_limit&limit=1",
             headers=headers,
             timeout=5
         )
@@ -229,6 +229,47 @@ def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
                             raise HTTPException(status_code=403, detail="Subscription expired")
                     except ValueError:
                         pass
+
+                # Check trial credit limit
+                if status_str == "trial":
+                    try:
+                        trial_credit_limit = int(config.get("trial_credit_limit") or 90)
+
+                        _supa_url = supabase_http_service.url
+                        _headers = supabase_http_service._get_headers(use_service_key=True)
+
+                        # Find active billing cycle
+                        _cycle_resp = httpx.get(
+                            f"{_supa_url}/rest/v1/billing_cycles"
+                            f"?tenant_id=eq.{tenant_id}&status=eq.active"
+                            f"&order=created_at.desc&limit=1"
+                            f"&select=id",
+                            headers=_headers, timeout=5
+                        )
+                        _credits_used = 0.0
+                        if _cycle_resp.status_code == 200 and _cycle_resp.json():
+                            _cycle_id = _cycle_resp.json()[0]["id"]
+                            _usage_resp = httpx.get(
+                                f"{_supa_url}/rest/v1/tenant_usage_summary"
+                                f"?tenant_id=eq.{tenant_id}"
+                                f"&billing_cycle_id=eq.{_cycle_id}"
+                                f"&limit=1&select=credits_used_total",
+                                headers=_headers, timeout=5
+                            )
+                            if _usage_resp.status_code == 200 and _usage_resp.json():
+                                _credits_used = float(
+                                    _usage_resp.json()[0].get("credits_used_total") or 0
+                                )
+
+                        if _credits_used >= trial_credit_limit:
+                            raise HTTPException(
+                                status_code=403,
+                                detail="Trial credit limit reached. Please upgrade."
+                            )
+                    except HTTPException:
+                        raise
+                    except Exception:
+                        pass  # Fail open on any error
     except httpx.RequestError:
         logger.warning("[AUTH] Subscription check network error", exc_info=True)
 

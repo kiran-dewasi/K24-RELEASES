@@ -559,7 +559,7 @@ def validate_tenant_subscription(tenant_id: str, supabase) -> Dict[str, Any]:
     """
     # Query tenant_config by tenant_id
     tenant_result = supabase.table("tenant_config").select(
-        "tenant_id, subscription_status, trial_ends_at"
+        "tenant_id, subscription_status, trial_ends_at, trial_credit_limit"
     ).eq(
         "tenant_id", tenant_id
     ).execute()
@@ -620,6 +620,57 @@ def validate_tenant_subscription(tenant_id: str, supabase) -> Dict[str, Any]:
         except (ValueError, AttributeError) as e:
             logger.warning(f"⚠️  Could not parse trial_ends_at: {trial_ends_at}, error: {e}")
             # If we can't parse the date, allow to prevent false negatives
+    
+    # Check trial credit limit
+    if subscription_status == "trial":
+        try:
+            # Get trial_credit_limit from tenant_config
+            trial_credit_limit = int(tenant_config.get("trial_credit_limit") or 90)
+
+            # Get current credits used from tenant_usage_summary
+            # Find the active billing cycle for this tenant first
+            cycle_result = supabase.table("billing_cycles").select(
+                "id, credits_used_total"
+            ).eq("tenant_id", tenant_id).eq("status", "active").order(
+                "created_at", desc=True
+            ).limit(1).execute()
+
+            credits_used = 0.0
+            if cycle_result.data:
+                # Get usage summary for this cycle
+                cycle_id = cycle_result.data[0]["id"]
+                summary_result = supabase.table("tenant_usage_summary").select(
+                    "credits_used_total"
+                ).eq("tenant_id", tenant_id).eq(
+                    "billing_cycle_id", cycle_id
+                ).limit(1).execute()
+
+                if summary_result.data:
+                    credits_used = float(
+                        summary_result.data[0].get("credits_used_total") or 0
+                    )
+
+            if credits_used >= trial_credit_limit:
+                masked = f"{tenant_id[:8]}..." if len(tenant_id) > 8 else "****"
+                logger.warning(
+                    f"🚫 Trial credit limit reached: tenant={masked} "
+                    f"used={credits_used}/{trial_credit_limit}"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "TRIAL_CREDIT_LIMIT_REACHED",
+                        "detail": f"Trial credit limit of {trial_credit_limit} reached. "
+                                  f"Please upgrade to continue.",
+                        "credits_used": credits_used,
+                        "credits_limit": trial_credit_limit,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                )
+        except HTTPException:
+            raise
+        except Exception as _ce:
+            logger.warning(f"⚠️ Credit limit check failed (allowing): {_ce}")
     
     # Allow for 'active' or 'trial' (with future/null trial_ends_at)
     if subscription_status not in ["active", "trial"]:
