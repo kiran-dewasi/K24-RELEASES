@@ -569,35 +569,44 @@ async def update_bot_number(
     if not tenant_id:
         raise HTTPException(status_code=400, detail="No tenant_id found for this user. Please log in again.")
 
-    # Normalize to E.164 format
-    phone = body.whatsapp_number.strip().replace(" ", "").replace("-", "")
-    if not phone.startswith("+"):
-        phone = f"+91{phone}"
-    if len(phone) < 10 or len(phone) > 16:
-        raise HTTPException(status_code=400, detail="Invalid phone number. Use format: +91XXXXXXXXXX")
+    def _normalize_phone(raw: str) -> str:
+        import re
+        digits = re.sub(r'\D', '', str(raw))
+        if digits.startswith('0'):
+            digits = '91' + digits[1:]
+        if len(digits) == 10:
+            digits = '91' + digits
+        return digits  # Returns 917339906200 format, NO + prefix
 
-    supa_url = os.getenv("SUPABASE_URL", "https://gxukvnoiyzizienswgni.supabase.co")
-    supa_key = os.getenv("SUPABASE_SERVICE_KEY", "sb_secret_qJuJk2q0_hO144oQLmSYxA_6WB_qtkR")
-    headers = {
-        "apikey": supa_key,
-        "Authorization": f"Bearer {supa_key}",
+    _supa_url = os.getenv("SUPABASE_URL")
+    _supa_key = os.getenv("SUPABASE_SERVICE_KEY")
+
+    if not _supa_url or not _supa_key:
+        raise HTTPException(status_code=500, detail="Supabase config missing")
+
+    _normalized = _normalize_phone(body.whatsapp_number)
+
+    _headers = {
+        "apikey": _supa_key,
+        "Authorization": f"Bearer {_supa_key}",
         "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates,return=minimal"
+        "Prefer": "return=minimal"
     }
 
     try:
-        resp = httpx.post(
-            f"{supa_url}/rest/v1/tenant_config",
-            headers=headers,
-            json={"tenant_id": tenant_id, "whatsapp_number": phone},
+        _resp = httpx.patch(
+            f"{_supa_url}/rest/v1/tenant_config?tenant_id=eq.{tenant_id}",
+            headers=_headers,
+            json={"whatsapp_number": _normalized},
             timeout=10
         )
-        if resp.status_code in (200, 201, 204):
-            print(f"[bot-number] Updated Supabase tenant_config for {tenant_id}: {phone}")
-            return {"status": "success", "whatsapp_number": phone}
-        else:
-            print(f"[bot-number] Supabase error {resp.status_code}: {resp.text}")
-            raise HTTPException(status_code=500, detail=f"Supabase error: {resp.text[:200]}")
+        if _resp.status_code not in (200, 201, 204):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Supabase error: {_resp.text[:200]}"
+            )
+        print(f"[bot-number] Patched whatsapp_number for {tenant_id}: {_normalized}")
+        return {"status": "success", "whatsapp_number": _normalized}
     except HTTPException:
         raise
     except Exception as e:

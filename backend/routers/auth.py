@@ -63,6 +63,15 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
     from services.supabase_service import supabase_service, supabase_http_service
     from services.tenant_service import tenant_service
     import uuid
+    import re
+
+    def normalize_phone(raw: str) -> str:
+        digits = re.sub(r'\D', '', raw)
+        if digits.startswith('0'):
+            digits = '91' + digits[1:]
+        if len(digits) == 10:
+            digits = '91' + digits
+        return digits
 
     # 1. Supabase Registration (Cloud Master)
     # ---------------------------------------------
@@ -125,18 +134,72 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
                     except Exception as e:
                          print(f"Supabase Subscription Warning: {e}")
                 
-                # E. Create Trial configuration in tenant_config
-                if tenant_id and user_id:
+                # E. Ensure tenant_config row exists with trial dates (Phase 1)
+                if tenant_id:
                     try:
-                        # For desktop signups, we don't have whatsapp number yet, so we pass None
-                        supabase_http_service.create_tenant_config(
-                            tenant_id=tenant_id,
-                            email=user_data.email, 
-                            company_name=user_data.company_name,
-                            whatsapp_number=None
-                        )
-                    except Exception as e:
-                         print(f"Supabase Trial Setup Warning: {e}")
+                        import httpx as _httpx
+                        import os
+                        _supa_url = os.getenv("SUPABASE_URL")
+                        _supa_key = os.getenv("SUPABASE_SERVICE_KEY")
+                        if _supa_url and _supa_key:
+                            _headers = {
+                                "apikey": _supa_key,
+                                "Authorization": f"Bearer {_supa_key}",
+                                "Content-Type": "application/json"
+                            }
+                            # Check if row exists
+                            _check = _httpx.get(
+                                f"{_supa_url}/rest/v1/tenant_config?tenant_id=eq.{tenant_id}&limit=1",
+                                headers=_headers, timeout=10
+                            )
+                            _rows = _check.json() if _check.status_code == 200 else []
+
+                            if not _rows:
+                                # Row does not exist — full insert with trial dates
+                                from datetime import timezone, timedelta
+                                _now = datetime.now(timezone.utc)
+                                _httpx.post(
+                                    f"{_supa_url}/rest/v1/tenant_config",
+                                    headers={**_headers, "Prefer": "return=minimal"},
+                                    json={
+                                        "tenant_id": tenant_id,
+                                        "user_email": user_data.email,
+                                        "company_name": user_data.company_name,
+                                        "whatsapp_number": "",
+                                        "subscription_status": "trial",
+                                        "trial_start_at": _now.isoformat(),
+                                        "trial_ends_at": (_now + timedelta(days=9)).isoformat(),
+                                        "trial_credit_limit": 90,
+                                        "trial_credits_used": 0,
+                                        "onboarding_source": "web"
+                                    },
+                                    timeout=10
+                                )
+                                print(f"[REGISTER] tenant_config created for {tenant_id}")
+                            else:
+                                # Row exists — patch only NULL fields
+                                _existing = _rows[0]
+                                _patch = {}
+                                if not _existing.get("user_email"):
+                                    _patch["user_email"] = user_data.email
+                                if not _existing.get("company_name"):
+                                    _patch["company_name"] = user_data.company_name
+                                if not _existing.get("trial_start_at"):
+                                    from datetime import timezone, timedelta
+                                    _now = datetime.now(timezone.utc)
+                                    _patch["trial_start_at"] = _now.isoformat()
+                                    _patch["trial_ends_at"] = (_now + timedelta(days=9)).isoformat()
+                                if _patch:
+                                    _httpx.patch(
+                                        f"{_supa_url}/rest/v1/tenant_config?tenant_id=eq.{tenant_id}",
+                                        headers={**_headers, "Prefer": "return=minimal"},
+                                        json=_patch,
+                                        timeout=10
+                                    )
+                                    print(f"[REGISTER] tenant_config patched for {tenant_id}: {list(_patch.keys())}")
+                    except Exception as _e:
+                        print(f"[REGISTER] tenant_config sync warning: {_e}")
+
 
         except Exception as e:
             # If Supabase fails (e.g. offline), should we fail strictly or allow local-only?
