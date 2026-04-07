@@ -25,6 +25,7 @@ class UserRegister(BaseModel):
     company_name: str
     role: str = "owner"
     language: str = "en"
+    whatsapp_number: str | None = None
 
 
 class Token(BaseModel):
@@ -159,6 +160,63 @@ async def register(user_data: UserRegister, db: Session = Depends(get_db)):
         supabase_http_service.create_subscription(supabase_user_id, tenant_id, "free")
     except Exception as e:
         logger.warning(f"Supabase subscription creation warning: {e}")
+
+    # ------------------------------------------------------------------
+    # 4b. Create tenant_config row in Supabase (trial setup)
+    # ------------------------------------------------------------------
+    try:
+        from database.supabase_client import get_supabase_client
+        from datetime import timezone, timedelta
+
+        sb = get_supabase_client()
+        trial_start = datetime.utcnow().replace(tzinfo=timezone.utc)
+        trial_end = trial_start + timedelta(days=9)
+
+        # Check if tenant_config already exists (avoid duplicate)
+        existing_tc = sb.table("tenant_config").select("tenant_id").eq(
+            "tenant_id", tenant_id
+        ).limit(1).execute()
+
+        if not existing_tc.data:
+            sb.table("tenant_config").insert({
+                "tenant_id": tenant_id,
+                "user_email": user_data.email,
+                "whatsapp_number": user_data.whatsapp_number if hasattr(user_data, "whatsapp_number") and user_data.whatsapp_number else "",
+                "company_name": user_data.company_name or "",
+                "owner_name": user_data.full_name or "",
+                "subscription_status": "trial",
+                "trial_start_at": trial_start.isoformat(),
+                "trial_ends_at": trial_end.isoformat(),
+                "trial_credit_limit": 90,
+                "trial_credits_used": 0,
+                "onboarding_source": "web",
+            }).execute()
+            logger.info(f"tenant_config created for {tenant_id}")
+        else:
+            logger.info(f"tenant_config already exists for {tenant_id}, skipping")
+
+        # Create billing_cycle for the trial
+        try:
+            existing_bc = sb.table("billing_cycles").select("id").eq(
+                "tenant_id", tenant_id
+            ).eq("status", "active").limit(1).execute()
+
+            if not existing_bc.data:
+                sb.table("billing_cycles").insert({
+                    "tenant_id": tenant_id,
+                    "plan_id": "trial",
+                    "cycle_start": trial_start.isoformat(),
+                    "cycle_end": trial_end.isoformat(),
+                    "status": "active",
+                    "max_credits": 90,
+                }).execute()
+                logger.info(f"Trial billing_cycle created for {tenant_id}")
+        except Exception as e:
+            logger.warning(f"billing_cycle creation failed for {tenant_id}: {e}")
+
+    except Exception as e:
+        logger.warning(f"tenant_config creation failed for {tenant_id}: {e}")
+        # Never block registration — just log and continue
 
     # ------------------------------------------------------------------
     # 5. Issue a local JWT (tenant_id embedded for API filtering)
