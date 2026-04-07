@@ -20,8 +20,63 @@ export default function TrialBanner() {
 
     const { subscription_status, trial_ends_at } = user;
 
-    // Nothing to show for active paid subscribers
-    if (!subscription_status || subscription_status === "active") return null;
+    // Renewal warning for active paid subscribers expiring within 14 days
+    if (subscription_status === "active") {
+        const { subscription_ends_at } = user;
+        if (subscription_ends_at) {
+            const daysToRenewal = Math.ceil(
+                (new Date(subscription_ends_at).getTime() - Date.now()) / 86_400_000
+            );
+            if (daysToRenewal <= 14 && daysToRenewal > 0) {
+                return (
+                    <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        padding: "7px 20px",
+                        backgroundColor: "#FFF7ED",
+                        borderBottom: "1px solid #FED7AA",
+                        flexShrink: 0,
+                        fontSize: "13.5px",
+                        fontWeight: 500,
+                        color: "#9A3412",
+                    }}>
+                        <span>
+                            🔔 Your K24 subscription expires in {daysToRenewal} day{daysToRenewal === 1 ? "" : "s"}. Renew now to avoid interruption.
+                        </span>
+                        <button
+                            onClick={() => router.push("/pricing")}
+                            style={{
+                                flexShrink: 0,
+                                padding: "5px 14px",
+                                backgroundColor: "#EA580C",
+                                color: "#FFFFFF",
+                                border: "none",
+                                borderRadius: "8px",
+                                fontSize: "12.5px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                transition: "background-color 0.15s ease",
+                            }}
+                            onMouseEnter={e =>
+                                ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#C2410C")
+                            }
+                            onMouseLeave={e =>
+                                ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#EA580C")
+                            }
+                        >
+                            Renew Now →
+                        </button>
+                    </div>
+                );
+            }
+        }
+        return null;
+    }
+
+    if (!subscription_status) return null;
 
     // Compute days remaining
     const daysRemaining = trial_ends_at

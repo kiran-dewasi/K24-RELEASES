@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PLANS, FAQ_ITEMS, UPI_CONFIG, type Plan } from "@/lib/plans-config";
 import { Check, ChevronDown, ChevronUp, ArrowRight, Building2, Zap, Phone, ShieldCheck, FileText, Receipt } from "lucide-react";
 import SubscribeModal from "@/components/pricing/SubscribeModal";
@@ -397,10 +397,64 @@ function FooterCTA({ onGetStarted }: { onGetStarted: (plan: Plan) => void }) {
     );
 }
 
+// ─── Paywall Banner ───────────────────────────────────────────────────────────
+
+function PaywallBanner({ reason }: { reason: string | null }) {
+    if (!reason) return null;
+
+    const messages: Record<string, { title: string; subtitle: string }> = {
+      TRIAL_EXPIRED: {
+        title: "Your free trial has ended.",
+        subtitle: "Upgrade to keep using K24 automations, WhatsApp scanning, and Tally sync.",
+      },
+      CREDIT_LIMIT: {
+        title: "You've used all your credits for this cycle.",
+        subtitle: "Upgrade your plan to get more credits and continue automating.",
+      },
+      SUBSCRIPTION_EXPIRED: {
+        title: "Your subscription has expired.",
+        subtitle: "Renew your plan to restore full access to K24.",
+      },
+    };
+
+    const msg = messages[reason] || {
+      title: "Your access has been restricted.",
+      subtitle: "Choose a plan below to continue using K24.",
+    };
+
+    return (
+      <div style={{
+        background: "linear-gradient(90deg, #1D4ED8 0%, #1E40AF 100%)",
+        color: "#fff",
+        textAlign: "center",
+        padding: "14px 24px",
+        fontSize: "14px",
+        fontWeight: 500,
+        lineHeight: 1.5,
+        zIndex: 60,
+        position: "relative",
+      }}>
+        <span style={{ fontWeight: 700 }}>{msg.title}</span>
+        {" "}{msg.subtitle}
+      </div>
+    );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PricingPage() {
     const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+    const [paywallReason, setPaywallReason] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const reason = localStorage.getItem("k24_paywall_reason");
+            if (reason) {
+                setPaywallReason(reason);
+                localStorage.removeItem("k24_paywall_reason"); // clear after reading
+            }
+        }
+    }, []);
 
     const handleSelect = (plan: Plan) => {
         if (plan.id === "enterprise") {
@@ -415,6 +469,7 @@ export default function PricingPage() {
 
     return (
         <div className="min-h-screen bg-white">
+            <PaywallBanner reason={paywallReason} />
             <PricingNav />
 
             {/* Hero */}

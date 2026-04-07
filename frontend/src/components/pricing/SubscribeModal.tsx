@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, ArrowLeft, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { type Plan } from "@/lib/plans-config";
+import { useUser } from "@/contexts/UserContext";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://weare-production.up.railway.app";
 
@@ -23,19 +24,27 @@ interface Props {
 
 // ─── Step 1: Contact Details Form ────────────────────────────────────────────
 
+interface DetailsFormProps {
+    plan: Plan;
+    onSubmit: (data: FormData) => void;
+    loading: boolean;
+    error: string | null;
+    initialData?: Partial<FormData>;
+}
+
 function DetailsForm({
     plan,
     onSubmit,
     loading,
     error,
-}: {
-    plan: Plan;
-    onSubmit: (data: FormData) => void;
-    loading: boolean;
-    error: string | null;
-}) {
+    initialData,
+}: DetailsFormProps) {
     const [form, setForm] = useState<FormData>({
-        name: "", company_name: "", email: "", phone: "", gst_number: "",
+        name: initialData?.name || "",
+        company_name: initialData?.company_name || "",
+        email: initialData?.email || "",
+        phone: initialData?.phone || "",
+        gst_number: initialData?.gst_number || "",
     });
     const set = (k: keyof FormData) =>
         (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -168,6 +177,7 @@ function DoneStep({ plan, onClose }: { plan: Plan; onClose: () => void }) {
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 export default function SubscribeModal({ plan, onClose }: Props) {
+    const { user } = useUser();
     const [step, setStep] = useState<Step>("form");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -281,6 +291,13 @@ export default function SubscribeModal({ plan, onClose }: Props) {
                             onSubmit={handleFormSubmit}
                             loading={loading}
                             error={error}
+                            initialData={{
+                                name: user?.full_name || "",
+                                email: user?.email || "",
+                                phone: user?.whatsapp_number || "",
+                                company_name: "",
+                                gst_number: "",
+                            }}
                         />
                     )}
                     {step === "paying" && <PayingStep />}

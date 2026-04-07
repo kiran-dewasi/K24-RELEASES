@@ -6,7 +6,7 @@ import sqlite3
 import uuid
 from datetime import datetime
 
-from database import get_db, Tenant, WhatsAppMapping, Ledger
+from database import get_db, get_supabase_client, WhatsAppMapping, Ledger
 from dependencies import get_api_key
 from auth import get_current_tenant_id, get_current_user
 
@@ -184,32 +184,47 @@ async def get_whatsapp_settings(
 @router.put("/settings/whatsapp", dependencies=[Depends(get_api_key)])
 async def update_whatsapp_settings(
     settings: TenantUpdate,
-    db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant_id)
 ):
     """
     Update the Business WhatsApp Number for this Tenant.
+    Checks for duplicates across all tenants before saving.
     """
-    # Upsert Tenant record
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant:
-        # Auto-create if missing (Self-healing)
-        # In real app, Tenant should exist on registration.
-        from database import Company
-        # Try to find company name
-        # This is a bit disjointed due to MVP schema evolution.
-        # Ideally fetch name from User's company.
-        tenant = Tenant(
-            id=tenant_id,
-            company_name="My Company", # Placeholder
-            whatsapp_number=settings.whatsapp_number
+    sb = get_supabase_client()
+    new_number = settings.whatsapp_number
+
+    # --- Duplicate check ---
+    # Ensure no OTHER tenant already owns this WhatsApp number
+    duplicate_result = (
+        sb.table("tenant_config")
+        .select("tenant_id")
+        .eq("whatsapp_number", new_number)
+        .neq("tenant_id", tenant_id)
+        .limit(1)
+        .execute()
+    )
+    if duplicate_result.data:
+        raise HTTPException(
+            status_code=400,
+            detail="This WhatsApp number is already registered with another account",
         )
-        db.add(tenant)
-    else:
-        tenant.whatsapp_number = settings.whatsapp_number
-        
-    db.commit()
-    return {"status": "success", "number": settings.whatsapp_number}
+
+    # --- Proceed with update ---
+    update_result = (
+        sb.table("tenant_config")
+        .update({"whatsapp_number": new_number})
+        .eq("tenant_id", tenant_id)
+        .execute()
+    )
+    if not update_result.data:
+        # Row doesn't exist yet — this should not happen in normal flow
+        # but handle gracefully by raising a clear error
+        raise HTTPException(
+            status_code=404,
+            detail="Tenant configuration not found. Please contact support.",
+        )
+
+    return {"status": "success", "number": new_number}
 
 # ============================================
 # CUSTOMER MAPPING SYSTEM (NEW)
