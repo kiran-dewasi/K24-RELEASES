@@ -12,8 +12,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::start_backend,
             commands::backend_request,
-            commands::get_backend_status,
-            commands::restart_app
+            commands::get_backend_status
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -51,7 +50,7 @@ pub fn run() {
             
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 log::info!("Window close requested, stopping backend...");
                 commands::stop_backend();

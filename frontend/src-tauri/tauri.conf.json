@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "K24",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "identifier": "com.krishasales.k24",
   "build": {
     "devUrl": "http://localhost:3000",
@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "msi",
       "nsis"
@@ -69,7 +70,10 @@
       "endpoints": [
         "https://github.com/kiran-dewasi/weare/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDMzRCQkZBREZDOTg3N0MKUldSOGg4bmYrcnMwL1BhMTUvRE5jTm1ZM3hhb1NiejB4eGRXSmwrOGNLMHBnSEtaa1lheWYycjUK"
+      "windows": {
+        "installMode": "passive"
+      },
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxRDg2QTg5QUE3QjBDMjIKUldRaURIdXFpV3JZd1p2SFFXTUxkUlRuRGVrRlN3Vi9CTHVtMFdSQjJoNkYydGdncXM0TDNvSVoK"
     }
   }
 }

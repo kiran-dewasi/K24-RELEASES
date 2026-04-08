@@ -20,6 +20,7 @@ export interface User {
     whatsapp_number: string | null;
     is_whatsapp_verified: boolean;
     subscription_status: string | null;
+    subscription_ends_at: string | null;
     trial_ends_at: string | null;
 }
 

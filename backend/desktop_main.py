@@ -10,6 +10,7 @@ def parse_args():
     parser.add_argument('--port', type=int, default=8001)
     parser.add_argument('--token', type=str, required=True)
     parser.add_argument('--desktop-mode', type=str, default='false')  # Only true in packaged Tauri builds
+    parser.add_argument('--app-version', type=str, default='development')
     return parser.parse_args()
 
 # Set environment for PyInstaller
@@ -101,6 +102,7 @@ if __name__ == "__main__":
         # Set Env vars BEFORE importing app
         os.environ['DESKTOP_MODE'] = args.desktop_mode
         os.environ['DESKTOP_TOKEN'] = args.token
+        os.environ['K24_DESKTOP_VERSION'] = args.app_version
         
         # DEBUG mode MUST be set explicitly via environment variables or .env file
         # We do NOT auto-enable DEBUG for non-frozen builds to prevent accidental
@@ -110,7 +112,7 @@ if __name__ == "__main__":
         # Setup logging
         logger = setup_logging()
         
-        logger.info(f"Arguments received: port={args.port}, desktop_mode={args.desktop_mode}")
+        logger.info(f"Arguments received: port={args.port}, desktop_mode={args.desktop_mode}, app_version={args.app_version}")
         logger.info(f"Token: {args.token[:8]}...")
         
         print(f"[INFO] Starting K24 Backend Sidecar on 127.0.0.1:{args.port}...")

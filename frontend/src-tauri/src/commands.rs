@@ -1,8 +1,7 @@
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use uuid::Uuid;
-use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 
@@ -16,11 +15,6 @@ pub struct BackendAuth {
 static BACKEND_STATE: Lazy<Mutex<Option<BackendAuth>>> = Lazy::new(|| Mutex::new(None));
 static BACKEND_PROCESS: Lazy<Mutex<Option<CommandChild>>> = Lazy::new(|| Mutex::new(None));
 
-fn get_backend_url() -> Option<String> {
-    let state = BACKEND_STATE.lock().ok()?;
-    state.as_ref().map(|s| format!("http://127.0.0.1:{}", s.port))
-}
-
 fn get_session_token() -> Option<String> {
     let state = BACKEND_STATE.lock().ok()?;
     state.as_ref().map(|s| s.session_token.clone())
@@ -28,6 +22,9 @@ fn get_session_token() -> Option<String> {
 
 #[tauri::command]
 pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, String> {
+    #[cfg(debug_assertions)]
+    let _ = &app_handle;
+
     // Check if backend is already running
     {
         let state = BACKEND_STATE.lock().map_err(|e| e.to_string())?;
@@ -76,7 +73,8 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
             .args(&[
                 "--port", &port.to_string(),
                 "--token", &session_token,
-                "--desktop-mode", "true"
+                "--desktop-mode", "true",
+                "--app-version", &app_handle.package_info().version.to_string()
             ])
             .spawn();
         
@@ -208,46 +206,11 @@ pub fn get_backend_status() -> Result<serde_json::Value, String> {
     }
 }
 
-#[tauri::command]
-pub async fn check_updates(app: AppHandle) -> Result<String, String> {
-    if let Some(updater) = app.updater().ok() {
-        match updater.check().await {
-            Ok(Some(update)) => Ok(format!("Update available: v{}", update.version)),
-            Ok(None) => Ok("Up to date".to_string()),
-            Err(e) => Err(format!("Check failed: {}", e)),
-        }
-    } else {
-        Err("Updater not initialized".to_string())
-    }
-}
-
-#[tauri::command]
-pub async fn install_update(app: AppHandle) -> Result<String, String> {
-    if let Some(updater) = app.updater().ok() {
-        match updater.check().await {
-            Ok(Some(update)) => {
-                update.download_and_install(|_chunk, _total| {}, || {}).await.map_err(|e| e.to_string())?;
-                Ok("Update installed".to_string())
-            }
-            Ok(None) => Ok("No update".to_string()),
-            Err(e) => Err(e.to_string())
-        }
-    } else {
-        Err("Updater not initialized".to_string())
-    }
-}
-
-#[tauri::command]
-pub async fn restart_app(app: AppHandle) -> Result<(), String> {
-    app.restart();
-    Ok(())
-}
-
 /// Stops the backend sidecar process (used on app shutdown)
 pub fn stop_backend() {
     log::info!("Stopping backend sidecar...");
     if let Ok(mut process) = BACKEND_PROCESS.lock() {
-        if let Some(mut child) = process.take() {
+        if let Some(child) = process.take() {
             match child.kill() {
                 Ok(_) => log::info!("Backend process terminated successfully"),
                 Err(e) => log::error!("Failed to kill backend process: {}", e),

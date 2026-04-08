@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { Toaster } from "@/components/ui/toaster";
-import { UpdateNotification } from "@/components/UpdateNotification";
 import { UserProvider } from "@/contexts/UserContext";
 import { SidebarProvider, useSidebar } from "@/contexts/SidebarContext";
 import { ChatProvider } from "@/contexts/ChatContext";
@@ -45,7 +44,6 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
                 )}
             </div>
             <Toaster />
-            <UpdateNotification />
         </div>
     );
 }
