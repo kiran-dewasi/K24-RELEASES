@@ -137,3 +137,7 @@ if __name__ == "__main__":
         # Keep process alive for 30 seconds so Rust can read the error
         time.sleep(30)
         sys.exit(1)
+
+        # Keep process alive so Tauri / Rust side can read the log
+        time.sleep(30)
+        sys.exit(1)

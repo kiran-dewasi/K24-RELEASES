@@ -28,6 +28,7 @@ hidden_imports += [
     'starlette.middleware',
     'starlette.middleware.cors',
     # App modules
+    'loader',
     'difflib',
     'sqlite3',
     'xml.etree.ElementTree',
@@ -78,6 +79,7 @@ hidden_imports += collect_submodules('backend.gemini')
 datas = [
     ('.env', '.'),
     ('config/cloud.json', 'config'),  # Bundle config file
+    ('loader.py', '.'),               # local loader module (needed by api.py)
 ]
 
 a = Analysis(

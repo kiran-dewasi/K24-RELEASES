@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, Iterable
 import pandas as pd
-from .loader import LedgerLoader
+from loader import LedgerLoader
 from agent import TallyAuditAgent
 from tally_connector import TallyConnector, get_customer_details
 import crud

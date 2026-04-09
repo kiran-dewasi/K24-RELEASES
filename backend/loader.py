@@ -1,4 +1,4 @@
-﻿import pandas as pd
+import pandas as pd
 from typing import Optional
 from tally_connector import TallyConnector
 import logging
