@@ -204,6 +204,12 @@ export default function SubscribeModal({ plan, onClose }: Props) {
                 // Ignore localStorage errors
             }
 
+            if (!existingTenantId) {
+                setError("Please log in to your K24 account before subscribing.");
+                setLoading(false);
+                return;
+            }
+
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             const token = localStorage.getItem("k24_token");
             if (token) {

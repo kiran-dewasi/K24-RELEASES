@@ -37,12 +37,11 @@ async def create_payment_link(req: CreatePaymentLinkRequest):
         raise HTTPException(status_code=404, detail="Plan not found")
     plan = res.data[0]
     
-    amount = float(plan.get("price_monthly_paise") or 0)
+    annual_base_paise = int(plan.get("price_monthly_paise") or 0)
+    amount = int(annual_base_paise * 1.18)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid plan amount")
-    
-    # amount is already in paise
-    amount_paise = int(amount)
+
     ref_id = f"{req.tenant_id}_{int(time.time())}"
     
     # Step 1: Look up user_id from users_profile table
@@ -62,11 +61,11 @@ async def create_payment_link(req: CreatePaymentLinkRequest):
     sub_id = sub_insert.data[0]["id"] if sub_insert.data else None
     
     payload: dict[str, Any] = {
-        "amount": amount_paise,
+        "amount": amount,
         "currency": "INR",
         "accept_partial": False,
         "reference_id": ref_id,
-        "description": f"Subscription: {plan.get('display_name', req.plan_id)}",
+        "description": f"{plan.get('display_name', req.plan_id)} Annual Subscription incl. 18% GST",
         "customer": {},
         "notes": {
             "tenant_id": req.tenant_id,
