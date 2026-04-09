@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { X, ArrowLeft, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { type Plan } from "@/lib/plans-config";
 import { useUser } from "@/contexts/UserContext";
 
@@ -177,7 +177,7 @@ function DoneStep({ plan, onClose }: { plan: Plan; onClose: () => void }) {
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 export default function SubscribeModal({ plan, onClose }: Props) {
-    const { user } = useUser();
+    const { user, refreshUser } = useUser();
     const [step, setStep] = useState<Step>("form");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -200,7 +200,7 @@ export default function SubscribeModal({ plan, onClose }: Props) {
                     const parsed = JSON.parse(userData);
                     existingTenantId = parsed.tenant_id || null;
                 }
-            } catch (e) {
+            } catch {
                 // Ignore localStorage errors
             }
 
@@ -241,11 +241,38 @@ export default function SubscribeModal({ plan, onClose }: Props) {
                 window.open(paymentLinkUrl, "_blank");
                 setStep("done");
             }, 800);
-        } catch (e: any) {
-            setError(e.message);
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (step !== "done") return;
+
+        let cancelled = false;
+        const pollForActivation = async () => {
+            if (cancelled) return;
+            try {
+                await refreshUser();
+            } catch {
+                // Ignore refresh failures here; we'll try again on the next tick.
+            }
+        };
+
+        void pollForActivation();
+        const interval = window.setInterval(pollForActivation, 5000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [step, refreshUser]);
+
+    useEffect(() => {
+        if (step === "done" && user?.subscription_status === "active") {
+            onClose();
+        }
+    }, [step, user?.subscription_status, onClose]);
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

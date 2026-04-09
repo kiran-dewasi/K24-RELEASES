@@ -216,7 +216,7 @@ def check_subscription_active(tenant_id: str = Depends(get_current_tenant_id)):
                 if status_str == "expired":
                     raise HTTPException(status_code=403, detail="Subscription expired")
 
-                if trial_ends_str:
+                if status_str == "trial" and trial_ends_str:
                     try:
                         trial_ends_dt = datetime.fromisoformat(trial_ends_str.replace('Z', '+00:00'))
                         if datetime.now(timezone.utc) > trial_ends_dt:

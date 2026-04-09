@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
-import { apiRequest } from "@/lib/api";
 
 const CLOUD_API = "https://weare-production.up.railway.app";
 
@@ -93,8 +92,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
             if (typeof window !== "undefined") {
                 localStorage.setItem("k24_user", JSON.stringify(data));
             }
-        } catch (err: any) {
-            const message = err?.message || "Failed to load user";
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to load user";
 
             // 401 is already handled by apiRequest (clears token + redirects to /login)
             if (!message.includes("Unauthorized")) {
@@ -130,7 +129,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
             fetchUser();
         };
         window.addEventListener("k24_paywall_triggered", handler);
-        return () => window.removeEventListener("k24_paywall_triggered", handler);
+        window.addEventListener("focus", handler);
+        document.addEventListener("visibilitychange", handler);
+        return () => {
+            window.removeEventListener("k24_paywall_triggered", handler);
+            window.removeEventListener("focus", handler);
+            document.removeEventListener("visibilitychange", handler);
+        };
     }, [fetchUser]);
 
     return (
