@@ -60,10 +60,25 @@ jobs:
           Test-Path frontend/src-tauri/binaries/k24-backend-x86_64-pc-windows-msvc.exe
           Test-Path frontend/src-tauri/binaries/k24-listener-x86_64-pc-windows-msvc.exe
 
+      - name: Validate updater signing key input
+        run: |
+          $key = $env:TAURI_SIGNING_PRIVATE_KEY
+          if ([string]::IsNullOrWhiteSpace($key)) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is empty"
+          }
+          $trimmed = $key.Trim()
+          $hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($trimmed))
+          $hash = ([System.BitConverter]::ToString($hashBytes)).Replace("-", "").ToLowerInvariant()
+          $hasWhitespace = [regex]::IsMatch($key, "\s")
+          Write-Host "signing-key-length=$($trimmed.Length)"
+          Write-Host "signing-key-sha256=$hash"
+          Write-Host "signing-key-has-whitespace=$hasWhitespace"
+
       - name: Build installers, sign updater bundles, and publish release assets
         uses: tauri-apps/tauri-action@v0.5.23
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_CI }}
         with:
           projectPath: frontend
           tagName: ${{ github.ref_name }}
