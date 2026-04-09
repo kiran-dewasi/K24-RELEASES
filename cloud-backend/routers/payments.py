@@ -30,6 +30,108 @@ def _first_dict(*values: Any) -> dict[str, Any]:
             return value
     return {}
 
+
+def _fetch_single_row(sb, table_name: str, select_clause: str, filters: list[tuple[str, Any]]) -> Optional[dict[str, Any]]:
+    query = sb.table(table_name).select(select_clause)
+    for field, value in filters:
+        query = query.eq(field, value)
+    result = query.limit(1).execute()
+    rows = result.data or []
+    return rows[0] if rows else None
+
+
+def _activation_is_complete(sb, tenant_id: str, plan_id: str) -> bool:
+    tenant_config = _fetch_single_row(
+        sb,
+        "tenant_config",
+        "subscription_status, subscription_ends_at",
+        [("tenant_id", tenant_id)],
+    )
+    if not tenant_config or tenant_config.get("subscription_status") != "active":
+        return False
+
+    active_cycle = _fetch_single_row(
+        sb,
+        "billing_cycles",
+        "id, plan_id, status",
+        [("tenant_id", tenant_id), ("status", "active")],
+    )
+    if not active_cycle or active_cycle.get("plan_id") != plan_id:
+        return False
+
+    summary = _fetch_single_row(
+        sb,
+        "tenant_usage_summary",
+        "id",
+        [("billing_cycle_id", active_cycle["id"])],
+    )
+    return summary is not None
+
+
+def _ensure_paid_billing_cycle(
+    sb,
+    tenant_id: str,
+    plan_id: str,
+    max_credits: int,
+    now_iso: str,
+    cycle_end_iso: str,
+) -> dict[str, Any]:
+    active_cycle = _fetch_single_row(
+        sb,
+        "billing_cycles",
+        "id, plan_id, status, max_credits, cycle_start, cycle_end",
+        [("tenant_id", tenant_id), ("status", "active")],
+    )
+    if active_cycle and active_cycle.get("plan_id") == plan_id:
+        return active_cycle
+
+    if active_cycle:
+        sb.table("billing_cycles").update({
+            "status": "expired"
+        }).eq("tenant_id", tenant_id).eq("status", "active").execute()
+
+    cycle_insert = sb.table("billing_cycles").insert({
+        "tenant_id": tenant_id,
+        "plan_id": plan_id,
+        "cycle_start": now_iso,
+        "cycle_end": cycle_end_iso,
+        "status": "active",
+        "max_credits": max_credits,
+    }).execute()
+    if cycle_insert.data:
+        return cycle_insert.data[0]
+
+    return _fetch_single_row(
+        sb,
+        "billing_cycles",
+        "id, plan_id, status, max_credits, cycle_start, cycle_end",
+        [("tenant_id", tenant_id), ("status", "active")],
+    ) or {}
+
+
+def _ensure_usage_summary(sb, tenant_id: str, billing_cycle_id: str) -> None:
+    existing_summary = _fetch_single_row(
+        sb,
+        "tenant_usage_summary",
+        "id",
+        [("billing_cycle_id", billing_cycle_id)],
+    )
+    if existing_summary:
+        return
+
+    sb.table("tenant_usage_summary").insert({
+        "tenant_id": tenant_id,
+        "billing_cycle_id": billing_cycle_id,
+        "credits_used_total": 0,
+        "credits_used_voucher": 0,
+        "credits_used_document": 0,
+        "credits_used_message": 0,
+        "events_count_total": 0,
+        "events_count_voucher": 0,
+        "events_count_document": 0,
+        "events_count_message": 0,
+    }).execute()
+
 class CreatePaymentLinkRequest(BaseModel):
     tenant_id: str
     plan_id: str
@@ -193,18 +295,20 @@ async def razorpay_webhook(request: Request):
     # Idempotency check using subscription_id from notes
     sub_id = notes.get("subscription_id")
     if sub_id:
-        sub_res = sb.table("subscriptions").select("id,status").eq("id", sub_id).limit(1).execute()
+        sub_res = sb.table("subscriptions").select("id,status,tenant_id,plan,user_id").eq("id", sub_id).limit(1).execute()
     else:
-        sub_res = sb.table("subscriptions").select("id,status").eq("tenant_id", tenant_id).eq("status","pending").order("created_at", desc=True).limit(1).execute()
+        sub_res = sb.table("subscriptions").select("id,status,tenant_id,plan,user_id").eq("tenant_id", tenant_id).eq("status","pending").order("created_at", desc=True).limit(1).execute()
 
-    if sub_res.data and sub_res.data[0].get("status") == "paid":
+    sub_row = sub_res.data[0] if sub_res.data else None
+
+    if sub_row and sub_row.get("status") == "paid" and _activation_is_complete(sb, tenant_id, plan_id):
         return {"ok": True, "msg": "Already processed"}
 
     # Update subscription to paid
-    if sub_res.data:
+    if sub_row and sub_row.get("status") != "paid":
         sb.table("subscriptions").update({
             "status": "paid"
-        }).eq("id", sub_res.data[0]["id"]).execute()
+        }).eq("id", sub_row["id"]).execute()
         
     now = datetime.now(timezone.utc)
     cycle_end = now + timedelta(days=365)
@@ -218,7 +322,6 @@ async def razorpay_webhook(request: Request):
     }).eq("tenant_id", tenant_id).execute()
 
     # C. Upsert tenant_plans
-    # Check if a row already exists for this tenant
     existing_plan = sb.table("tenant_plans").select("id").eq("tenant_id", tenant_id).limit(1).execute()
     if existing_plan.data:
         # Update the existing row
@@ -238,38 +341,21 @@ async def razorpay_webhook(request: Request):
             "current_period_start": now_iso,
             "current_period_end": cycle_end_iso
         }).execute()
-        
-    # D. Expire old active billing_cycles for tenant
-    sb.table("billing_cycles").update({
-        "status": "expired"
-    }).eq("tenant_id", tenant_id).eq("status", "active").execute()
-    
-    # E. Create new active billing_cycle
-    # Assume yearly only; billing cycle always 1 year on paid activation
-    cycle_insert = sb.table("billing_cycles").insert({
-        "tenant_id": tenant_id,
-        "plan_id": plan_id,
-        "cycle_start": now_iso,
-        "cycle_end": cycle_end_iso,
-        "status": "active",
-        "max_credits": max_credits
-    }).execute()
-    
-    # Insert new tenant_usage_summary row
-    if cycle_insert.data:
-        new_cycle_id = cycle_insert.data[0]["id"]
-        sb.table("tenant_usage_summary").insert({
-            "tenant_id": tenant_id,
-            "billing_cycle_id": new_cycle_id,
-            "credits_used_total": 0,
-            "credits_used_voucher": 0,
-            "credits_used_document": 0,
-            "credits_used_message": 0,
-            "events_count_total": 0,
-            "events_count_voucher": 0,
-            "events_count_document": 0,
-            "events_count_message": 0
-        }).execute()
+
+    # D. Create or reuse the paid billing cycle for this tenant
+    # Assume yearly only; billing cycle always 1 year on paid activation.
+    cycle_row = _ensure_paid_billing_cycle(
+        sb=sb,
+        tenant_id=tenant_id,
+        plan_id=plan_id,
+        max_credits=max_credits,
+        now_iso=now_iso,
+        cycle_end_iso=cycle_end_iso,
+    )
+
+    # E. Initialize usage summary for the active cycle
+    if cycle_row.get("id"):
+        _ensure_usage_summary(sb, tenant_id, cycle_row["id"])
 
     logger.info(
         "Razorpay webhook processed: event=%s tenant_id=%s plan_id=%s payment_id=%s",
