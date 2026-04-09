@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiRequest } from "@/lib/api";
 
 interface ConnectDeviceProps {
     onAuthenticated: () => void;
@@ -40,8 +41,6 @@ type DeviceRegisterResponse = {
     license_key: string;
     tenant_id?: string | null;
 };
-
-const CLOUD_API = "https://weare-production.up.railway.app";
 
 const APP_VERSION = "1.0.1";
 
@@ -112,60 +111,45 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
         };
     }, [signupForm]);
 
-    async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
-        const response = await fetch(`${CLOUD_API}${path}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-
-        const data = await response
-            .json()
-            .catch(() => ({ detail: "Request failed" }));
-
-        if (!response.ok) {
-            throw new Error(
-                typeof data?.detail === "string"
-                    ? data.detail
-                    : `Request failed with status ${response.status}`
-            );
-        }
-
-        return data as T;
-    }
-
     async function completeDeviceAuth(authData: AuthResponse) {
         const deviceId = getOrCreateDeviceId();
         const activatedUserId = String(authData.user.id);
 
-        const deviceData = await postJson<DeviceRegisterResponse>("/api/devices/register", {
-            device_id: deviceId,
-            user_id: activatedUserId,
-            app_version: APP_VERSION,
-        });
-
-        const activatedTenantId = deviceData.tenant_id ?? authData.user.tenant_id ?? null;
-
-        localStorage.setItem("k24_token", authData.access_token);
-        localStorage.setItem("k24_license_key", deviceData.license_key);
-        localStorage.setItem(
-            "k24_user",
-            JSON.stringify({
-                id: activatedUserId,
+        try {
+            // Use apiRequest for secure routing (Cloud)
+            const deviceData = await apiRequest<DeviceRegisterResponse>("/api/devices/register", "POST", {
+                device_id: deviceId,
                 user_id: activatedUserId,
-                tenant_id: activatedTenantId,
-            })
-        );
-        localStorage.setItem("k24_user_id", activatedUserId);
+                app_version: APP_VERSION,
+            });
 
-        document.cookie = `k24_token=${authData.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+            if (!deviceData || !deviceData.license_key) {
+                throw new Error("Failed to register device");
+            }
 
-        setStatus("success");
-        window.setTimeout(() => {
-            onAuthenticated();
-        }, 900);
+            const activatedTenantId = deviceData.tenant_id ?? authData.user.tenant_id ?? null;
+
+            localStorage.setItem("k24_token", authData.access_token);
+            localStorage.setItem("k24_license_key", deviceData.license_key);
+            localStorage.setItem(
+                "k24_user",
+                JSON.stringify({
+                    id: activatedUserId,
+                    user_id: activatedUserId,
+                    tenant_id: activatedTenantId,
+                })
+            );
+            localStorage.setItem("k24_user_id", activatedUserId);
+
+            document.cookie = `k24_token=${authData.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+
+            setStatus("success");
+            window.setTimeout(() => {
+                onAuthenticated();
+            }, 900);
+        } catch (err: any) {
+            throw err;
+        }
     }
 
     function getErrorMessage(error: unknown, fallback: string) {
@@ -186,7 +170,8 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
         setStatus("submitting");
 
         try {
-            const authData = await postJson<AuthResponse>("/api/auth/login", {
+            // Use apiRequest for secure routing (Cloud)
+            const authData = await apiRequest<AuthResponse>("/api/auth/login", "POST", {
                 email: loginForm.email.trim(),
                 password: loginForm.password,
             });
@@ -204,7 +189,8 @@ export default function ConnectDevice({ onAuthenticated }: ConnectDeviceProps) {
         setStatus("submitting");
 
         try {
-            const authData = await postJson<AuthResponse>("/api/auth/register", signupPayload);
+            // Use apiRequest for secure routing (Cloud)
+            const authData = await apiRequest<AuthResponse>("/api/auth/register", "POST", signupPayload);
             await completeDeviceAuth(authData);
         } catch (err: unknown) {
             setStatus("idle");

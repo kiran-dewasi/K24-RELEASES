@@ -5,9 +5,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Mail, ArrowLeft, CheckCircle } from "lucide-react";
+import { apiRequest } from "@/lib/api";
 import Link from "next/link";
-
-const CLOUD_API = "https://weare-production.up.railway.app";
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
@@ -21,20 +20,11 @@ export default function ForgotPasswordPage() {
         setError("");
 
         try {
-            const data = await fetch(`${CLOUD_API}/api/auth/forgot-password`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email }),
-            });
-
-            if (!data.ok) {
-                const err = await data.json().catch(() => ({}));
-                throw new Error(err.detail || "Request failed");
-            }
-
+            // Use apiRequest for secure routing (Cloud)
+            await apiRequest("/api/auth/forgot-password", "POST", { email });
             setSent(true);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Network error. Please try again.");
+        } catch (err: any) {
+            setError(err.message || "Network error. Please try again.");
         } finally {
             setLoading(false);
         }

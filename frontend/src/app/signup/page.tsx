@@ -1,13 +1,12 @@
 "use client";
 
-const CLOUD_API = "https://weare-production.up.railway.app";
-
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Lock, Mail, User, Building, ArrowRight, CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { apiRequest } from "@/lib/api";
 import Link from "next/link";
 
 export default function SignupPage() {
@@ -35,31 +34,18 @@ export default function SignupPage() {
                 username: formData.username || formData.email.split('@')[0]
             };
 
-            console.log("IS TAURI:", typeof window !== 'undefined' && 
-              !!(window as any).__TAURI_INTERNALS__)
-            console.log("IS TAURI DEV:", process.env.NODE_ENV)
-            console.log("CALLING URL:", "https://weare-production.up.railway.app")
-
-            const response = await fetch(`${CLOUD_API}/api/auth/register`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail || "Registration failed");
-            }
-            const data = await response.json();
+            // Use apiRequest for secure routing (Cloud)
+            const data = await apiRequest("/api/auth/register", "POST", payload);
 
             // Auto-login logic
-            if (data.access_token) {
+            if (data && data.access_token) {
                 localStorage.setItem("k24_token", data.access_token);
                 localStorage.setItem("k24_user", JSON.stringify(data.user));
                 document.cookie = `k24_token=${data.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
                 setSuccess(true);
                 setTimeout(() => {
-                    router.push("/daybook");
+                    router.push("/");
                 }, 1500);
             } else {
                 // If email verification is required (no token returned immediately)
@@ -67,18 +53,7 @@ export default function SignupPage() {
             }
 
         } catch (err: any) {
-            // Handle different error types properly
-            let errorMessage = "Failed to create account";
-            if (typeof err === 'string') {
-                errorMessage = err;
-            } else if (err?.message) {
-                errorMessage = err.message;
-            } else if (err?.detail) {
-                errorMessage = err.detail;
-            } else if (typeof err === 'object') {
-                errorMessage = JSON.stringify(err);
-            }
-            setError(errorMessage);
+            setError(err.message || "Failed to create account");
         } finally {
             setLoading(false);
         }

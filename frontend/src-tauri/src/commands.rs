@@ -101,7 +101,13 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
                 let max_attempts = 10;
 
                 while attempts < max_attempts {
-                    match reqwest::get(&health_url).await {
+                    // Use a client with a timeout for the health check
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build()
+                        .unwrap_or_default();
+
+                    match client.get(&health_url).send().await {
                         Ok(response) => {
                             if response.status().is_success() {
                                 log::info!("Backend health check PASSED ✓");
@@ -146,22 +152,36 @@ pub async fn backend_request(
     body: Option<String>,
     auth_token: Option<String>,
 ) -> Result<String, String> {
-    let is_tally_endpoint = endpoint.starts_with("/api/tally") || 
+    let port = {
+        let state = BACKEND_STATE.lock().map_err(|e| e.to_string())?;
+        state.as_ref().map(|s| s.port).unwrap_or(8001)
+    };
+
+    let is_local_endpoint = endpoint.starts_with("/api/tally") || 
                             endpoint.starts_with("/api/vouchers") || 
                             endpoint.starts_with("/api/ledgers") || 
                             endpoint.starts_with("/api/reports") || 
-                            endpoint.starts_with("/api/sync");
+                            endpoint.starts_with("/api/sync") ||
+                            endpoint.starts_with("/api/setup") ||
+                            endpoint.starts_with("/api/health") ||
+                            endpoint.starts_with("/api/contacts") ||
+                            endpoint.starts_with("/api/customers") ||
+                            endpoint.starts_with("/api/dashboard") ||
+                            endpoint.starts_with("/api/inventory") ||
+                            endpoint.starts_with("/api/items") ||
+                            endpoint.starts_with("/api/search");
 
-    let base_url = if is_tally_endpoint {
-        "http://127.0.0.1:8001"
+    let base_url = if is_local_endpoint {
+        format!("http://127.0.0.1:{}", port)
     } else {
-        "https://weare-production.up.railway.app"
+        "https://weare-production.up.railway.app".to_string()
     };
 
     let url = format!("{}{}", base_url, endpoint);
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(false)
         .use_rustls_tls()
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to build client: {}", e))?;
     let method_parsed: reqwest::Method = method.parse()

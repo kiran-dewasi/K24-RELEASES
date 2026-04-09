@@ -4,8 +4,7 @@
 import { useEffect, useState } from "react";
 import ConnectDevice from "./ConnectDevice";
 import { Loader2 } from "lucide-react";
-
-const API_BASE = "https://weare-production.up.railway.app";
+import { apiRequest } from "@/lib/api";
 
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
     const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
@@ -49,14 +48,13 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
             if (!license || !deviceId) return;
 
             try {
-                const response = await fetch(
-                    `${API_BASE}/api/devices/validate?license_key=${license}&device_id=${deviceId}`
+                // Use apiRequest for secure routing (Cloud)
+                const data = await apiRequest(
+                    `/api/devices/validate?license_key=${license}&device_id=${deviceId}`,
+                    "GET"
                 );
-                if (!response.ok) return;
 
-                const data = await response.json();
-
-                if (!data.valid) {
+                if (data && !data.valid) {
                     console.warn("License validation failed:", data.reason);
                     localStorage.removeItem("k24_license_key");
                     setIsAuthorized(false);
