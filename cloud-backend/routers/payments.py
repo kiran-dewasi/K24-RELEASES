@@ -17,7 +17,18 @@ router = APIRouter()
 
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
+SUPPORTED_WEBHOOK_EVENTS = {"payment_link.paid", "payment.captured"}
+
+
+def _get_razorpay_webhook_secret() -> Optional[str]:
+    return os.getenv("RAZORPAY_WEBHOOK_SECRET")
+
+
+def _first_dict(*values: Any) -> dict[str, Any]:
+    for value in values:
+        if isinstance(value, dict):
+            return value
+    return {}
 
 class CreatePaymentLinkRequest(BaseModel):
     tenant_id: str
@@ -116,19 +127,22 @@ async def create_payment_link(req: CreatePaymentLinkRequest):
 async def razorpay_webhook(request: Request):
     raw_body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature")
+    webhook_secret = _get_razorpay_webhook_secret()
     
-    if not signature or not RAZORPAY_WEBHOOK_SECRET:
+    if not signature or not webhook_secret:
         raise HTTPException(status_code=400, detail="Missing signature or internal secret misconfigured")
     
     # Validate Signature
     expected_signature = hmac.new(
-        RAZORPAY_WEBHOOK_SECRET.encode(),
+        webhook_secret.encode("utf-8"),
         raw_body,
         hashlib.sha256
     ).hexdigest()
     
     if not hmac.compare_digest(expected_signature, signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
+
+    logger.info("Razorpay webhook signature verified")
         
     try:
         payload = json.loads(raw_body)
@@ -136,28 +150,36 @@ async def razorpay_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
         
     event = payload.get("event")
-    # Only handle successful payment_link paid events
-    if event != "payment_link.paid":
+    logger.info("Razorpay webhook received: event=%s", event)
+    # Only handle successful payment events that can complete a payment-link purchase.
+    if event not in SUPPORTED_WEBHOOK_EVENTS:
+        logger.info("Razorpay webhook ignored: event=%s", event)
         return {"ok": True, "msg": f"Ignored event: {event}"}
-        
-    entity = payload.get("payload", {}).get("payment_link", {}).get("entity", {})
-    payment_link_id = entity.get("id")
-    
-    payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+
+    event_payload = payload.get("payload", {})
+    payment_link_entity = _first_dict(
+        event_payload.get("payment_link", {}).get("entity"),
+        event_payload.get("order", {}).get("entity"),
+    )
+    payment_entity = _first_dict(event_payload.get("payment", {}).get("entity"))
     payment_id = payment_entity.get("id")
-    
-    notes = entity.get("notes", {})
+
+    notes = _first_dict(
+        payment_link_entity.get("notes"),
+        payment_entity.get("notes"),
+        event_payload.get("order", {}).get("entity", {}).get("notes"),
+    )
     tenant_id = notes.get("tenant_id")
     plan_id = notes.get("plan_id")
     
     if not payment_id or not tenant_id or not plan_id:
         # Fallback to payment entity notes
-        notes = payment_entity.get("notes", {})
+        notes = _first_dict(payment_entity.get("notes"))
         tenant_id = tenant_id or notes.get("tenant_id")
         plan_id = plan_id or notes.get("plan_id")
         if not payment_id or not tenant_id or not plan_id:
             logger.error("Razorpay webhook missing critical fields")
-            return {"ok": True, "msg": "Missing required fields"}
+            raise HTTPException(status_code=400, detail="Missing required fields")
             
     sb = get_supabase_client()
     
@@ -165,7 +187,7 @@ async def razorpay_webhook(request: Request):
     plan_res = sb.table("plans").select("max_credits_per_cycle").eq("id", plan_id).execute()
     if not plan_res.data:
         logger.error(f"Razorpay webhook error: Plan not found: {plan_id}")
-        return {"ok": True, "msg": "Invalid plan"}
+        raise HTTPException(status_code=400, detail="Invalid plan")
     max_credits = int(plan_res.data[0].get("max_credits_per_cycle") or 0)
     
     # Idempotency check using subscription_id from notes
@@ -249,4 +271,11 @@ async def razorpay_webhook(request: Request):
             "events_count_message": 0
         }).execute()
 
+    logger.info(
+        "Razorpay webhook processed: event=%s tenant_id=%s plan_id=%s payment_id=%s",
+        event,
+        tenant_id,
+        plan_id,
+        payment_id,
+    )
     return {"ok": True}
