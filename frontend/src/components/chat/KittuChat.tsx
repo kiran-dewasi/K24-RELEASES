@@ -495,8 +495,7 @@ export function KittuChat() {
                     id: Date.now(), role: "assistant", timestamp: new Date(),
                     content: `✅ Voucher saved! Ref: ${result.tally_response?.raw ?? "Synced to Tally"}`,
                 }]);
-            }
-        } catch { /* handled */ }
+        } catch (error) { /* handled */ }
     };
 
     const handleCopy = (id: number, text: string) => {
