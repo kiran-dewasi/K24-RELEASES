@@ -80,8 +80,7 @@ async def register_device(
 
     tenant_id = getattr(user, 'tenant_id', None) if user else None
     if not tenant_id:
-        # Generate from user_id as fallback
-        tenant_id = f"TENANT-{str(user_id).replace('-', '')[:8].upper()}"
+        raise HTTPException(status_code=400, detail="User account has no tenant assigned. Contact support.")
 
     # Check if a license already exists for this device/user combo
     try:
@@ -123,6 +122,7 @@ async def register_device(
     device = DeviceLicense(
         license_key=license_key,
         user_id=user_id,
+        tenant_id=tenant_id,
         device_fingerprint=device_id,
         app_version=app_version,
         status="active",
