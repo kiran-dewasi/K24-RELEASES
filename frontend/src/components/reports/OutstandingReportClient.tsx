@@ -1,8 +1,7 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-
 import { useState, useEffect } from "react";
+import { apiRequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import MagicInput from "@/components/MagicInput";
 
@@ -21,14 +20,7 @@ export default function OutstandingReportClient() {
     useEffect(() => {
         const fetchBills = async () => {
             try {
-                const headers: Record<string, string> = { "x-api-key": "k24-secret-key-123" };
-                const token = localStorage.getItem("k24_token");
-                if (token) headers["Authorization"] = `Bearer ${token}`;
-
-                const res = await fetch(`${API_URL}/reports/outstanding`, {
-                    headers: headers
-                });
-                const data = await res.json();
+                const data = await apiRequest(`/reports/outstanding`);
                 setBills(data.bills || []);
             } catch (error) {
                 console.error("Failed to fetch bills", error);

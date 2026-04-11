@@ -1,6 +1,5 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, CheckCircle, ShieldAlert, FileText, RefreshCw, ArrowLeft, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { downloadReportFile } from "@/lib/fileDownload";
+import { apiRequest } from "@/lib/api";
 
 interface AuditIssue {
     type: string;
@@ -33,10 +33,7 @@ export default function AuditPage() {
     const fetchAudit = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/audit/run`, {
-                headers: { "x-api-key": "k24-secret-key-123" }
-            });
-            const data = await res.json();
+            const data = await apiRequest(`/audit/run`);
             setReport(data);
         } catch (error) {
             console.error("Audit failed", error);

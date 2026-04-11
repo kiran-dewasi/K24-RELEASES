@@ -1,8 +1,7 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-
 import { useState, useEffect } from "react";
+import { apiRequest } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,18 +41,10 @@ export default function ContactsPage() {
             const headers: Record<string, string> = { "x-api-key": "k24-secret-key-123" };
             if (token) headers["Authorization"] = `Bearer ${token}`;
 
-            const res = await fetch(`${API_URL}/contacts/detailed`, {
-                headers: headers
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                setContacts(data);
-                if (data.length > 0) {
-                    setSelectedContact(data[0]);
-                }
-            } else {
-                console.error("Failed to fetch contacts");
+            const data = await apiRequest(`/contacts/detailed`);
+            setContacts(data);
+            if (data.length > 0) {
+                setSelectedContact(data[0]);
             }
         } catch (error) {
             console.error("Error fetching contacts", error);

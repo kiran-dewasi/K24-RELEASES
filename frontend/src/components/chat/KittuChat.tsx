@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiClient, apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -362,9 +362,8 @@ export function KittuChat() {
         }]);
 
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/api/chat`, {
+            const res = await apiClient(`/api/chat`, {
                 method: "POST",
-                headers: API_CONFIG.getHeaders(),
                 body: JSON.stringify({ thread_id: threadId, message: text }),
             });
 
@@ -491,13 +490,8 @@ export function KittuChat() {
 
     const handleConfirmDraft = async (draft: any) => {
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/vouchers`, {
-                method: "POST", headers: API_CONFIG.getHeaders(),
-                body: JSON.stringify(draft),
-            });
-            const result = await res.json();
-            if (res.ok) {
-                setMessages(prev => [...prev, {
+            const result = await apiRequest(`/vouchers`, 'POST', draft);
+            setMessages(prev => [...prev, {
                     id: Date.now(), role: "assistant", timestamp: new Date(),
                     content: `✅ Voucher saved! Ref: ${result.tally_response?.raw ?? "Synced to Tally"}`,
                 }]);

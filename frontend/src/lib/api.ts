@@ -27,8 +27,19 @@ const isTauriDev = () => {
     return isTauri() && process.env.NODE_ENV === 'development';
 };
 
+// Cloud Routes configuration
+const CLOUD_ROUTES = [
+  '/api/auth',
+  '/api/devices', 
+  '/api/tenant',
+  '/api/admin',
+  '/api/payments',
+  '/api/subscriptions',
+  '/api/users'
+];
+
 // Development fallback configuration
-const DEV_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+const DEV_API_URL = 'http://127.0.0.1:8001';
 
 // API key for local backend routes that use Depends(get_api_key)
 // This matches API_KEY in backend/dependencies.py (env: API_KEY, default: 'k24-secret-key-123')
@@ -61,10 +72,12 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
     const silent401 = options?.silent401 ?? false;
     const authToken = getAuthToken();
+    const isCloudRoute = CLOUD_ROUTES.some(prefix => endpoint.startsWith(prefix));
 
     // In Tauri production build: use Rust backend_request command for security
     // In Tauri dev mode: fall through to direct HTTP (same as browser dev)
-    if (isTauri() && !isTauriDev()) {
+    // Cloud routes must go directly over HTTP to the backend URL
+    if (!isCloudRoute && isTauri() && !isTauriDev()) {
         try {
             const { invoke } = await import('@tauri-apps/api/core');
 
@@ -109,7 +122,11 @@ export async function apiRequest<T = any>(
         // Dev mode: route through Next.js proxy to avoid Tauri WebView fetch restrictions.
         // In plain browser (no Tauri), fetch directly to the backend.
         // Development / Tauri dev: Direct HTTP to backend
-        const url = endpoint.startsWith('http') ? endpoint : `${DEV_API_URL}${endpoint}`;
+        let baseUrl = DEV_API_URL;
+        if (isCloudRoute) {
+            baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://weare-production.up.railway.app';
+        }
+        const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -288,7 +305,12 @@ export const API_CONFIG = {
  * @deprecated Use apiRequest instead
  */
 export async function apiClient(endpoint: string, options: RequestInit = {}): Promise<Response> {
-    const url = endpoint.startsWith('http') ? endpoint : `${DEV_API_URL}${endpoint}`;
+    const isCloudRoute = CLOUD_ROUTES.some(prefix => endpoint.startsWith(prefix));
+    let baseUrl = DEV_API_URL;
+    if (isCloudRoute) {
+        baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://weare-production.up.railway.app';
+    }
+    const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
         ...API_CONFIG.getHeaders(),

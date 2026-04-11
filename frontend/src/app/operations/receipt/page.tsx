@@ -1,8 +1,7 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-
 import { useState, useEffect } from "react";
+import { apiRequest } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,10 +46,7 @@ export default function PremiumReceiptPage() {
 
         const timer = setTimeout(async () => {
             try {
-                const res = await fetch(`${API_URL}/ledgers/search?query=${partyQuery}`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
-                });
-                const data = await res.json();
+                const data = await apiRequest(`/ledgers/search?query=${partyQuery}`);
                 setPartySuggestions(data.matches || []);
             } catch (err) {
                 console.error("Failed to fetch suggestions", err);
@@ -69,10 +65,7 @@ export default function PremiumReceiptPage() {
 
         const fetchOutstanding = async () => {
             try {
-                const res = await fetch(`${API_URL}/bills/receivables`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
-                });
-                const data = await res.json();
+                const data = await apiRequest(`/bills/receivables`);
 
                 // Filter for this party
                 const partyBills = data.filter((b: OutstandingBill) =>
@@ -118,31 +111,18 @@ export default function PremiumReceiptPage() {
         const finalPartyName = formData.party_name || partyQuery;
 
         try {
-            const res = await fetch(`${API_URL}/operations/receipt`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": "k24-secret-key-123"
-                },
-                body: JSON.stringify({
+            await apiRequest(`/operations/receipt`, "POST", {
                     ...formData,
                     party_name: finalPartyName,
                     amount: parseFloat(formData.amount),
                     bank_cash_ledger: formData.deposit_to,
                     settled_bills: Array.from(selectedBills)
-                })
             });
 
-            const data = await res.json();
-
-            if (res.ok) {
-                alert(`✅ Receipt created for ₹${formData.amount}`);
-                router.push("/daybook");
-            } else {
-                setError(data.detail || "Failed to create receipt");
-            }
-        } catch (err) {
-            setError("Network error. Please try again.");
+            alert(`✅ Receipt created for ₹${formData.amount}`);
+            router.push("/daybook");
+        } catch (err: any) {
+            setError(err.message || "Network error. Please try again.");
         } finally {
             setSubmitting(false);
         }

@@ -1,8 +1,7 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-
 import { useState } from "react";
+import { apiRequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -23,27 +22,15 @@ export default function PaymentPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/operations/payment`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": "k24-secret-key-123"
-                },
-                body: JSON.stringify(formData)
-            });
+            await apiRequest(`/operations/payment`, "POST", formData);
 
-            if (res.ok) {
-                setSuccess(true);
-                setTimeout(() => {
-                    router.push("/daybook");
-                }, 2000);
-            } else {
-                const err = await res.json();
-                alert("Error: " + err.detail);
-            }
-        } catch (error) {
+            setSuccess(true);
+            setTimeout(() => {
+                router.push("/daybook");
+            }, 2000);
+        } catch (error: any) {
             console.error(error);
-            alert("Failed to create payment");
+            alert("Error: " + (error.message || "Failed to create payment"));
         } finally {
             setLoading(false);
         }

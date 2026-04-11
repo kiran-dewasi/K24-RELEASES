@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { apiRequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -20,8 +21,7 @@ function SearchContent() {
     useEffect(() => {
         if (query) {
             setLoading(true);
-            fetch(`http://127.0.0.1:8001/search?q=${query}`)
-                .then(res => res.json())
+            apiRequest(`/search?q=${query}`)
                 .then(data => {
                     setResults({
                         ledgers: data.ledgers || [],

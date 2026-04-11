@@ -8,21 +8,21 @@ export async function downloadReportFile({ slug, format, params }: DownloadFileO
     const endpointSuffix = format === "pdf" ? "export" : "export-excel";
     const ext = format === "pdf" ? "pdf" : "xlsx";
     
-    const backendBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8001';
-    
-    const url = new URL(`${backendBase}/reports/${slug}/${endpointSuffix}`);
-    
+    // We import apiClient specifically to handle getting raw responses and passing standard tokens
+    const { apiClient } = await import("@/lib/api");
+
+    let urlSuffix = `/reports/${slug}/${endpointSuffix}`;
     if (params) {
+        const queryParams = new URLSearchParams();
         Object.entries(params).forEach(([key, value]) => {
             if (value !== undefined && value !== null && value !== "") {
-                url.searchParams.append(key, value);
+                queryParams.append(key, value);
             }
         });
+        urlSuffix += `?${queryParams.toString()}`;
     }
 
-    const res = await fetch(url.toString(), {
-        headers: { "x-api-key": process.env.NEXT_PUBLIC_API_KEY || "k24-secret-key-123" }
-    });
+    const res = await apiClient(urlSuffix);
 
     if (!res.ok) {
         const errJson = await res.json().catch(() => null);

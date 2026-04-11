@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Sparkles, ArrowRight, Check, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FollowUpCard, PartySelectorCard, ItemSelectorCard } from "@/components/chat/ChatCards";
-import { api } from "@/lib/api";
+import { apiClient, apiRequest } from "@/lib/api";
 
 interface DraftVoucher {
     party_name: string;
@@ -129,12 +129,8 @@ export default function MagicInput({
         setLoading(true);
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001'}/api/chat`, {
+            const response = await apiClient(`/api/chat`, {
                 method: "POST",
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'k24-secret-key-123'
-                },
                 body: JSON.stringify({
                     thread_id: threadId || crypto.randomUUID(),
                     message: textToProcess
@@ -212,20 +208,15 @@ export default function MagicInput({
 
     const handleConfirmDraft = async (draft: DraftVoucher) => {
         try {
-            const res = await api.post("/vouchers");
-            const result = await res.json();
+            const result = await apiRequest(`/vouchers`, 'POST', draft);
 
-            if (res.ok) {
-                setMessages(prev => [...prev, {
-                    role: 'assistant',
-                    content: `Success! Voucher Created. Ref: ${result.tally_response?.raw || "Synced"}`,
-                    type: 'text'
-                }]);
-                // Trigger a refresh of the dashboard data
-                // window.location.reload(); // Don't reload, just show success
-            } else {
-                alert(`Error: ${result.message}`);
-            }
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `Success! Voucher Created. Ref: ${result.tally_response?.raw || "Synced"}`,
+                type: 'text'
+            }]);
+            // Trigger a refresh of the dashboard data
+            // window.location.reload(); // Don't reload, just show success
         } catch (err) {
             alert("Failed to connect to backend.");
         }

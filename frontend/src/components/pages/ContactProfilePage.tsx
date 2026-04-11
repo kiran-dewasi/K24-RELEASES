@@ -1,8 +1,7 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
-
 import { useState, useEffect, Suspense } from "react";
+import { apiRequest } from "@/lib/api";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,22 +40,11 @@ function ContactProfileContent() {
         const fetchData = async () => {
             try {
                 // Fetch vouchers
-                const vouchersRes = await fetch(`${API_URL}/ledgers/${encodeURIComponent(ledgerName)}/vouchers`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
-                });
-                const vouchersData = await vouchersRes.json();
+                const vouchersData = await apiRequest(`/ledgers/${encodeURIComponent(ledgerName)}/vouchers`);
                 setVouchers(vouchersData.vouchers || []);
 
                 // Fetch contact details
-                const detailsRes = await fetch(`${API_URL}/customer-details/`, {
-                    method: "POST",
-                    headers: {
-                        "x-api-key": "k24-secret-key-123",
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ name: ledgerName })
-                });
-                const detailsData = await detailsRes.json();
+                const detailsData = await apiRequest(`/customer-details/`, 'POST', { name: ledgerName });
                 setContactDetails({
                     name: ledgerName,
                     gstin: detailsData.details?.GSTIN,
