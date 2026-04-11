@@ -60,8 +60,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "http://localhost:1420",
+        "https://tauri.localhost",
+        "k24://localhost",
+        "tauri://localhost",
+        "https://api.k24.ai",
+        "https://k24.ai",
+        "https://www.k24.ai",
+        "http://localhost:3000",
+        "http://localhost:8080"
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -38,8 +38,12 @@ const CLOUD_ROUTES = [
   '/api/users'
 ];
 
+// Base URL configurations
+const CLOUD_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://weare-production.up.railway.app';
+const LOCAL_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+
 // Development fallback configuration
-const DEV_API_URL = 'http://127.0.0.1:8001';
+const DEV_API_URL = LOCAL_BASE_URL;
 
 // API key for local backend routes that use Depends(get_api_key)
 // This matches API_KEY in backend/dependencies.py (env: API_KEY, default: 'k24-secret-key-123')
@@ -122,10 +126,7 @@ export async function apiRequest<T = any>(
         // Dev mode: route through Next.js proxy to avoid Tauri WebView fetch restrictions.
         // In plain browser (no Tauri), fetch directly to the backend.
         // Development / Tauri dev: Direct HTTP to backend
-        let baseUrl = DEV_API_URL;
-        if (isCloudRoute) {
-            baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://weare-production.up.railway.app';
-        }
+        const baseUrl = isCloudRoute ? CLOUD_BASE_URL : LOCAL_BASE_URL;
         const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
         const headers: Record<string, string> = {
@@ -306,10 +307,7 @@ export const API_CONFIG = {
  */
 export async function apiClient(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const isCloudRoute = CLOUD_ROUTES.some(prefix => endpoint.startsWith(prefix));
-    let baseUrl = DEV_API_URL;
-    if (isCloudRoute) {
-        baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://weare-production.up.railway.app';
-    }
+    const baseUrl = isCloudRoute ? CLOUD_BASE_URL : LOCAL_BASE_URL;
     const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
