@@ -15,6 +15,11 @@ pub fn run() {
             commands::get_backend_status
         ])
         .setup(|app| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                #[cfg(debug_assertions)] // Only available if devtools feature is enabled
+                window.open_devtools();
+            }
             let handle = app.handle().clone();
             
             // Log startup
