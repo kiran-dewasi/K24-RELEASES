@@ -6,87 +6,227 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 block_cipher = None
 
-# Collect hidden imports
+# ─────────────────────────────────────────────────────────────
+# IMPORTANT: desktop_main.py lives inside backend/.
+# PyInstaller's cwd is backend/, so pathex must point there
+# explicitly so that all root-level local modules resolve.
+# ─────────────────────────────────────────────────────────────
+BACKEND_DIR = os.path.abspath(
+    os.path.join(SPECPATH)   # SPECPATH == directory containing this .spec file == backend/
+)
+
+# ─────────────────────────────────────────────────────────────
+# ROOT-LEVEL LOCAL MODULES  (files that live directly in
+# backend/ and are imported without a package prefix, e.g.
+#   from tally_connector import TallyConnector
+#   from loader import LedgerLoader
+#   from api import app
+# )
+# Every .py file at the root of backend/ that is imported
+# must be listed here so PyInstaller bundles it.
+# ─────────────────────────────────────────────────────────────
+ROOT_LOCAL_MODULES = [
+    'tally_connector',
+    'tally_engine',
+    'tally_reader',
+    'tally_xml_builder',
+    'tally_golden_xml',
+    'tally_live_update',
+    'tally_response_parser',
+    'tally_search',
+    'tally_preflight',
+    'tally_diagnostics',
+    'loader',
+    'api',
+    'auth',
+    'crud',
+    'logic',
+    'agent',
+    'agent_gemini',
+    'agent_intent',
+    'agent_orchestrator_v2',
+    'agent_error_handler',
+    'agent_errors',
+    'agent_response',
+    'agent_state',
+    'agent_system',
+    'agent_transaction',
+    'agent_validator',
+    'agent_intent_fixed',
+    'audit_engine',
+    'background_jobs',
+    'context_manager',
+    'dependencies',
+    'entity_extractor',
+    'graph',
+    'intent_recognizer',
+    'ledger_matcher',
+    'memory',
+    'orchestrator',
+    'self_healing',
+    'session_store',
+    'sync_engine',
+    'whatsapp_security',
+    'xml_generator',
+]
+
+# ─────────────────────────────────────────────────────────────
+# HIDDEN IMPORTS — third-party + sub-packages
+# ─────────────────────────────────────────────────────────────
 hidden_imports = []
-# Critical uvicorn imports that PyInstaller often misses
+
+# Root-level local modules (MUST come first)
+hidden_imports += ROOT_LOCAL_MODULES
+
+# uvicorn — PyInstaller misses many of these
 hidden_imports += [
     'uvicorn',
     'uvicorn.logging',
     'uvicorn.loops',
     'uvicorn.loops.auto',
+    'uvicorn.loops.asyncio',
     'uvicorn.protocols',
     'uvicorn.protocols.http',
     'uvicorn.protocols.http.auto',
+    'uvicorn.protocols.http.h11_impl',
+    'uvicorn.protocols.http.httptools_impl',
     'uvicorn.protocols.websockets',
     'uvicorn.protocols.websockets.auto',
+    'uvicorn.protocols.websockets.websockets_impl',
     'uvicorn.lifespan',
     'uvicorn.lifespan.on',
-    # FastAPI / Starlette
+    'uvicorn.lifespan.off',
+    'uvicorn.config',
+    'uvicorn.main',
+]
+hidden_imports += collect_submodules('uvicorn')
+
+# FastAPI / Starlette
+hidden_imports += [
     'fastapi',
     'starlette',
     'starlette.routing',
     'starlette.middleware',
     'starlette.middleware.cors',
-    # App modules
-    'loader',
-    'difflib',
+    'starlette.middleware.base',
+    'starlette.responses',
+    'starlette.requests',
+    'starlette.background',
+    'starlette.staticfiles',
+    'starlette.testclient',
+    'anyio',
+    'anyio._backends._asyncio',
+]
+hidden_imports += collect_submodules('fastapi')
+
+# Pydantic
+hidden_imports += [
+    'pydantic',
+    'pydantic.deprecated',
+    'pydantic.v1',
+]
+hidden_imports += collect_submodules('pydantic')
+
+# SQLAlchemy
+hidden_imports += collect_submodules('sqlalchemy')
+
+# Auth / crypto
+hidden_imports += collect_submodules('jose')
+hidden_imports += collect_submodules('bcrypt')
+hidden_imports += ['passlib', 'passlib.handlers', 'passlib.handlers.bcrypt']
+hidden_imports += collect_submodules('passlib')
+
+# Standard library gaps
+hidden_imports += [
     'sqlite3',
+    'difflib',
     'xml.etree.ElementTree',
-    # Data
+    'email',
+    'email.mime',
+    'email.mime.text',
+    'email.mime.multipart',
+    'multiprocessing.freeze_support',
+    '_multiprocessing',
+]
+
+# Data / ML
+hidden_imports += [
     'pandas',
-    'langchain',
-    'langchain_core',
-    'langchain_community',
-    # Supabase
+    'numpy',
+    'openpyxl',
+]
+
+# Reporting
+hidden_imports += [
+    'reportlab',
+]
+hidden_imports += collect_submodules('reportlab')
+
+# Supabase
+hidden_imports += [
     'supabase',
     'gotrue',
     'postgrest',
     'realtime',
     'storage3',
-    # Pydantic
-    'pydantic',
-    'pydantic.deprecated',
-    'pydantic.v1',
-    # Email / reporting
-    'reportlab',
-    'email',
-    'email.mime',
-    'email.mime.text',
-    'email.mime.multipart',
+    'httpx',
+    'httpcore',
 ]
-hidden_imports += collect_submodules('uvicorn')
-hidden_imports += collect_submodules('fastapi')
-hidden_imports += collect_submodules('sqlalchemy')
-hidden_imports += collect_submodules('pydantic')
-hidden_imports += collect_submodules('reportlab')
-hidden_imports += collect_submodules('jose')
-hidden_imports += collect_submodules('bcrypt')
-hidden_imports += ["python-multipart", "pandas", "tenacity", "requests"]
+hidden_imports += collect_submodules('supabase')
+
+# Requests / networking
+hidden_imports += [
+    'requests',
+    'certifi',
+    'charset_normalizer',
+    'urllib3',
+    'multipart',
+]
+
+# Google AI / LangChain
 hidden_imports += collect_submodules('google.generativeai')
-hidden_imports += collect_submodules('backend.routers')
-hidden_imports += collect_submodules('backend.services')
-hidden_imports += collect_submodules('backend.database')
-hidden_imports += collect_submodules('backend.compliance')
-hidden_imports += collect_submodules('backend.tools')
-hidden_imports += collect_submodules('backend.orchestration')
-hidden_imports += collect_submodules('backend.middleware')
-hidden_imports += collect_submodules('backend.ai_engine')
-hidden_imports += collect_submodules('backend.extraction')
-hidden_imports += collect_submodules('backend.classification')
-hidden_imports += collect_submodules('backend.gemini')
+hidden_imports += collect_submodules('langchain')
+hidden_imports += collect_submodules('langchain_core')
+hidden_imports += collect_submodules('langchain_community')
 
-# Data files to bundle
+# Misc
+hidden_imports += ['tenacity', 'python_multipart']
+
+# ─── Backend sub-packages ─────────────────────────────────────
+# Since pathex points to BACKEND_DIR, these are importable as
+# top-level names (e.g. `from routers.auth import router`)
+hidden_imports += collect_submodules('routers')
+hidden_imports += collect_submodules('services')
+hidden_imports += collect_submodules('database')
+hidden_imports += collect_submodules('compliance')
+hidden_imports += collect_submodules('tools')
+hidden_imports += collect_submodules('orchestration')
+hidden_imports += collect_submodules('middleware')
+hidden_imports += collect_submodules('ai_engine')
+hidden_imports += collect_submodules('extraction')
+hidden_imports += collect_submodules('classification')
+hidden_imports += collect_submodules('gemini')
+hidden_imports += collect_submodules('sync')
+hidden_imports += collect_submodules('credit_engine')
+
+# ─────────────────────────────────────────────────────────────
+# DATA FILES to bundle inside the executable
+# ─────────────────────────────────────────────────────────────
 datas = [
-    ('.env', '.'),
-    ('config/cloud.json', 'config'),  # Bundle config file
-    ('loader.py', '.'),               # local loader module (needed by api.py)
+    ('.env', '.'),                    # API keys / secrets
+    ('config/cloud.json', 'config'),  # Cloud routing config
+    ('loader.py', '.'),               # Explicit copy of loader (belt-and-suspenders)
 ]
 
+# ─────────────────────────────────────────────────────────────
+# ANALYSIS
+# pathex MUST include BACKEND_DIR so all local imports resolve
+# ─────────────────────────────────────────────────────────────
 a = Analysis(
-    ['desktop_main.py'],  # Correct entry point for desktop backend
-    pathex=[],
+    ['desktop_main.py'],
+    pathex=[BACKEND_DIR],
     binaries=[],
-    datas=datas, 
+    datas=datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
@@ -104,6 +244,7 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -120,7 +261,7 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,               # ← MUST be True so crash output is visible
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
