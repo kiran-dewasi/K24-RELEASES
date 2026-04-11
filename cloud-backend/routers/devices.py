@@ -27,11 +27,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Mocks for compatibility with legacy register_device signature
-# These allows the file to load even if backend.* modules are missing
-class DeviceLicense:
-    pass
-
+# Use actual DeviceLicense from models instead of mocks
+from database.models import DeviceLicense
 def get_api_key():
     pass
 
@@ -75,8 +72,8 @@ async def register_device(
     # Get user's tenant_id (critical for multi-tenancy)
     try:
         user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            # Try by google_api_key (which stores Supabase UUID)
+        if not user and hasattr(User, 'google_api_key'):
+            # Try by google_api_key only if it exists in the schema
             user = db.query(User).filter(User.google_api_key == user_id).first()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error while fetching user: {str(e)}")
