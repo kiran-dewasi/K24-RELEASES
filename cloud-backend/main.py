@@ -57,24 +57,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"error": "Internal server error", "detail": str(exc)}
     )
 
-# CORS Configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:1420",
-        "https://tauri.localhost",
-        "k24://localhost",
-        "tauri://localhost",
-        "https://api.k24.ai",
-        "https://k24.ai",
-        "https://www.k24.ai",
-        "http://localhost:3000",
-        "http://localhost:8080"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
 
 # Import and include cloud routers
 # NOTE: Some routers temporarily commented out until backend.* dependencies are refactored
@@ -95,6 +78,24 @@ app.include_router(whatsapp_cloud.router, prefix="/api/whatsapp/cloud", tags=["W
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 app.include_router(billing.router, prefix="/api/billing", tags=["Billing (internal)"])
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
+
+# CORS Configuration — MUST be added last so it executes first (FastAPI middleware is LIFO).
+# http://tauri.localhost is the origin sent by Tauri's WebView on Windows/Linux.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+        "http://localhost",
+        "http://localhost:3000",
+        "http://127.0.0.1",
+        "http://127.0.0.1:8001"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
