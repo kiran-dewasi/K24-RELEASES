@@ -41,6 +41,35 @@ const CLOUD_ROUTES = [
 // Development fallback configuration
 const DEV_API_URL = 'http://127.0.0.1:8001';
 
+// ── Dynamic port store ──────────────────────────────────────────────────────
+// Rust picks a random free port at startup. We cache it here so ALL code
+// paths (including the fetch() else-branch) connect to the right port instead
+// of always hitting the hardcoded 8001 fallback.
+let _runtimeLocalPort: number = 8001; // sane default for dev
+
+/**
+ * Call this once on app startup (e.g. in layout.tsx useEffect).
+ * Fetches the real sidecar port from Rust and stores it for all API calls.
+ */
+export async function initBackendPort(): Promise<void> {
+    if (!isTauri()) return; // no sidecar in plain browser
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const status = await invoke<{ running: boolean; port?: number }>('get_backend_status');
+        if (status?.port && status.port > 0) {
+            _runtimeLocalPort = status.port;
+            console.log(`[K24] Backend port resolved: ${_runtimeLocalPort}`);
+        }
+    } catch (e) {
+        console.warn('[K24] Could not resolve backend port, using default 8001', e);
+    }
+}
+
+/** Returns the current local backend base URL with the dynamic port. */
+function getLocalBaseUrl(): string {
+    return `http://127.0.0.1:${_runtimeLocalPort}`;
+}
+
 // API key for local backend routes that use Depends(get_api_key)
 // This matches API_KEY in backend/dependencies.py (env: API_KEY, default: 'k24-secret-key-123')
 const LOCAL_API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'k24-secret-key-123';
@@ -122,10 +151,10 @@ export async function apiRequest<T = any>(
         // Dev mode: route through Next.js proxy to avoid Tauri WebView fetch restrictions.
         // In plain browser (no Tauri), fetch directly to the backend.
         // Development / Tauri dev: Direct HTTP to backend
-        // FORCE HARDCODE FOR PRODUCTION RELIABILITY
+        // Use dynamic port from Rust sidecar (falls back to 8001 in dev)
         const baseUrl = isCloudRoute
             ? "https://weare-production.up.railway.app"
-            : "http://127.0.0.1:8001";
+            : getLocalBaseUrl();
 
         const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
@@ -308,10 +337,10 @@ export const API_CONFIG = {
 export async function apiClient(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const isCloudRoute = CLOUD_ROUTES.some(prefix => endpoint.startsWith(prefix));
 
-    // FORCE HARDCODE FOR PRODUCTION RELIABILITY
+    // Use dynamic port from Rust sidecar (falls back to 8001 in dev)
     const baseUrl = isCloudRoute
         ? "https://weare-production.up.railway.app"
-        : "http://127.0.0.1:8001";
+        : getLocalBaseUrl();
 
     const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 

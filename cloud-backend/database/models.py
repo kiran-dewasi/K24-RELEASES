@@ -30,8 +30,10 @@
 # ============================================================
 
 from sqlalchemy import Column, String, Boolean, DateTime, Text, Integer
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
+import uuid
 
 Base = declarative_base()
 
@@ -109,15 +111,17 @@ class UserSettings(Base):
 class DeviceLicense(Base):
     __tablename__ = "device_licenses"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    license_key = Column(String, unique=True, index=True)
-    user_id = Column(String, index=True)
-    device_fingerprint = Column(String, index=True)
-    tenant_id = Column(String, index=True)
-    status = Column(String, default="active")
-    app_version = Column(String, nullable=True)
-    device_name = Column(String, nullable=True)
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    license_key        = Column(String, unique=True, index=True, nullable=False)
+    user_id            = Column(String, index=True, nullable=False)   # UUID stored as text
+    device_fingerprint = Column(String, index=True, nullable=False)
+    tenant_id          = Column(String, index=True, nullable=False)
+    device_name        = Column(String, nullable=True)
+    status             = Column(String, default="active", nullable=False)
+    activated_at       = Column(DateTime(timezone=True), server_default=func.now())
+    last_validated_at  = Column(DateTime(timezone=True), nullable=True)
+    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    # Columns added via migration add_missing_device_license_columns
+    app_version        = Column(String, nullable=True)
+    last_heartbeat     = Column(DateTime(timezone=True), server_default=func.now())
     first_activated_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_validated_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_heartbeat = Column(DateTime(timezone=True), server_default=func.now())
-    activated_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
@@ -9,6 +10,7 @@ import { SidebarProvider, useSidebar } from "@/contexts/SidebarContext";
 import { ChatProvider } from "@/contexts/ChatContext";
 import AuthGuard from "@/components/AuthGuard";
 import TrialBanner from "@/components/TrialBanner";
+import { initBackendPort } from "@/lib/api";
 
 function InnerLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -50,6 +52,33 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
+
+    // Resolve the Rust sidecar's dynamic port once on mount and cache it
+    // so all apiRequest() calls use the correct port instead of hardcoded 8001.
+    // Also listens for `backend_ready` event (emitted by Rust after sidecar starts)
+    // to handle the race where the port isn't stored yet on first mount.
+    useEffect(() => {
+        // Attempt immediately — may still be early (before Rust finishes start_backend)
+        initBackendPort();
+
+        let unlisten: (() => void) | undefined;
+        (async () => {
+            if (typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)) {
+                try {
+                    const { listen } = await import("@tauri-apps/api/event");
+                    unlisten = await listen("backend_ready", () => {
+                        // Rust just finished start_backend — re-fetch the port now it's stored
+                        initBackendPort();
+                    });
+                } catch {
+                    // Not in Tauri — ignore
+                }
+            }
+        })();
+
+        return () => { unlisten?.(); };
+    }, []);
+
     const isPublicPage = ["/login", "/signup", "/onboarding", "/forgot-password", "/reset-password", "/auth"]
         .some(p => pathname.startsWith(p));
 
