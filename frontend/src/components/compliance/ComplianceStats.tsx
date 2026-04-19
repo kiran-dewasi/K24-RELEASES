@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, AlertCircle, Clock } from "lucide-react";
@@ -27,10 +27,7 @@ export function ComplianceStats() {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const res = await fetch(`${API_CONFIG.BASE_URL}/compliance/dashboard-stats`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
-                });
-                const data: DashboardStats = await res.json();
+                const data = await apiRequest<DashboardStats>('/compliance/dashboard-stats');
 
                 setStats([
                     {

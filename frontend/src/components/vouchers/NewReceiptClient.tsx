@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 interface DepositAccount {
     name: string;
@@ -41,10 +41,9 @@ export default function NewReceiptClient() {
 
         const fetchSuggestions = async () => {
             try {
-                const res = await fetch(`${API_CONFIG.BASE_URL}/ledgers/search?query=${encodeURIComponent(partyName)}`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
-                });
-                const data = await res.json();
+                const data = await apiRequest<{ matches: string[] }>(
+                    `/ledgers/search?query=${encodeURIComponent(partyName)}`
+                );
                 setPartySuggestions(data.matches || []);
                 setShowSuggestions(true);
             } catch (error) {
@@ -62,34 +61,20 @@ export default function NewReceiptClient() {
         setErrorMsg(null);
 
         try {
-            // Use API_CONFIG for reliable connection
-            const res = await fetch(`${API_CONFIG.BASE_URL}/vouchers/receipt`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": "k24-secret-key-123"
-                },
-                body: JSON.stringify({
-                    party_name: partyName,
-                    amount: parseFloat(amount),
-                    deposit_to: depositTo,
-                    narration,
-                    date
-                })
+            const data = await apiRequest('/vouchers/receipt', 'POST', {
+                party_name: partyName,
+                amount: parseFloat(amount),
+                deposit_to: depositTo,
+                narration,
+                date
             });
 
-            const data = await res.json();
-
-            if (res.ok) {
-                // Success
-                alert("Receipt created successfully!");
-                router.push("/daybook");
-            } else {
-                setErrorMsg(data.detail || "Failed to create receipt via Tally");
-            }
-        } catch (error) {
+            // Success
+            alert("Receipt created successfully!");
+            router.push("/daybook");
+        } catch (error: any) {
             console.error("Network/Client Error:", error);
-            setErrorMsg(`Network Error: ${error}`);
+            setErrorMsg(`Network Error: ${error?.message || error}`);
         } finally {
             setLoading(false);
         }

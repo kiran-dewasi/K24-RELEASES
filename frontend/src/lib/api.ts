@@ -311,7 +311,7 @@ export const api = {
 // ============================================================
 
 export const API_CONFIG = {
-    BASE_URL: DEV_API_URL,
+    get BASE_URL() { return getLocalBaseUrl(); },
 
     getHeaders: () => {
         const headers: Record<string, string> = {

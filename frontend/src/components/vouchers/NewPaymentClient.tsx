@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 interface PaymentAccount {
     name: string;
@@ -43,10 +43,9 @@ export default function NewPaymentClient() {
 
         const fetchSuggestions = async () => {
             try {
-                const res = await fetch(`${API_CONFIG.BASE_URL}/ledgers/search?query=${encodeURIComponent(partyName)}`, {
-                    headers: { "x-api-key": "k24-secret-key-123" }
-                });
-                const data = await res.json();
+                const data = await apiRequest<{ matches: string[] }>(
+                    `/ledgers/search?query=${encodeURIComponent(partyName)}`
+                );
                 setPartySuggestions(data.matches || []);
                 setShowSuggestions(true);
             } catch (error) {
@@ -63,35 +62,22 @@ export default function NewPaymentClient() {
         setLoading(true);
 
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/vouchers/payment`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": "k24-secret-key-123"
-                },
-                body: JSON.stringify({
-                    party_name: partyName,
-                    amount: parseFloat(amount),
-                    bank_cash_ledger: payFrom, // Backend expects this field name
-                    narration,
-                    date,
-                    gst_rate: gstRate,
-                    gst_is_expense: gstAsExpense
-                })
+            const data = await apiRequest('/vouchers/payment', 'POST', {
+                party_name: partyName,
+                amount: parseFloat(amount),
+                bank_cash_ledger: payFrom, // Backend expects this field name
+                narration,
+                date,
+                gst_rate: gstRate,
+                gst_is_expense: gstAsExpense
             });
 
-            const data = await res.json();
-
-            if (res.ok) {
-                // Success
-                alert("Payment created successfully!");
-                router.push("/daybook");
-            } else {
-                setErrorMsg(data.detail || "Failed to create payment in Tally");
-            }
-        } catch (error) {
+            // Success
+            alert("Payment created successfully!");
+            router.push("/daybook");
+        } catch (error: any) {
             console.error("Failed to create payment", error);
-            setErrorMsg("Failed to connect to backend. Please check if K24 is running.");
+            setErrorMsg(error?.message || "Failed to connect to backend. Please check if K24 is running.");
         } finally {
             setLoading(false);
         }

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle, AlertTriangle, FileText, Shield, Download } from "lucide-react";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 interface AuditIssue {
     type: string;
@@ -28,12 +28,7 @@ export default function AuditReport() {
     const runAudit = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_CONFIG.BASE_URL}/audit/run`, {
-                headers: {
-                    "x-api-key": "k24-secret-key-123"
-                }
-            });
-            const data = await res.json();
+            const data = await apiRequest<AuditReport>('/audit/run');
             setReport(data);
         } catch (error) {
             console.error("Audit failed:", error);

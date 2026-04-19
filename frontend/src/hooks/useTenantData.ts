@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { API_CONFIG } from "@/lib/api-config";
+import { apiRequest } from "@/lib/api";
 
 interface TenantDataState<T> {
     data: T | null;
@@ -23,20 +23,7 @@ export function useTenantData<T>(endpoint: string, initialData: T | null = null)
 
         const fetchData = async () => {
             try {
-                const res = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-                    headers: API_CONFIG.getHeaders(),
-                });
-
-                if (res.status === 401) {
-                    router.push("/login");
-                    return;
-                }
-
-                if (!res.ok) {
-                    throw new Error(`API Error: ${res.statusText}`);
-                }
-
-                const jsonData = await res.json();
+                const jsonData = await apiRequest<T>(endpoint);
 
                 if (isMounted) {
                     setState({ data: jsonData, loading: false, error: null });
@@ -53,7 +40,7 @@ export function useTenantData<T>(endpoint: string, initialData: T | null = null)
         return () => {
             isMounted = false;
         };
-    }, [endpoint, router]);
+    }, [endpoint]);
 
     return state;
 }

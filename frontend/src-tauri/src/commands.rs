@@ -46,14 +46,18 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
     
     #[cfg(debug_assertions)]
     {
+        let port: u16 = std::env::var("DESKTOP_BACKEND_PORT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(8001);
         let auth = BackendAuth {
-            port: 8001,
+            port,
             session_token: session_token.clone(),
         };
         *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
-        log::info!("Development mode: Using localhost:8001");
+        log::info!("Development mode: backend on port {}", port);
         return Ok(serde_json::json!({
-            "port": 8001,
+            "port": port,
             "session_token": session_token,
             "mode": "development"
         }));
