@@ -125,8 +125,8 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
                 }
 
                 if attempts == max_attempts {
-                    log::warn!("Backend health check failed after {} attempts. Continuing anyway to allow debugging.", max_attempts);
-                    // Non-blocking: We return OK even if health check fails, trusting the process spawned.
+                    log::error!("CRITICAL: Backend health check failed after {} attempts. Process did not respond.", max_attempts);
+                    return Err("Backend failed to start: process did not respond after 10 health-check attempts. Check logs.".into());
                 }
                 
                 log::info!("Backend started successfully on port {}", port);

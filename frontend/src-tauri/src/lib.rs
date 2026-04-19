@@ -8,6 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
             commands::start_backend,
@@ -47,8 +48,19 @@ pub fn run() {
                         let _ = handle.emit("backend_ready", result);
                     }
                     Err(e) => {
-                        log::error!("Failed to start backend: {}", e);
-                        let _ = handle.emit("backend_error", e);
+                        log::error!("CRITICAL: Failed to start backend: {}", e);
+                        let _ = handle.emit("backend_error", &e);
+
+                        // Show a blocking error dialog so the user knows what happened
+                        use tauri_plugin_dialog::DialogExt;
+                        handle
+                            .dialog()
+                            .message("K24 backend failed to start. Please restart the app. If the issue persists, reinstall K24.")
+                            .title("Startup Error")
+                            .blocking_show();
+
+                        // Exit cleanly — do NOT silently load the dashboard with a dead backend
+                        std::process::exit(1);
                     }
                 }
             });

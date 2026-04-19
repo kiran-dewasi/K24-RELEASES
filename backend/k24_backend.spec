@@ -15,6 +15,13 @@ BACKEND_DIR = os.path.abspath(
     os.path.join(SPECPATH)   # SPECPATH == directory containing this .spec file == backend/
 )
 
+# CRITICAL: insert BACKEND_DIR into sys.path NOW so collect_submodules()
+# can actually find and walk services/, routers/, database/, etc.
+# Without this, collect_submodules returns [] silently and the exe crashes
+# with ModuleNotFoundError at runtime.
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
 # ─────────────────────────────────────────────────────────────
 # ROOT-LEVEL LOCAL MODULES  (files that live directly in
 # backend/ and are imported without a package prefix, e.g.
@@ -195,9 +202,82 @@ hidden_imports += ['tenacity', 'python_multipart']
 # ─── Backend sub-packages ─────────────────────────────────────
 # Since pathex points to BACKEND_DIR, these are importable as
 # top-level names (e.g. `from routers.auth import router`)
-hidden_imports += collect_submodules('routers')
+# collect_submodules() now works because sys.path was patched above.
+# Explicit lists below are a bulletproof belt-and-suspenders fallback —
+# they guarantee every known module is included even if collect_submodules
+# somehow returns [] (e.g. __init__.py missing, import error in module).
+
+# services/ — explicit list
+hidden_imports += [
+    'services',
+    'services.auto_executor',
+    'services.bulk_processor',
+    'services.canonical_export_engine',
+    'services.cloud_backup',
+    'services.confidence_scorer',
+    'services.config_service',
+    'services.export_service',
+    'services.item_normalizer',
+    'services.key_manager',
+    'services.ledger_service',
+    'services.license_service',
+    'services.query_orchestrator',
+    'services.supabase_service',
+    'services.tally_sync_checkpoint',
+    'services.tally_sync_service',
+    'services.tenant_service',
+    'services.whatsapp_poller',
+]
 hidden_imports += collect_submodules('services')
+
+# routers/ — explicit list
+hidden_imports += [
+    'routers',
+    'routers.admin',
+    'routers.agent',
+    'routers.auth',
+    'routers.baileys',
+    'routers.bills',
+    'routers.compliance',
+    'routers.contacts',
+    'routers.customers',
+    'routers.dashboard',
+    'routers.data_utils',
+    'routers.debug',
+    'routers.devices',
+    'routers.gst',
+    'routers.inventory',
+    'routers.items',
+    'routers.ledgers',
+    'routers.onboarding_utils',
+    'routers.operations',
+    'routers.query',
+    'routers.reports',
+    'routers.search',
+    'routers.settings',
+    'routers.setup',
+    'routers.subscribe',
+    'routers.sync',
+    'routers.tenant_config',
+    'routers.usage',
+    'routers.vouchers',
+    'routers.whatsapp',
+    'routers.whatsapp_binding',
+    'routers.whatsapp_cloud',
+]
+hidden_imports += collect_submodules('routers')
+
+# database/ — explicit list
+hidden_imports += [
+    'database',
+    'database.encryption',
+    'database.migrations',
+    'database.models',
+    'database.repository',
+    'database.supabase_client',
+]
 hidden_imports += collect_submodules('database')
+
 hidden_imports += collect_submodules('compliance')
 hidden_imports += collect_submodules('tools')
 hidden_imports += collect_submodules('orchestration')

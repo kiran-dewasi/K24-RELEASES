@@ -17,10 +17,10 @@ def parse_args():
 if getattr(sys, 'frozen', False):
     os.environ["IS_DESKTOP"] = "true"
     # Ensure current directory is in path for imports
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 else:
     # Manual Fallback if run from root directory
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Load .env file if it exists (for GOOGLE_API_KEY)
 env_file = Path(__file__).parent / '.env'
