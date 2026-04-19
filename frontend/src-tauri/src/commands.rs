@@ -93,44 +93,58 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
                 };
                 *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
                 
-                // Allow backend time to warm up
+                // Allow backend time to warm up before first health-check
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 
-                // === ADD HEALTH CHECK ===
+                // === HEALTH CHECK — 16 retries × 3 s = up to 53 s total ===
                 log::info!("Attempting to verify backend health...");
 
-                // Try to ping the backend
                 let health_url = format!("http://127.0.0.1:{}/health", port);
                 let mut attempts = 0;
-                let max_attempts = 10;
+                let max_attempts = 16;          // 16 × 3 s ≈ 48 s of retries
+                let retry_interval = tokio::time::Duration::from_secs(3);
+                let mut backend_ok = false;
 
                 while attempts < max_attempts {
-                    // Use a client with a timeout for the health check
+                    // Per-attempt HTTP client with a generous connect timeout
                     let client = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(5))
                         .build()
                         .unwrap_or_default();
 
                     match client.get(&health_url).send().await {
+                        Ok(response) if response.status().is_success() => {
+                            log::info!("Backend health check PASSED ✓ (attempt {})", attempts + 1);
+                            backend_ok = true;
+                            break;
+                        }
                         Ok(response) => {
-                            if response.status().is_success() {
-                                log::info!("Backend health check PASSED ✓");
-                                break;
-                            }
+                            log::warn!(
+                                "Health check attempt {}/{}: backend returned HTTP {}, retrying in 3 s…",
+                                attempts + 1, max_attempts, response.status()
+                            );
                         }
                         Err(e) => {
-                            log::warn!("Health check attempt {}/{} failed: {}", attempts + 1, max_attempts, e);
-                            attempts += 1;
-                            if attempts < max_attempts {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                            }
+                            log::warn!(
+                                "Health check attempt {}/{} failed: {}, retrying in 3 s…",
+                                attempts + 1, max_attempts, e
+                            );
                         }
+                    }
+
+                    attempts += 1;
+                    if attempts < max_attempts {
+                        tokio::time::sleep(retry_interval).await;
                     }
                 }
 
-                if attempts == max_attempts {
-                    log::error!("CRITICAL: Backend health check failed after {} attempts. Process did not respond.", max_attempts);
-                    return Err("Backend failed to start: process did not respond after 10 health-check attempts. Check logs.".into());
+                if !backend_ok {
+                    log::error!(
+                        "CRITICAL: Backend health check failed after {} attempts (~{} s). Process did not respond.",
+                        max_attempts,
+                        5 + max_attempts * 3
+                    );
+                    return Err("Backend failed to start: process did not respond after 16 health-check attempts (~53 s). Check logs.".into());
                 }
                 
                 log::info!("Backend started successfully on port {}", port);
