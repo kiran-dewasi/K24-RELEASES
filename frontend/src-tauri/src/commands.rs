@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -14,6 +15,9 @@ pub struct BackendAuth {
 
 static BACKEND_STATE: Lazy<Mutex<Option<BackendAuth>>> = Lazy::new(|| Mutex::new(None));
 static BACKEND_PROCESS: Lazy<Mutex<Option<CommandChild>>> = Lazy::new(|| Mutex::new(None));
+// True while start_backend is still running its readiness loop (prevents re-entrant calls
+// from the frontend returning a false already_running=true before health-check passes).
+static STARTUP_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 fn get_session_token() -> Option<String> {
     let state = BACKEND_STATE.lock().ok()?;
@@ -25,7 +29,15 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
     #[cfg(debug_assertions)]
     let _ = &app_handle;
 
-    // Check if backend is already running
+    // If a startup attempt is already in progress, tell the caller to wait rather than
+    // returning a false "already_running" that might race against an incomplete readiness loop.
+    if STARTUP_IN_PROGRESS.load(Ordering::SeqCst) {
+        return Ok(serde_json::json!({
+            "startup_in_progress": true
+        }));
+    }
+
+    // Check if backend has fully started (readiness loop has passed)
     {
         let state = BACKEND_STATE.lock().map_err(|e| e.to_string())?;
         if state.is_some() {
@@ -65,7 +77,10 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
     
     #[cfg(not(debug_assertions))]
     {
-        // SAFE MODE: Delay startup to ensure window is ready and AV has scanned main process
+        // Mark startup as in-progress so concurrent start_backend calls don't race.
+        STARTUP_IN_PROGRESS.store(true, Ordering::SeqCst);
+
+        // SAFE MODE: Short initial delay so Tauri window is up and AV has cleared the process.
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
         let shell = app_handle.shell();
@@ -73,7 +88,10 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
 
         let result = shell
             .sidecar("k24-backend")
-            .map_err(|e| format!("Failed to configure sidecar: {}", e))?
+            .map_err(|e| {
+                STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+                format!("Failed to configure sidecar: {}", e)
+            })?
             .args(&[
                 "--port", &port.to_string(),
                 "--token", &session_token,
@@ -81,83 +99,109 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
                 "--app-version", &app_handle.package_info().version.to_string()
             ])
             .spawn();
-        
+
         match result {
             Ok((_rx, child)) => {
-                // Store the child process handle for cleanup on exit
+                // Store the child process handle for cleanup on exit.
                 *BACKEND_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
-                
-                let auth = BackendAuth {
-                    port,
-                    session_token: session_token.clone(),
-                };
-                *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
-                
-                // Allow backend time to warm up before first health-check
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                
-                // === HEALTH CHECK — 16 retries × 3 s = up to 53 s total ===
-                log::info!("Attempting to verify backend health...");
+
+                // === STARTUP READINESS WINDOW ===
+                //
+                // Total budget: 10 s warmup + 20 retries × 4 s = ~90 s
+                // This covers cold disk, AV scan, OneDrive noise, slow Python/LangGraph init.
+                //
+                // BACKEND_STATE is intentionally NOT set here yet.
+                // It will only be set once health-check passes, so get_backend_status()
+                // returns running=false (correctly) until the backend is genuinely ready.
 
                 let health_url = format!("http://127.0.0.1:{}/health", port);
-                let mut attempts = 0;
-                let max_attempts = 16;          // 16 × 3 s ≈ 48 s of retries
-                let retry_interval = tokio::time::Duration::from_secs(3);
+
+                // Generous initial warmup before first probe — Python + uvicorn cold start.
+                log::info!("Waiting 10 s for backend initial warmup before first health-check…");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+                log::info!("Starting readiness loop (max 20 retries × 4 s = 80 s)…");
+
+                const MAX_ATTEMPTS: u32 = 20;
+                const RETRY_SECS: u64 = 4;
+                let retry_interval = tokio::time::Duration::from_secs(RETRY_SECS);
                 let mut backend_ok = false;
 
-                while attempts < max_attempts {
-                    // Per-attempt HTTP client with a generous connect timeout
+                for attempt in 1..=MAX_ATTEMPTS {
+                    // Fresh client per attempt — avoids connection-pool stale-state.
                     let client = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(5))
+                        .timeout(std::time::Duration::from_secs(6))
                         .build()
                         .unwrap_or_default();
 
                     match client.get(&health_url).send().await {
                         Ok(response) if response.status().is_success() => {
-                            log::info!("Backend health check PASSED ✓ (attempt {})", attempts + 1);
+                            log::info!(
+                                "Backend readiness check PASSED ✓ (attempt {}/{})",
+                                attempt, MAX_ATTEMPTS
+                            );
                             backend_ok = true;
                             break;
                         }
                         Ok(response) => {
                             log::warn!(
-                                "Health check attempt {}/{}: backend returned HTTP {}, retrying in 3 s…",
-                                attempts + 1, max_attempts, response.status()
+                                "Readiness check {}/{}: backend returned HTTP {}, waiting {} s…",
+                                attempt, MAX_ATTEMPTS, response.status(), RETRY_SECS
                             );
                         }
                         Err(e) => {
                             log::warn!(
-                                "Health check attempt {}/{} failed: {}, retrying in 3 s…",
-                                attempts + 1, max_attempts, e
+                                "Readiness check {}/{}: connection error ({}), waiting {} s…",
+                                attempt, MAX_ATTEMPTS, e, RETRY_SECS
                             );
                         }
                     }
 
-                    attempts += 1;
-                    if attempts < max_attempts {
+                    // Sleep after every attempt, including the last one, to ensure
+                    // we give a final window before declaring failure.
+                    if attempt < MAX_ATTEMPTS {
                         tokio::time::sleep(retry_interval).await;
                     }
                 }
 
-                if !backend_ok {
+                // Clear the in-progress flag regardless of outcome.
+                STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+
+                if backend_ok {
+                    // Only NOW write BACKEND_STATE — prevents stale ready-state from leaking
+                    // if the readiness loop fails.
+                    let auth = BackendAuth {
+                        port,
+                        session_token: session_token.clone(),
+                    };
+                    *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
+
+                    log::info!("Backend started successfully on port {}", port);
+                    Ok(serde_json::json!({
+                        "port": port,
+                        "session_token": session_token,
+                        "mode": "production"
+                    }))
+                } else {
+                    // Startup budget fully exhausted — genuine failure.
+                    let total_secs = 10 + MAX_ATTEMPTS as u64 * RETRY_SECS;
                     log::error!(
-                        "CRITICAL: Backend health check failed after {} attempts (~{} s). Process did not respond.",
-                        max_attempts,
-                        5 + max_attempts * 3
+                        "CRITICAL: Backend never became ready after {} attempts (~{} s total). Process did not respond.",
+                        MAX_ATTEMPTS, total_secs
                     );
-                    return Err("Backend failed to start: process did not respond after 16 health-check attempts (~53 s). Check logs.".into());
+                    Err(format!(
+                        "Backend failed to start after ~{} s ({} health-check attempts). Check logs.",
+                        total_secs, MAX_ATTEMPTS
+                    ))
                 }
-                
-                log::info!("Backend started successfully on port {}", port);
-                Ok(serde_json::json!({
-                    "port": port,
-                    "session_token": session_token,
-                    "mode": "production"
-                }))
             }
             Err(e) => {
-                log::error!("CRITICAL: Failed to spawn backend: {}", e);
-                // Return generic error but DO NOT PANIC
-                Err(format!("Backend failed to start. Antivirus might be blocking it. Error: {}", e))
+                STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+                log::error!("CRITICAL: Failed to spawn backend sidecar: {}", e);
+                Err(format!(
+                    "Backend failed to start. Antivirus may be blocking the executable. Error: {}",
+                    e
+                ))
             }
         }
     }

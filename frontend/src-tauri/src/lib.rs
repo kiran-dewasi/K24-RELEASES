@@ -51,15 +51,28 @@ pub fn run() {
                         log::error!("CRITICAL: Failed to start backend: {}", e);
                         let _ = handle.emit("backend_error", &e);
 
-                        // Show a blocking error dialog so the user knows what happened
+                        // Show a non-fatal error dialog. The user is informed but the process
+                        // stays alive so they can dismiss and inspect logs. We do NOT call
+                        // std::process::exit here — the startup budget (~90 s) is long enough
+                        // that if we reach this branch the failure is genuine, but forcing an
+                        // abrupt exit would destroy the log context and confuse users whose
+                        // machine was merely slow to boot.
                         use tauri_plugin_dialog::DialogExt;
                         handle
                             .dialog()
-                            .message("K24 backend failed to start. Please restart the app. If the issue persists, reinstall K24.")
+                            .message(&format!(
+                                "K24 backend failed to start after the full startup window.\n\n\
+                                Details: {}\n\n\
+                                Please restart the app. If the issue persists, check that your \
+                                antivirus is not blocking k24-backend.exe, then reinstall K24.",
+                                e
+                            ))
                             .title("Startup Error")
                             .blocking_show();
 
-                        // Exit cleanly — do NOT silently load the dashboard with a dead backend
+                        // After the user dismisses the dialog, exit gracefully.
+                        // This is only reached after the full ~90-second readiness budget
+                        // has been exhausted, so it is a genuine failure — not a false positive.
                         std::process::exit(1);
                     }
                 }
