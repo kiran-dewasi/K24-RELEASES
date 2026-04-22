@@ -76,7 +76,7 @@ export default function Navbar() {
         const checkHealth = async () => {
             try {
                 const status = await checkBackendStatus();
-                if (status.running) {
+                if (status.status === "ready") {
                     const newStatus = {
                         connected: true,
                         lastSync: new Date().toISOString()

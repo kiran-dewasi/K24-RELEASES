@@ -1,84 +1,115 @@
 use once_cell::sync::Lazy;
-use std::sync::atomic::{AtomicBool, Ordering};
+// std::sync::atomic::{AtomicBool, Ordering} removed — replaced by BackendLifecycle enum (B9)
 use std::sync::Mutex;
 use tauri::AppHandle;
 use uuid::Uuid;
+// ShellExt is only used in the production (release) code path.
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 
-/// Backend Authentication State
+// ── BackendLifecycle state machine ────────────────────────────────────────────
+// Replaces both BACKEND_STATE (Option<BackendAuth>) and STARTUP_IN_PROGRESS
+// (AtomicBool) as a single, authoritative source of truth.  The session_token
+// lives only inside the Ready variant — it is NEVER emitted to the frontend.
 #[derive(Debug, Clone)]
-pub struct BackendAuth {
-    pub port: u16,
-    pub session_token: String,
+// Crashed is constructed only in the release (non-debug) code path.
+#[allow(dead_code)]
+pub enum BackendLifecycle {
+    NotStarted,
+    Starting,
+    Ready { port: u16, session_token: String },
+    Crashed { error: String },
 }
 
-static BACKEND_STATE: Lazy<Mutex<Option<BackendAuth>>> = Lazy::new(|| Mutex::new(None));
+// BackendAuth struct deleted — its fields now live inside Ready { port, session_token }.
+
+static BACKEND_LIFECYCLE: Lazy<Mutex<BackendLifecycle>> =
+    Lazy::new(|| Mutex::new(BackendLifecycle::NotStarted));
+
+// BACKEND_PROCESS is unchanged — orthogonal OS handle used only for kill-on-shutdown.
 static BACKEND_PROCESS: Lazy<Mutex<Option<CommandChild>>> = Lazy::new(|| Mutex::new(None));
-// True while start_backend is still running its readiness loop (prevents re-entrant calls
-// from the frontend returning a false already_running=true before health-check passes).
-static STARTUP_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+// ── Internal helper — never exposed via Tauri command ─────────────────────────
 fn get_session_token() -> Option<String> {
-    let state = BACKEND_STATE.lock().ok()?;
-    state.as_ref().map(|s| s.session_token.clone())
+    let lifecycle = BACKEND_LIFECYCLE.lock().ok()?;
+    match &*lifecycle {
+        BackendLifecycle::Ready { session_token, .. } => Some(session_token.clone()),
+        _ => None,
+    }
 }
 
+// ── start_backend ─────────────────────────────────────────────────────────────
 #[tauri::command]
 pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, String> {
     #[cfg(debug_assertions)]
     let _ = &app_handle;
 
-    // If a startup attempt is already in progress, tell the caller to wait rather than
-    // returning a false "already_running" that might race against an incomplete readiness loop.
-    if STARTUP_IN_PROGRESS.load(Ordering::SeqCst) {
-        return Ok(serde_json::json!({
-            "startup_in_progress": true
-        }));
-    }
-
-    // Check if backend has fully started (readiness loop has passed)
+    // ── Early-exit guard (no state mutation) ──────────────────────────────────
+    // Lock, inspect, release immediately — no await is held past this block.
     {
-        let state = BACKEND_STATE.lock().map_err(|e| e.to_string())?;
-        if state.is_some() {
-            let auth = state.as_ref().unwrap();
-            return Ok(serde_json::json!({
-                "port": auth.port,
-                "already_running": true
-            }));
+        let lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+        match &*lifecycle {
+            BackendLifecycle::Starting => {
+                return Ok(serde_json::json!({ "status": "starting" }));
+            }
+            BackendLifecycle::Ready { port, .. } => {
+                return Ok(serde_json::json!({ "status": "ready", "port": port }));
+            }
+            // NotStarted and Crashed both allow a fresh start attempt.
+            BackendLifecycle::NotStarted | BackendLifecycle::Crashed { .. } => {}
         }
-    }
+    } // guard dropped here — no await held
 
     let port = portpicker::pick_unused_port()
         .ok_or("No available ports")?;
-    
+
     let session_token = Uuid::new_v4().to_string();
-    
+
     log::info!("Starting backend on port {} with session token", port);
-    
+
+    // ── Dev mode path ─────────────────────────────────────────────────────────
+    // C6: must transition Starting → Ready so get_session_token() works in dev.
     #[cfg(debug_assertions)]
     {
         let port: u16 = std::env::var("DESKTOP_BACKEND_PORT")
-            .ok()
-            .and_then(|v| v.parse().ok())
+            .unwrap_or("8001".to_string())
+            .parse()
             .unwrap_or(8001);
-        let auth = BackendAuth {
-            port,
-            session_token: session_token.clone(),
-        };
-        *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
+
+        // Transition to Starting
+        {
+            let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+            *lifecycle = BackendLifecycle::Starting;
+        }
+
         log::info!("Development mode: backend on port {}", port);
+
+        // Transition to Ready
+        {
+            let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+            *lifecycle = BackendLifecycle::Ready {
+                port,
+                session_token: session_token.clone(),
+            };
+        }
+
         return Ok(serde_json::json!({
+            "status": "ready",
             "port": port,
-            "session_token": session_token,
             "mode": "development"
         }));
     }
-    
+
+    // ── Production path ───────────────────────────────────────────────────────
     #[cfg(not(debug_assertions))]
     {
-        // Mark startup as in-progress so concurrent start_backend calls don't race.
-        STARTUP_IN_PROGRESS.store(true, Ordering::SeqCst);
+        // ── Transition: NotStarted/Crashed → Starting ─────────────────────────
+        // Lock, mutate, release — no await held across this block.
+        {
+            let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+            *lifecycle = BackendLifecycle::Starting;
+        }
 
         // SAFE MODE: Short initial delay so Tauri window is up and AV has cleared the process.
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -89,7 +120,12 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
         let result = shell
             .sidecar("k24-backend")
             .map_err(|e| {
-                STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
+                // Transition to Crashed on sidecar-config failure
+                if let Ok(mut lifecycle) = BACKEND_LIFECYCLE.lock() {
+                    *lifecycle = BackendLifecycle::Crashed {
+                        error: format!("Failed to configure sidecar: {}", e),
+                    };
+                }
                 format!("Failed to configure sidecar: {}", e)
             })?
             .args(&[
@@ -101,33 +137,101 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
             .spawn();
 
         match result {
-            Ok((_rx, child)) => {
-                // Store the child process handle for cleanup on exit.
-                *BACKEND_PROCESS.lock().map_err(|e| e.to_string())? = Some(child);
+            Ok((mut rx, child)) => {
+                // Change 2 — Store BACKEND_PROCESS before any await.
+                // The lock is taken, mutated, and released synchronously here.
+                // No .await is held across this block.
+                {
+                    let mut proc = BACKEND_PROCESS.lock().map_err(|e| e.to_string())?;
+                    *proc = Some(child);
+                }
 
                 // === STARTUP READINESS WINDOW ===
                 //
                 // Total budget: 10 s warmup + 20 retries × 4 s = ~90 s
                 // This covers cold disk, AV scan, OneDrive noise, slow Python/LangGraph init.
                 //
-                // BACKEND_STATE is intentionally NOT set here yet.
-                // It will only be set once health-check passes, so get_backend_status()
-                // returns running=false (correctly) until the backend is genuinely ready.
+                // BACKEND_LIFECYCLE remains Starting here.
+                // It will only transition to Ready once health-check passes, so
+                // get_backend_status() correctly reports "starting" until then.
 
                 let health_url = format!("http://127.0.0.1:{}/health", port);
 
-                // Generous initial warmup before first probe — Python + uvicorn cold start.
+                // Change 3 — Monitored warmup: race sleep_until(deadline) against rx.recv().
+                // Stdout/Stderr/Error are logged only — never trigger Crashed.
+                // Terminated or None (channel closed) triggers immediate Crashed + Err return.
                 log::info!("Waiting 10 s for backend initial warmup before first health-check…");
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                {
+                    let warmup_deadline =
+                        tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+                    loop {
+                        tokio::select! {
+                            _ = tokio::time::sleep_until(warmup_deadline) => {
+                                // Warmup window elapsed normally — proceed to health loop.
+                                break;
+                            }
+                            event = rx.recv() => {
+                                match event {
+                                    Some(tauri_plugin_shell::process::CommandEvent::Stdout(line)) => {
+                                        log::info!("[sidecar stdout] {}", String::from_utf8_lossy(&line));
+                                        // continue monitoring
+                                    }
+                                    Some(tauri_plugin_shell::process::CommandEvent::Stderr(line)) => {
+                                        log::warn!("[sidecar stderr] {}", String::from_utf8_lossy(&line));
+                                        // continue monitoring
+                                    }
+                                    Some(tauri_plugin_shell::process::CommandEvent::Error(e)) => {
+                                        log::warn!("[sidecar error] {}", e);
+                                        // continue monitoring
+                                    }
+                                    Some(tauri_plugin_shell::process::CommandEvent::Terminated(payload)) => {
+                                        log::error!(
+                                            "Sidecar terminated during warmup — code={:?} signal={:?}",
+                                            payload.code, payload.signal
+                                        );
+                                        {
+                                            let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+                                            *lifecycle = BackendLifecycle::Crashed {
+                                                error: format!(
+                                                    "Sidecar exited during warmup (code={:?} signal={:?})",
+                                                    payload.code, payload.signal
+                                                ),
+                                            };
+                                        }
+                                        return Err(format!(
+                                            "Backend sidecar terminated during warmup (code={:?} signal={:?})",
+                                            payload.code, payload.signal
+                                        ));
+                                    }
+                                    Some(_) => {
+                                        // Unknown variant — ignore and continue.
+                                    }
+                                    None => {
+                                        // Channel closed — process gone.
+                                        log::error!("Sidecar event channel closed during warmup");
+                                        {
+                                            let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+                                            *lifecycle = BackendLifecycle::Crashed {
+                                                error: "Sidecar event channel closed during warmup".to_string(),
+                                            };
+                                        }
+                                        return Err("Backend sidecar channel closed during warmup".to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 log::info!("Starting readiness loop (max 20 retries × 4 s = 80 s)…");
 
                 const MAX_ATTEMPTS: u32 = 20;
                 const RETRY_SECS: u64 = 4;
-                let retry_interval = tokio::time::Duration::from_secs(RETRY_SECS);
                 let mut backend_ok = false;
+                // Change 4 — exit_detected drives the Phase-3 decision.
+                let mut exit_detected = false;
 
-                for attempt in 1..=MAX_ATTEMPTS {
+                'health: for attempt in 1..=MAX_ATTEMPTS {
                     // Fresh client per attempt — avoids connection-pool stale-state.
                     let client = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(6))
@@ -141,7 +245,7 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
                                 attempt, MAX_ATTEMPTS
                             );
                             backend_ok = true;
-                            break;
+                            break 'health;
                         }
                         Ok(response) => {
                             log::warn!(
@@ -157,56 +261,122 @@ pub async fn start_backend(app_handle: AppHandle) -> Result<serde_json::Value, S
                         }
                     }
 
-                    // Sleep after every attempt, including the last one, to ensure
-                    // we give a final window before declaring failure.
+                    // Change 4 — Monitored inter-retry sleep: race sleep_until against rx.recv().
+                    // Skip the sleep on the last attempt.
                     if attempt < MAX_ATTEMPTS {
-                        tokio::time::sleep(retry_interval).await;
+                        let retry_deadline =
+                            tokio::time::Instant::now() + tokio::time::Duration::from_secs(RETRY_SECS);
+                        'drain: loop {
+                            tokio::select! {
+                                _ = tokio::time::sleep_until(retry_deadline) => {
+                                    // Interval elapsed — do next health attempt.
+                                    break 'drain;
+                                }
+                                event = rx.recv() => {
+                                    match event {
+                                        Some(tauri_plugin_shell::process::CommandEvent::Stdout(line)) => {
+                                            log::info!("[sidecar stdout] {}", String::from_utf8_lossy(&line));
+                                            // continue drain loop
+                                        }
+                                        Some(tauri_plugin_shell::process::CommandEvent::Stderr(line)) => {
+                                            log::warn!("[sidecar stderr] {}", String::from_utf8_lossy(&line));
+                                            // continue drain loop
+                                        }
+                                        Some(tauri_plugin_shell::process::CommandEvent::Error(e)) => {
+                                            log::warn!("[sidecar error] {}", e);
+                                            // continue drain loop
+                                        }
+                                        Some(tauri_plugin_shell::process::CommandEvent::Terminated(payload)) => {
+                                            log::error!(
+                                                "Sidecar terminated during health loop — code={:?} signal={:?}",
+                                                payload.code, payload.signal
+                                            );
+                                            exit_detected = true;
+                                            break 'drain;
+                                        }
+                                        Some(_) => {
+                                            // Unknown variant — ignore and continue.
+                                        }
+                                        None => {
+                                            // Channel closed — process gone.
+                                            log::error!("Sidecar event channel closed during health loop");
+                                            exit_detected = true;
+                                            break 'drain;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if exit_detected {
+                            break 'health;
+                        }
                     }
                 }
 
-                // Clear the in-progress flag regardless of outcome.
-                STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
-
-                if backend_ok {
-                    // Only NOW write BACKEND_STATE — prevents stale ready-state from leaking
-                    // if the readiness loop fails.
-                    let auth = BackendAuth {
-                        port,
-                        session_token: session_token.clone(),
-                    };
-                    *BACKEND_STATE.lock().map_err(|e| e.to_string())? = Some(auth);
+                // ── Change 5: Decision phase ──────────────────────────────────
+                // All awaits are done. Locks are safe to take now.
+                // Priority: exit_detected > backend_ok > timeout exhausted.
+                if exit_detected {
+                    let err_msg = "Backend sidecar exited unexpectedly during startup".to_string();
+                    log::error!("CRITICAL: {}", err_msg);
+                    {
+                        let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+                        *lifecycle = BackendLifecycle::Crashed { error: err_msg.clone() };
+                    }
+                    Err(err_msg)
+                } else if backend_ok {
+                    {
+                        let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+                        *lifecycle = BackendLifecycle::Ready {
+                            port,
+                            session_token: session_token.clone(),
+                        };
+                    }
 
                     log::info!("Backend started successfully on port {}", port);
                     Ok(serde_json::json!({
+                        "status": "ready",
                         "port": port,
-                        "session_token": session_token,
                         "mode": "production"
+                        // session_token intentionally omitted — lives only in Ready variant
                     }))
                 } else {
-                    // Startup budget fully exhausted — genuine failure.
+                    // Startup budget fully exhausted — genuine timeout failure.
                     let total_secs = 10 + MAX_ATTEMPTS as u64 * RETRY_SECS;
+                    let err_msg = format!(
+                        "Backend failed to start after ~{} s ({} health-check attempts). Check logs.",
+                        total_secs, MAX_ATTEMPTS
+                    );
                     log::error!(
                         "CRITICAL: Backend never became ready after {} attempts (~{} s total). Process did not respond.",
                         MAX_ATTEMPTS, total_secs
                     );
-                    Err(format!(
-                        "Backend failed to start after ~{} s ({} health-check attempts). Check logs.",
-                        total_secs, MAX_ATTEMPTS
-                    ))
+                    {
+                        let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+                        *lifecycle = BackendLifecycle::Crashed { error: err_msg.clone() };
+                    }
+                    Err(err_msg)
                 }
             }
             Err(e) => {
-                STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
-                log::error!("CRITICAL: Failed to spawn backend sidecar: {}", e);
-                Err(format!(
+                let err_msg = format!(
                     "Backend failed to start. Antivirus may be blocking the executable. Error: {}",
                     e
-                ))
+                );
+                log::error!("CRITICAL: Failed to spawn backend sidecar: {}", e);
+                {
+                    let mut lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+                    *lifecycle = BackendLifecycle::Crashed { error: err_msg.clone() };
+                }
+                Err(err_msg)
             }
         }
     }
 }
 
+// ── backend_request ───────────────────────────────────────────────────────────
+// C2: Silent port-8001 fallback is REMOVED. If lifecycle is not Ready,
+// this returns Err("Backend not ready") — a hard error, not a silent fallback.
 #[tauri::command]
 pub async fn backend_request(
     endpoint: String,
@@ -215,14 +385,17 @@ pub async fn backend_request(
     auth_token: Option<String>,
 ) -> Result<String, String> {
     let port = {
-        let state = BACKEND_STATE.lock().map_err(|e| e.to_string())?;
-        state.as_ref().map(|s| s.port).unwrap_or(8001)
+        let lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+        match &*lifecycle {
+            BackendLifecycle::Ready { port, .. } => *port,
+            _ => return Err("Backend not ready".to_string()),
+        }
     };
 
-    let is_local_endpoint = endpoint.starts_with("/api/tally") || 
-                            endpoint.starts_with("/api/vouchers") || 
-                            endpoint.starts_with("/api/ledgers") || 
-                            endpoint.starts_with("/api/reports") || 
+    let is_local_endpoint = endpoint.starts_with("/api/tally") ||
+                            endpoint.starts_with("/api/vouchers") ||
+                            endpoint.starts_with("/api/ledgers") ||
+                            endpoint.starts_with("/api/reports") ||
                             endpoint.starts_with("/api/sync") ||
                             endpoint.starts_with("/api/setup") ||
                             endpoint.starts_with("/api/health") ||
@@ -248,7 +421,7 @@ pub async fn backend_request(
         .map_err(|e| format!("Failed to build client: {}", e))?;
     let method_parsed: reqwest::Method = method.parse()
         .map_err(|_| format!("Invalid HTTP method: {}", method))?;
-    
+
     let mut request = client.request(method_parsed, &url)
         .header("Content-Type", "application/json")
         .header("x-api-key", "k24-secret-key-123");
@@ -263,31 +436,44 @@ pub async fn backend_request(
     if let Some(body_content) = body {
         request = request.body(body_content);
     }
-    
+
     let response = request.send().await.map_err(|e| format!("Request failed: {}", e))?;
     let status = response.status();
     let text = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
-    
+
     if !status.is_success() {
         log::warn!("Backend returned error {}: {}", status, text);
     }
     Ok(text)
 }
 
+// ── get_backend_status ────────────────────────────────────────────────────────
+// B3: New 4-arm return shape. Key "running" is RETIRED; "status" is the new
+// discriminator. session_token is NEVER included in this response.
+//
+// FRONTEND TEAM NOTE (D18 / C3):
+//   Replace all `if (result.running)` checks with `if (result.status === "ready")`.
+//   Replace all `result.port` reads with a guard on `result.status === "ready"`.
 #[tauri::command]
 pub fn get_backend_status() -> Result<serde_json::Value, String> {
-    let state = BACKEND_STATE.lock().map_err(|e| e.to_string())?;
-    match state.as_ref() {
-        Some(auth) => Ok(serde_json::json!({
-            "running": true,
-            "port": auth.port
+    let lifecycle = BACKEND_LIFECYCLE.lock().map_err(|e| e.to_string())?;
+    match &*lifecycle {
+        BackendLifecycle::NotStarted => Ok(serde_json::json!({ "status": "not_started" })),
+        BackendLifecycle::Starting   => Ok(serde_json::json!({ "status": "starting" })),
+        BackendLifecycle::Ready { port, .. } => Ok(serde_json::json!({
+            "status": "ready",
+            "port": port
+            // session_token intentionally omitted
         })),
-        None => Ok(serde_json::json!({
-            "running": false
-        }))
+        BackendLifecycle::Crashed { error } => Ok(serde_json::json!({
+            "status": "crashed",
+            "error": error
+        })),
     }
 }
 
+// ── stop_backend ──────────────────────────────────────────────────────────────
+// B7: Reset lifecycle to NotStarted (allows restart if process is ever re-spawned).
 /// Stops the backend sidecar process (used on app shutdown)
 pub fn stop_backend() {
     log::info!("Stopping backend sidecar...");
@@ -299,9 +485,9 @@ pub fn stop_backend() {
             }
         }
     }
-    
-    // Clear backend state
-    if let Ok(mut state) = BACKEND_STATE.lock() {
-        *state = None;
+
+    // Reset lifecycle to NotStarted
+    if let Ok(mut lifecycle) = BACKEND_LIFECYCLE.lock() {
+        *lifecycle = BackendLifecycle::NotStarted;
     }
 }

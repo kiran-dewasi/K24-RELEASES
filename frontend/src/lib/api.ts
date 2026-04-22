@@ -48,6 +48,15 @@ const DEV_API_URL = 'http://127.0.0.1:8001';
 let _runtimeLocalPort: number = 8001; // sane default for dev
 
 /**
+ * Directly set the backend port from an already-known value.
+ * Call this when the port is available from a Tauri event or status check
+ * to avoid an extra invoke() round-trip.
+ */
+export function setBackendPort(port: number): void {
+    if (port > 0) _runtimeLocalPort = port;
+}
+
+/**
  * Call this once on app startup (e.g. in layout.tsx useEffect).
  * Fetches the real sidecar port from Rust and stores it for all API calls.
  */
@@ -55,7 +64,7 @@ export async function initBackendPort(): Promise<void> {
     if (!isTauri()) return; // no sidecar in plain browser
     try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const status = await invoke<{ running: boolean; port?: number }>('get_backend_status');
+        const status = await invoke<{ status: string; port?: number; error?: string }>('get_backend_status');
         if (status?.port && status.port > 0) {
             _runtimeLocalPort = status.port;
             console.log(`[K24] Backend port resolved: ${_runtimeLocalPort}`);
@@ -259,14 +268,14 @@ function handleAuthError() {
 /**
  * Check if backend is running
  */
-export async function checkBackendStatus(): Promise<{ running: boolean; port?: number }> {
+export async function checkBackendStatus(): Promise<{ status: string; port?: number; error?: string }> {
     // In Tauri production build, ask Rust for backend status
     if (isTauri() && !isTauriDev()) {
         try {
             const { invoke } = await import('@tauri-apps/api/core');
             return await invoke('get_backend_status');
         } catch {
-            return { running: false };
+            return { status: 'crashed', error: 'invoke failed' };
         }
     }
 
@@ -276,9 +285,9 @@ export async function checkBackendStatus(): Promise<{ running: boolean; port?: n
             method: 'GET',
             signal: AbortSignal.timeout(5000)
         });
-        return { running: response.ok, port: 8001 };
+        return { status: response.ok ? 'ready' : 'crashed', port: 8001 };
     } catch {
-        return { running: false };
+        return { status: 'crashed' };
     }
 }
 
