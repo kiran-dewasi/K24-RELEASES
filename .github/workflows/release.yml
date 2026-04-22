@@ -1,0 +1,119 @@
+name: Release K24 Desktop App
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"   # triggers on v1.0.0, v1.0.1, etc.
+
+permissions:
+  contents: read   # this repo only needs read; writes go to K24-RELEASES via PAT
+
+jobs:
+  release-windows:
+    name: Build and Publish to K24-RELEASES
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      CI: "true"
+      # tauri-action v0 + Tauri v2 reads TAURI_SIGNING_PRIVATE_KEY for updater signing
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_CI }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js ─────────────────────────────────────────────────────────
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── 3. Rust (stable) ───────────────────────────────────────────────────
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      # ── 4. Cache Rust build artifacts ─────────────────────────────────────
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            frontend/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('frontend/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # ── 5. Python (for sidecar build) ──────────────────────────────────────
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # ── 6. Frontend npm deps ───────────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # ── 7. Python / sidecar deps ───────────────────────────────────────────
+      - name: Install backend build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      # ── 8. Build Python sidecar binaries ──────────────────────────────────
+      - name: Build bundled sidecar binaries
+        run: |
+          python scripts/build_sidecars.py
+          python scripts/prepare_binaries.py
+
+      # ── 9. Verify sidecar exists before Tauri build ────────────────────────
+      - name: Verify sidecar binary present
+        run: |
+          if (-not (Test-Path "frontend/src-tauri/binaries/k24-backend-x86_64-pc-windows-msvc.exe")) {
+            throw "Sidecar binary not found — aborting build."
+          }
+          Write-Host "Sidecar binary found."
+
+      # ── 10. Build + Sign + Publish to kiran-dewasi/K24-RELEASES ───────────
+      - name: Build Tauri app and publish release to K24-RELEASES
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # RELEASES_PAT must have Contents: write on kiran-dewasi/K24-RELEASES
+          GITHUB_TOKEN: ${{ secrets.RELEASES_PAT }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_CI }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          # Location of package.json / tauri.conf.json parent dir
+          projectPath: frontend
+          # Tag that triggered this run (e.g. v1.0.1)
+          tagName: ${{ github.ref_name }}
+          releaseName: "K24 ${{ github.ref_name }}"
+          releaseBody: |
+            ## K24 Desktop App — ${{ github.ref_name }}
+
+            Install the `.exe` (NSIS) or `.msi` installer below.  
+            The `latest.json` file is consumed by the in-app auto-updater.
+
+            ### What's in this release
+            - Signed NSIS installer (`.exe`)
+            - Signed MSI installer (`.msi`)
+            - Tauri updater bundle + signature (`.nsis.zip` + `.nsis.zip.sig`)
+            - Updater manifest (`latest.json`)
+          releaseDraft: false
+          prerelease: false
+          # Publish to the PUBLIC releases repo instead of the current repo
+          owner: kiran-dewasi
+          repo: K24-RELEASES
+          # Upload the updater JSON manifest (needed for auto-update)
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

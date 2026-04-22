@@ -68,7 +68,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/kiran-dewasi/weare/releases/latest/download/latest.json"
+        "https://github.com/kiran-dewasi/K24-RELEASES/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
