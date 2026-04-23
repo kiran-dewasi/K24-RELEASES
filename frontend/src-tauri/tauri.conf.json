@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "K24",
-  "version": "1.0.9",
+  "version": "2.0.1",
   "identifier": "com.krishasales.k24",
   "build": {
     "devUrl": "http://localhost:3000",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "K24 - Business Intelligence",
+        "title": "K24 - THE ERUTUF",
         "width": 1400,
         "height": 900,
         "minWidth": 1024,
