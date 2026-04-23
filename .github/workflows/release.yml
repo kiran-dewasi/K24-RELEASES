@@ -84,7 +84,19 @@ jobs:
           }
           Write-Host "Sidecar binary found."
 
-      # ── 10. Build + Sign + Publish to kiran-dewasi/K24-RELEASES ───────────
+      # ── 10. Push tag to K24-RELEASES so tauri-action can find it ─────────
+      - name: Push release tag to K24-RELEASES
+        shell: pwsh
+        env:
+          RELEASES_PAT: ${{ secrets.RELEASES_PAT }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $targetRepo = "https://x-access-token:$env:RELEASES_PAT@github.com/kiran-dewasi/K24-RELEASES.git"
+          git remote add releases $targetRepo 2>$null || git remote set-url releases $targetRepo
+          git push releases "refs/tags/${tag}:refs/tags/${tag}" --force
+          Write-Host "Tag $tag pushed to K24-RELEASES."
+
+      # ── 11. Build + Sign + Publish to kiran-dewasi/K24-RELEASES ───────────
       - name: Build Tauri app and publish release to K24-RELEASES
         uses: tauri-apps/tauri-action@v0
         env:
